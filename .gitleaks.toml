@@ -1,0 +1,19 @@
+title = "phone-lab public source checks"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "macos-personal-home"
+description = "Machine-specific user home path"
+regex = '''/Users/[A-Za-z0-9_.-]+/'''
+
+[[rules]]
+id = "ios-hardware-identifier"
+description = "Hardware UDID must be supplied locally"
+regex = '''\b[0-9A-Fa-f]{8}-?[0-9A-Fa-f]{16}\b'''
+
+[[rules]]
+id = "local-network-address"
+description = "Do not publish a private device network address"
+regex = '''\b192\.168\.[0-9]{1,3}\.[0-9]{1,3}\b'''

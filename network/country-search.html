@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TikTok 国家搜索</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#182b35;background:#f5f7f7;font-size:16px;line-height:1.6}
+    *{box-sizing:border-box}body{margin:0}main{max-width:1100px;margin:auto;padding:48px 24px}h1{font-size:32px;line-height:1.25;letter-spacing:-1px;margin:0 0 12px}h2{font-size:18px;margin:0 0 18px}p{margin:0 0 20px}.muted{color:#526872}.eyebrow{color:#17665d;font-weight:700;font-size:13px;letter-spacing:2px;margin-bottom:14px}.layout{display:grid;grid-template-columns:360px 1fr;gap:28px;margin-top:32px}.panel{background:white;padding:28px;border:1px solid #dce4e5;border-radius:12px}label{display:block;font-weight:600;margin:20px 0 8px}input{font:inherit;width:100%;padding:12px;border:1px solid #aabdc1;border-radius:6px;color:#182b35;background:white}input:focus-visible,a:focus-visible,button:focus-visible{outline:3px solid #317bba;outline-offset:3px}.countries{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:16px;max-height:490px;overflow:auto;padding:3px}.countries button{font:inherit;border:1px solid transparent;border-radius:5px;background:transparent;color:#263c45;text-align:left;cursor:pointer;padding:10px}.countries button:hover{background:#eef4f3}.countries button[aria-pressed="true"]{border-color:#21766a;background:#e5f1ed;color:#105449;font-weight:700}.country-note{font-size:13px;margin-top:16px;margin-bottom:0}.selected-country{font-size:26px;font-weight:700;margin-bottom:6px}fieldset{border:0;padding:0;margin:0}.topics{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 24px}.topics button{font:inherit;padding:5px 12px;border:1px solid #ccd8d8;border-radius:5px;background:white;cursor:pointer;color:#36535c}.topics button:hover{border-color:#17665d}.preview{margin:24px 0 18px;padding:14px 16px;background:#f3f6f6;border-left:3px solid #17665d;word-break:break-word;min-height:54px}.actions{display:flex;gap:10px;flex-wrap:wrap}.actions a{display:inline-block;padding:12px 18px;border:1px solid #17665d;border-radius:6px;text-decoration:none;font-weight:600;color:#17665d}.actions .primary{color:white;background:#17665d}.notice{font-size:14px;margin-top:22px;margin-bottom:0;color:#526872}.guide{margin-top:28px;border-top:1px solid #dce4e5;padding-top:26px}.guide p{font-size:14px;margin-bottom:10px}.guide a{color:#17665d}footer{margin-top:28px;font-size:13px;color:#526872}.empty{grid-column:1/-1;padding:12px;color:#526872}@media(max-width:760px){main{padding:30px 16px}.layout{grid-template-columns:1fr;gap:16px;margin-top:24px}.panel{padding:22px}.countries{max-height:250px;grid-template-columns:repeat(3,1fr)}h1{font-size:28px}}@media(max-width:380px){.countries{grid-template-columns:1fr 1fr}.actions a{width:100%;text-align:center}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">TIKTOK · DISCOVERY</div>
+  <h1>按国家查 TikTok</h1>
+  <p class="muted">选一个国家，用当地语言或英语搜索你关心的主题。</p>
+  <div class="layout">
+    <section class="panel" aria-labelledby="country-title">
+      <h2 id="country-title">1. 选择国家</h2>
+      <label for="country-filter" style="margin-top:0">查找国家</label>
+      <input id="country-filter" type="search" placeholder="例如：日本 / Japan / JP" autocomplete="off">
+      <div id="countries" class="countries" aria-label="国家列表"></div>
+      <p class="muted country-note">迪拜归入阿联酋；共 18 个国家。节点是否覆盖这些国家，需要另外核对。</p>
+    </section>
+    <section class="panel" aria-labelledby="search-title">
+      <h2 id="search-title">2. 输入主题</h2>
+      <div id="selected-country" class="selected-country"></div>
+      <div id="country-language" class="muted"></div>
+      <label for="city">城市或地区（可选）</label>
+      <input id="city" placeholder="可填写城市的当地写法或英语" autocomplete="off">
+      <label for="topic">搜索主题</label>
+      <input id="topic" placeholder="建议填当地语言或英语关键词" autocomplete="off">
+      <div class="topics" aria-label="常用主题">
+        <button type="button" data-topic="news">新闻</button>
+        <button type="button" data-topic="food">美食</button>
+        <button type="button" data-topic="travel">旅行</button>
+        <button type="button" data-topic="business">商业</button>
+      </div>
+      <div id="preview" class="preview" aria-live="polite"></div>
+      <div class="actions">
+        <a id="search" class="primary" target="_blank" rel="noopener noreferrer">在 TikTok 搜索 ↗</a>
+        <a id="search-english" target="_blank" rel="noopener noreferrer">用英语搜索 ↗</a>
+      </div>
+      <p class="notice">这里添加的是国家与主题关键词，不是严格的国家过滤器。结果仍可能包含其他国家的内容，也会受语言、位置和搜索历史影响。此面板不改变网络出口或账号地区；自填主题不会自动翻译。</p>
+    </section>
+  </div>
+  <section class="guide" aria-labelledby="guide-title">
+    <h2 id="guide-title">搜索内容与切换网络，分别处理</h2>
+    <p><strong>查热榜：</strong>打开 <a href="https://ads.tiktok.com/creative/creativeCenter/trends" target="_blank" rel="noopener noreferrer">TikTok 官方创意中心</a>，在可用的地区筛选项中选择国家。它展示趋势数据，不等同于该国用户的完整推荐页。</p>
+    <p><strong>安卓 Clash：</strong>进入「代理」，在 TikTok 实际使用的策略组内选择目标国家节点。如配置包含「PROXY」组，可从该组查找国家节点；若 TikTok 请求被其他规则接管，要以实际匹配的组为准。</p>
+    <p><strong>iPhone 小火箭：</strong>在 Shadowrocket 首页选择对应地区节点；若配置使用策略组，需同时确认 TikTok 使用的策略组。换节点只改变相关请求的网络出口。</p>
+    <p><strong>保持连接：</strong>日常固定国家，备用节点也选同一国家。确认视频、搜索和评论都能打开后再长期使用；普通延迟测试通过，不能证明 TikTok 功能全部可用。</p>
+    <p><a href="https://support.tiktok.com/en/using-tiktok/exploring-videos/how-tiktok-recommends-content" target="_blank" rel="noopener noreferrer">TikTok 搜索与推荐机制说明</a> · <a href="https://support.tiktok.com/en/account-and-privacy/account-information/account-region" target="_blank" rel="noopener noreferrer">官方账号地区说明</a></p>
+  </section>
+  <footer>搜索链接直接打开 TikTok。本页不读取订阅、账号或代理凭据；不保存输入内容。</footer>
+</main>
+<script>
+  'use strict';
+  const topics={
+    en:{name:'英语',news:'news',food:'food',travel:'travel',business:'business'},
+    ja:{name:'日语',news:'ニュース',food:'グルメ',travel:'旅行',business:'ビジネス'},
+    fr:{name:'法语',news:'actualités',food:'gastronomie',travel:'voyage',business:'entreprise'},
+    de:{name:'德语',news:'Nachrichten',food:'Essen',travel:'Reisen',business:'Wirtschaft'},
+    nl:{name:'荷兰语',news:'nieuws',food:'eten',travel:'reizen',business:'ondernemen'},
+    es:{name:'西班牙语',news:'noticias',food:'comida',travel:'viajes',business:'negocios'},
+    ru:{name:'俄语',news:'новости',food:'еда',travel:'путешествия',business:'бизнес'},
+    pt:{name:'葡萄牙语',news:'notícias',food:'comida',travel:'viagem',business:'negócios'},
+    tr:{name:'土耳其语',news:'haberler',food:'yemek',travel:'seyahat',business:'iş dünyası'},
+    ar:{name:'阿拉伯语',news:'أخبار',food:'طعام',travel:'سفر',business:'أعمال'}
+  };
+  const countries=[
+    {id:'US',name:'美国',en:'United States',local:'United States',lang:'en'},
+    {id:'JP',name:'日本',en:'Japan',local:'日本',lang:'ja'},
+    {id:'SG',name:'新加坡',en:'Singapore',local:'Singapore',lang:'en'},
+    {id:'FR',name:'法国',en:'France',local:'France',lang:'fr'},
+    {id:'DE',name:'德国',en:'Germany',local:'Deutschland',lang:'de'},
+    {id:'GB',name:'英国',en:'United Kingdom',local:'United Kingdom',lang:'en'},
+    {id:'NL',name:'荷兰',en:'Netherlands',local:'Nederland',lang:'nl'},
+    {id:'ES',name:'西班牙',en:'Spain',local:'España',lang:'es'},
+    {id:'RU',name:'俄罗斯',en:'Russia',local:'Россия',lang:'ru'},
+    {id:'BR',name:'巴西',en:'Brazil',local:'Brasil',lang:'pt'},
+    {id:'MX',name:'墨西哥',en:'Mexico',local:'México',lang:'es'},
+    {id:'TR',name:'土耳其',en:'Turkey',local:'Türkiye',lang:'tr'},
+    {id:'AE',name:'阿联酋 / 迪拜',en:'United Arab Emirates',local:'الإمارات',lang:'ar',aliases:'Dubai UAE'},
+    {id:'SA',name:'沙特',en:'Saudi Arabia',local:'السعودية',lang:'ar'},
+    {id:'NG',name:'尼日利亚',en:'Nigeria',local:'Nigeria',lang:'en'},
+    {id:'ET',name:'埃塞俄比亚',en:'Ethiopia',local:'Ethiopia',lang:'en',aliases:'埃塞尔比亚'},
+    {id:'KE',name:'肯尼亚',en:'Kenya',local:'Kenya',lang:'en'},
+    {id:'ZA',name:'南非',en:'South Africa',local:'South Africa',lang:'en'}
+  ];
+  const $=id=>document.getElementById(id);
+  let selected=countries[0];
+  let preset='news';
+  function searchURL(query){return 'https://www.tiktok.com/search?q='+encodeURIComponent(query);}
+  function renderCountries(){
+    const filter=$('country-filter').value.trim().toLocaleLowerCase();
+    $('countries').replaceChildren();
+    countries.filter(c=>(c.name+' '+c.en+' '+c.local+' '+c.id+' '+(c.aliases||'')).toLocaleLowerCase().includes(filter)).forEach(c=>{
+      const button=document.createElement('button');
+      button.type='button';button.textContent=c.name;button.setAttribute('aria-pressed',String(c.id===selected.id));
+      button.addEventListener('click',()=>{selected=c;renderCountries();update();});
+      $('countries').append(button);
+    });
+    if(!$('countries').children.length){const p=document.createElement('p');p.className='empty';p.textContent='没有匹配的国家';$('countries').append(p);}
+  }
+  function update(){
+    const language=topics[selected.lang];
+    $('selected-country').textContent=selected.name;
+    $('country-language').textContent='常用主题示例：'+language.name+'；也可自行输入其他语言。';
+    if(preset)$('topic').value=language[preset];
+    const topic=$('topic').value.trim();
+    const city=$('city').value.trim();
+    const query=[selected.local,city,topic].filter(Boolean).join(' ');
+    const english=[selected.en,city,preset?topics.en[preset]:topic].filter(Boolean).join(' ');
+    $('preview').textContent=query;
+    $('search').href=searchURL(query);
+    $('search-english').href=searchURL(english);
+  }
+  $('country-filter').addEventListener('input',renderCountries);
+  $('topic').addEventListener('input',()=>{preset=null;update();});
+  $('city').addEventListener('input',update);
+  document.querySelectorAll('[data-topic]').forEach(button=>button.addEventListener('click',()=>{preset=button.dataset.topic;update();}));
+  renderCountries();update();
+</script>
+</body>
+</html>

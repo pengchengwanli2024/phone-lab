@@ -1,0 +1,18 @@
+#!/bin/bash
+# iproxy-compatible shim backed by pymobiledevice3's usbmux forwarder.
+# Usage matches libimobiledevice iproxy: iproxy <local_port> <device_port> <udid>
+# Rationale: brew cannot install libimobiledevice while the Xcode 27.2 licence is
+# unaccepted; pymobiledevice3 (already installed in ~/phone-toolkit/venv) does the
+# same usbmuxd port forward. Delete this shim once real iproxy is installed.
+set -u
+PYMOBILEDEVICE3="${PYMOBILEDEVICE3:-$HOME/phone-toolkit/venv/bin/pymobiledevice3}"
+if [ ! -x "$PYMOBILEDEVICE3" ]; then
+  echo "iproxy-shim: pymobiledevice3 not found at $PYMOBILEDEVICE3" >&2
+  exit 127
+fi
+if [ "$#" -lt 2 ]; then
+  echo "usage: iproxy <local_port> <device_port> [udid]" >&2
+  exit 64
+fi
+LOCAL="$1"; DEVICE="$2"; UDID="${3:-}"
+exec "$PYMOBILEDEVICE3" usbmux forward "$LOCAL" "$DEVICE" --host 127.0.0.1 ${UDID:+--serial "$UDID"}
