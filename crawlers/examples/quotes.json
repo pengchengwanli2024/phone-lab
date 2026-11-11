@@ -1,0 +1,12 @@
+{
+  "kind": "quotes",
+  "max_pages": 1,
+  "min_records": 10,
+  "min_agreeing": 2,
+  "routes": [
+    {"id": "web-http", "engine": "scrapy", "url": "https://quotes.toscrape.com/"},
+    {"id": "public-json", "engine": "json-http", "url": "https://quotes.toscrape.com/api/quotes?page=1"},
+    {"id": "web-js", "engine": "crawl4ai", "url": "https://quotes.toscrape.com/js/"},
+    {"id": "local-service", "engine": "firecrawl", "url": "https://quotes.toscrape.com/js/", "env": {"FIRECRAWL_API_URL": "http://127.0.0.1:13002"}}
+  ]
+}

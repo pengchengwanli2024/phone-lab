@@ -1,0 +1,5 @@
+{
+  "api": "ghcr.io/firecrawl/firecrawl@sha256:62ddf3e56d0df09b477b4a0630e4d21afcbcb91b89dd8ac89be5303fb4c55264",
+  "playwright-service": "ghcr.io/firecrawl/playwright-service@sha256:eacaf2c256a6ff7fd1869e470d2969e97a037ff6c75ac01d38784d138a33f8eb",
+  "nuq-postgres": "ghcr.io/firecrawl/nuq-postgres@sha256:d719b36160eac2fcbe16dc7e7360ddb9c82c40ea5da183d07bf4a755c6a0b2ae"
+}

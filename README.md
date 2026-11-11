@@ -64,3 +64,9 @@ python3 -m unittest discover -s network -p 'test_check_network.py' -v
 这些测试使用合成数据、临时状态与模拟网络结果，不证明真实店铺、设备或生产服务已验收。`commerce/qa/browser.mjs` 是可选的 Chrome 交互检查；原生宿主检查还需要本机应用与独立配置。
 
 开源发布范围与隐私检查见 [OPEN_SOURCE.md](OPEN_SOURCE.md)。代码使用 [MIT License](LICENSE)；适配来源及完整许可见 [第三方声明](commerce/THIRD_PARTY_NOTICES.md)。
+
+## 桌面采集与公开信息
+
+新增 [桌面爬虫工具与安装](crawlers/README.md)、[官方来源与业务页面](crawlers/SOURCES.md) 及 [工作台/MCP 接口和边界](crawlers/integration.md)。采集队列支持进度、取消、重试和重启恢复；公开文章与待校对中文保留各自哈希和来源证据。服务仅监听本机，未连接的店铺、未知字段和失败路线保留明确状态。
+
+本次源码副本保留原有店铺功能范围，仅同步桌面爬虫、信息聚合及共享 UI 组件；其它并行开发模块不包含在此提交中。

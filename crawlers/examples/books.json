@@ -1,0 +1,11 @@
+{
+  "kind": "books",
+  "max_pages": 1,
+  "min_records": 20,
+  "min_agreeing": 2,
+  "routes": [
+    {"id": "http-a", "engine": "scrapy", "url": "https://books.toscrape.com/"},
+    {"id": "http-b", "engine": "scrapling-http", "url": "https://books.toscrape.com/"},
+    {"id": "browser", "engine": "crawlee-browser", "url": "https://books.toscrape.com/"}
+  ]
+}

@@ -1,0 +1,45 @@
+/* Shared primitives also style legacy semantic markup during migration. */
+:root{--blue:var(--ui-color-brand);--muted:var(--ui-color-muted);--border:var(--ui-color-border);--soft:var(--ui-color-brand-soft);--text:var(--ui-color-text);font-family:var(--ui-font-family);font-size:var(--ui-font-size);color:var(--ui-color-text);background:var(--ui-color-canvas)}
+body{color:var(--ui-color-text);background:var(--ui-color-canvas)}
+.card,.ui-card,.kpi,.assistant,.intel-stats>div{background-color:var(--ui-color-surface);border-color:var(--ui-color-border);border-radius:var(--ui-radius-card)}
+button:not(.tab):not(.pill):not(.link-btn):not(.side-link){min-height:var(--ui-control-height);font-family:var(--ui-font-family);font-size:var(--ui-font-size);border-radius:var(--ui-radius-control);border-color:var(--ui-color-border);background-color:var(--ui-color-surface);color:var(--ui-color-text);padding:var(--ui-space-2) var(--ui-space-3)}
+button.primary:not(.tab):not(.pill):not(.link-btn){background:var(--ui-color-brand);border-color:var(--ui-color-brand);color:var(--ui-color-on-brand);font-weight:600}
+button.primary:not(.tab):not(.pill):not(.link-btn):hover{background:var(--ui-color-brand-hover)}
+button.ui-danger:not(.tab):not(.pill):not(.link-btn){color:var(--ui-color-danger);border-color:var(--ui-color-danger)}
+button:disabled{cursor:not-allowed;opacity:.55}
+.app input:not([type=checkbox]):not([type=radio]):not([type=file]),.app select,.app textarea,.dialog input:not([type=checkbox]),.dialog select,.dialog textarea{min-height:var(--ui-control-height);font-family:var(--ui-font-family);font-size:var(--ui-font-size);line-height:1.4;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);padding:var(--ui-space-2) var(--ui-space-3);background:var(--ui-color-surface);color:var(--ui-color-text)}
+.app input[readonly],.dialog input[readonly]{background:var(--ui-color-canvas)}
+.app input[aria-invalid=true],.app select[aria-invalid=true],.dialog input[aria-invalid=true]{border-color:var(--ui-color-danger)}
+.ui-field{display:flex;flex-direction:column;gap:var(--ui-space-2);min-width:0;color:var(--ui-color-muted);font-size:13px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:3px solid var(--ui-color-focus);outline-offset:2px}
+.badge,.ui-badge{font-size:12px;line-height:1.5;border-radius:20px;padding:3px var(--ui-space-2);color:var(--ui-color-warning);background:var(--ui-color-warning-soft)}
+.badge.blue{color:var(--ui-color-brand);background:var(--ui-color-brand-soft)}
+.badge.gray{color:var(--ui-color-muted);background:var(--ui-color-canvas)}
+.badge.success{color:var(--ui-color-success);background:var(--ui-color-success-soft)}
+.badge.danger{color:var(--ui-color-danger);background:var(--ui-color-danger-soft)}
+.alert{padding:var(--ui-space-3) var(--ui-space-4);border-radius:var(--ui-radius-control);color:var(--ui-color-text);background:var(--ui-color-brand-soft);line-height:1.7}
+.alert.error{color:var(--ui-color-danger);background:var(--ui-color-danger-soft)}
+.empty,.muted,.footnote{color:var(--ui-color-muted)}
+.empty{line-height:1.8}
+.dialog{background:var(--ui-color-surface);color:var(--ui-color-text);border-radius:var(--ui-radius-dialog);box-shadow:var(--ui-shadow-dialog)}
+.dialog-actions{gap:var(--ui-space-2)}
+.toast{border-radius:var(--ui-radius-control);font-family:var(--ui-font-family);font-size:var(--ui-font-size);background:var(--ui-color-toast-surface);color:var(--ui-color-toast-text)}
+.data-table{font-family:var(--ui-font-family);color:var(--ui-color-text)}
+.data-table th{color:var(--ui-color-muted)}
+.tab.active,.link-btn{color:var(--ui-color-brand)}
+.host-sidebar{background:linear-gradient(145deg,var(--ui-color-canvas),var(--ui-color-surface-alt))}
+.side-link.active{background:var(--ui-color-brand-soft);color:var(--ui-color-brand)}
+.mode-bar{flex-wrap:wrap;background:var(--ui-color-surface-alt);color:var(--ui-color-muted)}
+.mode-controls{display:flex;gap:var(--ui-space-3);align-items:center;flex-wrap:wrap;margin-left:auto}
+.mode-controls .ui-field{display:flex;flex-direction:row;gap:var(--ui-space-2);align-items:center;font-size:12px;white-space:nowrap}
+#ui-theme{width:122px}
+.pill{color:var(--ui-color-text);background:var(--ui-color-surface)}
+.pill.active{color:var(--ui-color-brand);background:var(--ui-color-brand-soft);border-color:var(--ui-color-border)}
+.insight{background:linear-gradient(120deg,var(--ui-color-brand-soft),var(--ui-color-surface-alt))}
+.draft-card{background:var(--ui-color-accent-soft);border-color:var(--ui-color-border)}
+.intel-hero{background:linear-gradient(110deg,var(--ui-color-brand-soft),var(--ui-color-surface))}
+.dialog pre{background:var(--ui-color-canvas);color:var(--ui-color-text)}
+.overlay{background:var(--ui-color-overlay)}
+.data-table th{background:var(--ui-color-surface-alt)}
+.data-table tr:hover td{background:var(--ui-color-brand-soft)}
+@media(max-width:780px){button:not(.tab):not(.pill):not(.link-btn):not(.side-link),.app input:not([type=checkbox]):not([type=radio]):not([type=file]),.app select,.dialog input,.dialog select{min-height:44px}.dialog{padding:var(--ui-space-4)}}

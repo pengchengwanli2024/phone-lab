@@ -11,6 +11,10 @@ from operations_analysis import unit_economics, restock_plan, input_schema, UNIT
 from knowledge_ranking import ranked_notes
 from research import template as collection_template, validate as collection_check, export as collection_export
 from translation import TranslationJobs
+from intelligence import Intelligence
+from intel_articles import Articles
+from collection_jobs import CollectionJobs
+from crawler_feed_bridge import REGISTRY as CRAWLER_REGISTRY
 
 LABELS=dict(zip(PLATFORMS,['Ozon','TikTok Shop','Amazon','Mercado Libre','Temu']))
 SALES=[39200,34800,28640,18000,8000]
@@ -26,7 +30,28 @@ def schema(properties=None,required=None):
 
 S={'type':'string','minLength':1,'maxLength':160}
 FILTERS={'demo':{'type':'boolean'},'platform':{'type':'string','enum':['all',*PLATFORMS]},'store_id':{'type':'string','enum':['all',*(p+'-demo'for p in PLATFORMS)]},'market':{'type':'string','enum':['all','RU','US','MX']}}
+INTEL_QUERY={'query':{'type':'string','maxLength':100},'source':{'type':'string','enum':['all','usgs','gdacs','wto','fed','ecb','eia','hmrc','transport']},'category':{'type':'string','enum':['all','earthquake','disaster','trade','macro','energy','logistics']},'country':{'type':'string','maxLength':80},'hours':{'type':'string','enum':['all','24','168']},'scope':{'type':'string','enum':['latest','archive']},'view':{'type':'string','enum':['all','unviewed','bookmarked']}}
 TOOLS=[
+ ('commerce_crawler_start','启动固定公开源多路采集并导入；串行队列、可取消，无店铺写操作',schema({'source':{'type':'string','enum':['all',*CRAWLER_REGISTRY]},'idempotency_key':S},['source','idempotency_key'])),
+ ('commerce_crawler_list','读取采集队列、逐来源进度和已导入结果',schema()),
+ ('commerce_crawler_alert_ack','确认已查看本机采集失败告警；保留失败记录，不重试任务',schema({'alert_id':S},['alert_id'])),
+ ('commerce_crawler_get','读取指定采集任务',schema({'job_id':S},['job_id'])),
+ ('commerce_crawler_cancel','取消剩余采集；已完成的来源快照保留',schema({'job_id':S},['job_id'])),
+ ('commerce_crawler_retry','明确重试失败、取消或中断的采集任务，递增尝试次数',schema({'job_id':S},['job_id'])),
+ ('commerce_intel_article_start','采集所选记录的发布方正文，双路核对并绑定原记录版本；不下载附件',schema({'item_id':S,'record_sha256':S,'idempotency_key':S},['item_id','record_sha256','idempotency_key'])),
+ ('commerce_intel_article_get','读取正文、原文哈希、来源证据和待校对中文；保留原始版本',schema({'article_id':S},['article_id'])),
+ ('commerce_intel_article_list','读取所选记录已留存的正文版本',schema({'item_id':S},['item_id'])),
+ ('commerce_intel_article_translate','通过已配置 Hermes 翻译所选正文；分段保留来源绑定，机器译文待校对',schema({'article_id':S},['article_id'])),
+ ('commerce_intel_sources','查看全球公开信息源的覆盖、采集时间、失败和陈旧状态',schema()),
+ ('commerce_intel_search','分页检索当前快照或本机积累；支持收藏和未查看，不是全网历史搜索',schema({**INTEL_QUERY,'limit':{'type':'string','enum':['20','50','100']},'cursor':{'type':'string','maxLength':400},'include_map':{'type':'boolean'}})),
+ ('commerce_intel_item_get','读取公开来源记录、采集凭据与本地版本摘要；不标记为已查看',schema({'item_id':S},['item_id'])),
+ ('commerce_intel_item_update','收藏或按明确版本标记已查看；不表示事实已核实',schema({'item_id':S,'action':{'type':'string','enum':['viewed','unviewed','bookmark','unbookmark']},'record_sha256':S},['item_id','action'])),
+ ('commerce_intel_review_create','按已展示的来源版本创建共享核查任务，同版本重复调用复用任务；不会执行店铺操作',schema({'item_id':S,'record_sha256':S},['item_id','record_sha256'])),
+ ('commerce_intel_watch_save','保存共享检索条件，最多12项；不启用自动采集或消息推送',schema({'name':{'type':'string','minLength':1,'maxLength':60},**INTEL_QUERY},['name'])),
+ ('commerce_intel_watch_list','读取共享关注主题、匹配和未查看数量；不是推送状态',schema()),
+ ('commerce_intel_watch_remove','移除指定的共享检索条件；保留记录和收藏',schema({'watch_id':S},['watch_id'])),
+ ('commerce_intel_refresh','更新公开来源：读取固定源并导入本机多路采集快照；失败保留旧数据，90秒限频，不访问店铺',schema({'source':{'type':'string','enum':['all','usgs','gdacs','wto','fed','ecb','eia','hmrc','transport']}})),
+ ('commerce_worldmonitor_status','查看 World Monitor 接入准备状态；discover=true 仅发现官方公开工具表，不调用收费数据工具',schema({'discover':{'type':'boolean'}})),
  ('commerce_status','查看共享后台、五平台与连接状态',schema()),
  ('commerce_dashboard','读取经营指标；demo=true 仅返回明确标注的模拟数据',schema(FILTERS)),
  ('commerce_orders_list','查询订单；未授权时真实订单为空',schema({**FILTERS,'query':{'type':'string','maxLength':100},'status':{'type':'string','maxLength':40}})),
@@ -59,6 +84,9 @@ class Commerce:
             c.execute('CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, idem TEXT UNIQUE, mode TEXT, content TEXT, created_at TEXT)')
             c.execute('CREATE TABLE IF NOT EXISTS clients (name TEXT PRIMARY KEY, seen_at TEXT)')
         self.translations=TranslationJobs(self.core)
+        self.intelligence=Intelligence(self.core)
+        self.collections=CollectionJobs(self.core,self.state,importer=self.intelligence.import_collection)
+        self.articles=Articles(self.core,self.state,self.intelligence,self.translations)
 
     def validate(self,name,args):
         definition=next((x[2]for x in TOOLS if x[0]==name),None)
@@ -107,6 +135,26 @@ class Commerce:
         self.validate(name,args)
         if client not in ['codex','hermes','harness','browser','local','test']:raise ValueError('invalid_client')
         with self.core.db() as c:c.execute('INSERT OR REPLACE INTO clients VALUES (?,?)',(client,now()))
+        if name=='commerce_intel_item_get':return self.intelligence.store.item(**args)
+        if name=='commerce_intel_item_update':return self.intelligence.store.update_item(**args)
+        if name=='commerce_intel_review_create':return self.intelligence.store.create_review(**args)
+        if name=='commerce_intel_watch_save':return self.intelligence.store.save_watch(**args)
+        if name=='commerce_intel_watch_list':return self.intelligence.store.watches()
+        if name=='commerce_intel_watch_remove':return self.intelligence.store.remove_watch(**args)
+        if name=='commerce_crawler_start':return self.collections.request(args['source'],args['idempotency_key'])
+        if name=='commerce_crawler_list':return self.collections.listing()
+        if name=='commerce_crawler_alert_ack':return self.collections.acknowledge(args['alert_id'])
+        if name=='commerce_crawler_get':return self.collections.get(args['job_id'])
+        if name=='commerce_crawler_cancel':return self.collections.cancel(args['job_id'])
+        if name=='commerce_crawler_retry':return self.collections.retry(args['job_id'])
+        if name=='commerce_intel_article_start':return self.articles.start(**args)
+        if name=='commerce_intel_article_get':return self.articles.get(**args)
+        if name=='commerce_intel_article_list':return self.articles.for_item(**args)
+        if name=='commerce_intel_article_translate':return self.articles.translate(**args)
+        if name=='commerce_intel_sources':return self.intelligence.sources()
+        if name=='commerce_intel_search':return self.intelligence.search(**args)
+        if name=='commerce_intel_refresh':return self.intelligence.refresh(**args)
+        if name=='commerce_worldmonitor_status':return self.intelligence.worldmonitor(**args)
         if name=='commerce_status':
             with self.core.db() as c:clients=dict(c.execute('SELECT name,seen_at FROM clients'))
             team=json.loads((Path(__file__).parent/'agents/roles.json').read_text())

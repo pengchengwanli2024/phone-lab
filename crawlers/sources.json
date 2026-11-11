@@ -1,0 +1,65 @@
+{
+  "schema": "public-information-sources-v1",
+  "sources": [
+    {
+      "id": "federal-reserve-press",
+      "publisher": "Federal Reserve Board",
+      "category": "macroeconomic-policy",
+      "format": "rss",
+      "kind": "news",
+      "url": "https://www.federalreserve.gov/feeds/press_all.xml",
+      "reference": "https://www.federalreserve.gov/feeds/feeds.htm",
+      "scope": "Official press releases; not a real-time exchange rate or store-impact assessment"
+    },
+    {
+      "id": "ecb-press",
+      "publisher": "European Central Bank",
+      "category": "macroeconomic-policy",
+      "format": "rss",
+      "kind": "news",
+      "url": "https://www.ecb.europa.eu/rss/press.html",
+      "reference": "https://www.ecb.europa.eu/services/rss/html/index.en.html",
+      "scope": "Official press releases; not transactional exchange rates or personalized financial advice"
+    },
+    {
+      "id": "eia-energy",
+      "publisher": "US Energy Information Administration",
+      "category": "energy-and-logistics-context",
+      "format": "rss",
+      "kind": "news",
+      "url": "https://www.eia.gov/rss/todayinenergy.xml",
+      "reference": "https://www.eia.gov/tools/rssfeeds/",
+      "scope": "Today in Energy publication feed; not carrier prices or verified shipment disruption"
+    },
+    {
+      "id": "wto-trade",
+      "publisher": "World Trade Organization",
+      "category": "trade-policy",
+      "format": "rss",
+      "kind": "news",
+      "url": "https://www.wto.org/library/rss/latest_news_e.xml",
+      "reference": "https://www.wto.org/english/res_e/webcas_e/rss_e.htm",
+      "scope": "Official WTO news; not an exhaustive or automatically effective customs-rule database"
+    },
+    {
+      "id": "hmrc-news",
+      "publisher": "HM Revenue & Customs",
+      "category": "tax-and-customs-context",
+      "format": "atom",
+      "kind": "news",
+      "url": "https://www.gov.uk/government/organisations/hm-revenue-customs.atom",
+      "reference": "https://www.gov.uk/government/organisations/hm-revenue-customs",
+      "scope": "Official HMRC activity; mixed tax and customs news, not effective tariff rates or legal advice"
+    },
+    {
+      "id": "uk-transport-news",
+      "publisher": "UK Department for Transport",
+      "category": "transport-and-logistics-context",
+      "format": "atom",
+      "kind": "news",
+      "url": "https://www.gov.uk/government/organisations/department-for-transport.atom",
+      "reference": "https://www.gov.uk/government/organisations/department-for-transport",
+      "scope": "Official transport activity; not carrier rates or real-time shipment tracking"
+    }
+  ]
+}

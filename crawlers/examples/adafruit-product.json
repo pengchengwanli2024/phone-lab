@@ -1,0 +1,13 @@
+{
+  "kind": "product-schema",
+  "max_pages": 1,
+  "min_records": 1,
+  "min_agreeing": 2,
+  "route_timeout": 45,
+  "total_timeout": 150,
+  "routes": [
+    {"id": "scrapy", "engine": "scrapy", "url": "https://www.adafruit.com/product/50", "publisher": "Adafruit Industries"},
+    {"id": "scrapling", "engine": "scrapling-http", "url": "https://www.adafruit.com/product/50", "publisher": "Adafruit Industries"},
+    {"id": "browser", "engine": "crawl4ai", "url": "https://www.adafruit.com/product/50", "publisher": "Adafruit Industries"}
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "scope": "top-level locked runtime metadata; dependencies/browsers/containers are not redistributed",
+  "packages": [
+    {
+      "package": "Scrapy",
+      "version": "2.20.0",
+      "license": "BSD-3-Clause",
+      "license_sha256": "fd331af3ccb8776bbe7f317821e5e0b91c2ab7c73464e77425d52204f7b5d980"
+    },
+    {
+      "package": "Crawl4AI",
+      "version": "0.9.5",
+      "license": "Apache-2.0",
+      "license_sha256": "193fe32704bee15cd74f5153e569cdf830e26445e19798a55daee32da40758aa"
+    },
+    {
+      "package": "crawlee",
+      "version": "1.11.2",
+      "license": "Apache-2.0",
+      "license_sha256": "02c1631ecb0a8e3e0b19dd990aa5e7e8507332a71676342b7b56f23cf4b2a55c"
+    },
+    {
+      "package": "Scrapling",
+      "version": "0.5.1",
+      "license": "BSD-3-Clause",
+      "license_sha256": "5c782ef0346e4fbfe0dc76fd435f181a0f1e4a1a7a6b13c169c6e74314ff5964"
+    },
+    {
+      "package": "firecrawl-py",
+      "version": "4.55.0",
+      "license": "MIT",
+      "license_sha256": "9cf0ae9c40f08d11879668efb220d4c8859b92aab28f7123f389ed9e1d20d330"
+    },
+    {
+      "package": "playwright",
+      "version": "1.65.0",
+      "license": "Apache-2.0",
+      "license_sha256": "7fab1461b41970ff376f1c9303a637076bfaaeb71cd12dd3a1c44aaf59a1a2b9"
+    },
+    {
+      "package": "truststore",
+      "version": "0.10.5",
+      "license": "MIT",
+      "license_sha256": "33be7b7e8fa4fd19b1760e1a8ed8a668bdab852c91b692dd41424bcb725a9fca"
+    }
+  ],
+  "firecrawl_server": "AGPL-3.0 (upstream source, separate from MIT Python SDK)",
+  "full_transitive_binary_distribution_audit": false
+}

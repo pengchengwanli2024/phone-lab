@@ -79,3 +79,9 @@ python3 -m unittest discover -s commerce/qa -p 'test_*.py' -v
 测试使用临时状态和合成笔记，覆盖访问校验、真实/演示隔离、并发读取、跨客户端幂等任务、受限归档、运营计算与知识检索。可选浏览器和宿主检查需要相应本机应用；其结果、截图和配置不分发。
 
 下一阶段仍需实现真实平台适配与授权、任务执行/确认/未知回执状态、渠道网关收发和常驻部署验收。角色设计见 [AGENT_TEAM.md](AGENT_TEAM.md)。适配来源、行为差异与许可见 [SOURCE-INTEGRATION.md](SOURCE-INTEGRATION.md) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 信息聚合与桌面采集
+
+“全球情报”模块读取八个固定公开来源，其中六个 feed 支持多路采集快照。使用 `commerce_crawler_start/list/get/cancel/retry` 管理独立采集队列；操作入队不代表已完成。正文与中文通过 `commerce_intel_article_*` 明确请求，机器译文保持待校对。限频、失败保留、进程与磁盘保护范围见 [集成说明](../crawlers/integration.md)。
+
+界面源码使用 `web/intel-ui.js/css` 与共享 `ui/kit.js`、`ui/tokens.json`；运行 `python3 commerce/ui/build.py` 后用 `--check` 核对。生成区块不直接修改；此公开副本只打包已选择的 UIKit 与 Intel 模块。

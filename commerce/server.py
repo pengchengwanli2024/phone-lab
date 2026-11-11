@@ -5,6 +5,7 @@ from urllib.parse import urlparse,parse_qs
 import hashlib
 import hmac
 import json
+import fcntl
 import secrets
 from runtime import ROOT,STATE,PORT,token
 from service import Commerce
@@ -71,7 +72,16 @@ class CommerceHTTPServer(ThreadingHTTPServer):
 
 
 if __name__=='__main__':
-    Handler.secret=token();Handler.service=Commerce(STATE)
+    Handler.secret=token()
+    state_lock=(STATE/'server.lock').open('a+')
+    try:fcntl.flock(state_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    except BlockingIOError:raise SystemExit('commerce_state_already_served')
+    Handler.service=Commerce(STATE)
+    Handler.service.articles.recover()
+    Handler.service.collections.start(recover=True)
     server=CommerceHTTPServer(('127.0.0.1',PORT),Handler)
     (STATE/'runtime.json').write_text(json.dumps({'origin':f'http://127.0.0.1:{PORT}','pid':__import__('os').getpid(),'version':'0.1.0'}))
-    server.serve_forever()
+    try:server.serve_forever()
+    finally:
+        Handler.service.collections.stop()
+        server.server_close()
