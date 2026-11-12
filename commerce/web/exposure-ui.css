@@ -1,0 +1,11 @@
+/* Layout only, shared controls/tokens own appearance and all state colors. */
+.layout.exposure-layout{grid-template-columns:minmax(0,1fr)}
+.exposure-root{display:grid;gap:var(--ui-space-4);min-width:0}
+.exposure-heading,.exposure-controls{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-space-3);flex-wrap:wrap;margin-bottom:var(--ui-space-3)}
+.exposure-heading h2{margin:0}
+.exposure-controls .ui-field{flex:1;min-width:180px}
+.exposure-root textarea{width:100%;min-height:100px;resize:vertical;line-height:1.7}
+.exposure-text{white-space:pre-wrap;line-height:1.9;overflow-wrap:anywhere}
+.exposure-root pre,.exposure-root code{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}
+.exposure-root .data-table td{white-space:normal;overflow-wrap:anywhere}
+@media(max-width:600px){.exposure-controls{align-items:stretch;flex-direction:column}.exposure-controls .ui-field{min-width:0}}

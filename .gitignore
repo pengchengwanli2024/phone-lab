@@ -66,4 +66,8 @@ node_modules/
 /ios/*.json
 /release-local/
 
-/commerce/harness/cordis.patch.yml
+
+# Machine-generated integration definitions and private validation artifacts
+commerce/integrations/
+commerce/workbench/node_modules/
+.commerce-state/

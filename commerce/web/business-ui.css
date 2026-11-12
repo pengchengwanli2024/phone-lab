@@ -1,0 +1,24 @@
+.business-root { display: grid; gap: 16px; min-width: 0; }
+.business-heading, .business-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.business-heading { justify-content: space-between; }
+.business-heading h2 { margin: 0; }
+.business-actions { margin: 12px 0; }
+.business-actions .field { margin: 0; }
+.business-source-label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.business-source-label input { flex: 0 0 auto; margin-top: 5px; }
+.business-origin, .business-digest, .business-value { overflow-wrap: anywhere; white-space: pre-wrap; }
+.business-origin { max-width: 340px; margin-top: 8px; font-size: 12px; color: var(--ui-color-muted); }
+.business-root pre, .dialog:has([data-business-action]) pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.business-editor { display: block; width: 100%; min-height: 280px; resize: vertical; font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.6; }
+.business-checks { padding: 12px; margin: 12px 0; border: 1px solid var(--ui-color-border); border-radius: var(--ui-radius-card); background: var(--ui-color-surface-alt); }
+.business-checks p { margin: 4px 0; }
+.business-result { scroll-margin-top: 12px; }
+.business-root td { vertical-align: top; }
+.business-root .data-table { min-width: 620px; }
+@media(max-width: 600px) {
+ .business-heading { align-items: flex-start; }
+ .business-actions { align-items: stretch; }
+ .business-actions .field { width: 100%; }
+ .business-actions button { min-height: 40px; }
+ .business-editor { min-height: 240px; }
+}

@@ -41,7 +41,7 @@ class CrawlerOperations(unittest.TestCase):
         with (self.jobs.directory/'synthetic-sparse').open('wb') as output:output.truncate(200_000_001)
         job=self.jobs.request('federal-reserve-press','synthetic-quota');self.jobs.work_once()
         self.assertEqual(self.jobs.get(job['id'])['error'],'collection_evidence_quota_reached')
-        self.assertEqual(len(self.jobs.listing()['alerts']),1)
+        self.assertEqual({a['code'] for a in self.jobs.listing()['alerts']},{'collection_evidence_quota_reached','collection_storage_warning'})
     def test_memory_observation_kills_only_owned_route(self):
         route={'id':'synthetic','engine':'json-http','url':'http://127.0.0.1:9/synthetic'}
         with patch('resource_limits.group_rss_kib',return_value=2*1024*1024):

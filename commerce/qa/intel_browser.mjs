@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import net from 'node:net';
 import assert from 'node:assert/strict';
 const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+await mkdir(path.join(root,'../.commerce-state/verification/workbench-quality'),{recursive:true});
 const live=process.env.COMMERCE_INTEL_LIVE==='1';
 const temporary=await mkdtemp(path.join(tmpdir(),'commerce-intel-ui-'));
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
@@ -39,6 +40,8 @@ try{
   assert.equal(await evaluate(`document.querySelectorAll('#intel-source-fed [data-intel-action="collect"]').length`),1);
   assert.ok(await evaluate(`document.querySelector('#intel-source-fed [data-intel-action="collect"]').focus();document.activeElement.dataset.intelAction==='collect'`));
   assert.ok(await evaluate(`document.querySelector('#intel-collection-jobs')!==null`));
+  assert.ok(await evaluate(`document.querySelector('[data-intel-action="job-archive"]').focus();document.activeElement.dataset.intelAction==='job-archive'`));
+
   if(!live){await until(`!!document.querySelector('[data-intel-action="job-alert-ack"]')`);await evaluate(`document.querySelector('[data-intel-action="job-alert-ack"]').click()`);await until(`!document.querySelector('[data-intel-action="job-alert-ack"]')`);}
 
   assert.equal(await evaluate(`document.querySelector('#intel-map-svg').getAttribute('viewBox')`),'0 0 720 360');
@@ -121,13 +124,13 @@ try{
     await until(`!document.querySelector('#intel-search button').disabled&&document.querySelectorAll('.intel-timeline li').length>0`);
     await evaluate(`document.querySelector('.intel-timeline [data-intel-id]').click()`);
     await until(`document.querySelector('.intel-record')?.textContent.includes('译文待校对')`);
-    assert.ok(await evaluate(`document.querySelector('.intel-record').textContent.includes('存在数字或单位差异')`));
+    assert.ok(await evaluate(`document.querySelector('.intel-record').textContent.includes('最新复查')`));
 
     await evaluate(`CommerceUI.applyTheme('light');document.querySelector('#ui-theme').value='light'`);
-    const shot=await cdp('Page.captureScreenshot',{format:'png'});await writeFile(path.join(root,'qa/intelligence-live.png'),Buffer.from(shot.data,'base64'));
+    const shot=await cdp('Page.captureScreenshot',{format:'png'});await writeFile(path.join(root,'../.commerce-state/verification/workbench-quality/intelligence-live.png'),Buffer.from(shot.data,'base64'));
     await evaluate(`CommerceUI.applyTheme('dark');document.querySelector('#ui-theme').value='dark'`);
     assert.equal(await evaluate(`getComputedStyle(document.querySelector('.intel-map svg>rect')).fill`),'rgb(22, 22, 22)');
-    const darkShot=await cdp('Page.captureScreenshot',{format:'png'});await writeFile(path.join(root,'qa/intelligence-live-dark.png'),Buffer.from(darkShot.data,'base64'));
+    const darkShot=await cdp('Page.captureScreenshot',{format:'png'});await writeFile(path.join(root,'../.commerce-state/verification/workbench-quality/intelligence-live-dark.png'),Buffer.from(darkShot.data,'base64'));
   }
   for(const width of [1440,1024,768,390]){await cdp('Emulation.setDeviceMetricsOverride',{width,height:1100,deviceScaleFactor:1,mobile:false});await delay(100);assert.equal(await evaluate(`document.documentElement.scrollWidth<=innerWidth+1`),true,'page overflow '+width)}
   if(!live){
@@ -138,11 +141,18 @@ try{
     await until(`document.querySelectorAll('.intel-timeline li').length===1`);
     await evaluate(`document.querySelector('.intel-timeline [data-intel-id]').click()`);
     await until(`document.querySelector('.intel-record')?.textContent.includes('合成文章 25 USD')`);
+    await evaluate(`document.querySelector('[data-intel-action="article-recheck"]').click()`);
+    await until(`document.querySelector('.intel-record').textContent.includes('1条追加记录')`);
+    await evaluate(`document.querySelector('[data-intel-action="article-edit"]').click()`);
+    await until(`document.activeElement.id==='intel-review-text'`);
+    await evaluate(`document.querySelector('#intel-review-text').value='合成修订 25 USD。';document.querySelector('#intel-review-note').value='合成修改';document.querySelector('[data-intel-action="article-review-save"]').click()`);
+    await until(`!document.querySelector('.dialog')&&document.querySelector('.intel-record').textContent.includes('合成修订 25 USD')`);
+
     assert.equal(await evaluate(`document.querySelectorAll('.intel-record script').length`),0);
     assert.ok(await evaluate(`document.querySelector('[data-intel-action="article-capture"]').focus();document.activeElement.dataset.intelAction==='article-capture'`));
   }
   assert.deepEqual(exceptions,[]);
   const result={status:'passed',mode:live?'live_public_cache_read_only':'isolated_synthetic',checks:['public source state and truthful mode','map rendering','responsive at 1440/1024/768/390','no runtime exception',...(live?['nonempty live public cache','read-only light/dark screenshot capture','dark map tokens']:['snapshot pagination and distinct pages','map zoom/pan/reset and spatial cluster selection','bookmark and archive filtering','compound Chinese retrieval and empty state','saved topic survives reload and applies filters','topic removal preserves records','version-bound shared task and queue navigation','evidence JSON download and private-mark exclusion','local archive retention view','map/list toggle','escaped article original/Chinese evidence and keyboard control'])],marketplace_calls:false};
   await writeFile(path.join(root,'qa',live?'intel-live-result.json':'intel-browser-result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
-}catch(error){if(ws){try{const shot=await cdp('Page.captureScreenshot',{format:'png'});await writeFile(path.join(root,'qa/intel-diagnostic.png'),Buffer.from(shot.data,'base64'))}catch{}}throw error}
+}catch(error){if(ws){try{const shot=await cdp('Page.captureScreenshot',{format:'png'});await writeFile(path.join(root,'../.commerce-state/verification/workbench-quality/intel-diagnostic.png'),Buffer.from(shot.data,'base64'))}catch{}}throw error}
 finally{ws?.close();server?.kill('SIGTERM');chrome.kill('SIGTERM');await delay(500);await rm(temporary,{recursive:true,force:true})}

@@ -1,0 +1,6 @@
+.pilot-root{display:grid;gap:var(--ui-space-4);min-width:0}
+.pilot-heading,.pilot-controls{display:flex;align-items:center;gap:var(--ui-space-3);flex-wrap:wrap;margin-bottom:var(--ui-space-3)}
+.pilot-heading h2{flex:1;margin:0}
+.pilot-root .data-table td{white-space:normal;overflow-wrap:anywhere}
+.pilot-root code{overflow-wrap:anywhere}
+@media(max-width:600px){.pilot-controls{align-items:stretch;flex-direction:column}}

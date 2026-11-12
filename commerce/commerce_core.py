@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import sqlite3
 import uuid
+import threading
 
 PLATFORMS = ('ozon','tiktok','amazon','mercado','temu')
 
@@ -11,16 +12,35 @@ PLATFORMS = ('ozon','tiktok','amazon','mercado','temu')
 class Core:
     def __init__(self,db_path):
         self.path=str(db_path)
+        self._transaction=threading.local()
         Path(self.path).parent.mkdir(parents=True,exist_ok=True)
         with self.db() as c:
             c.execute('CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, idempotency_key TEXT UNIQUE NOT NULL, payload TEXT NOT NULL, status TEXT NOT NULL)')
 
     @contextmanager
     def db(self):
+        bound=getattr(self._transaction,'connection',None)
+        if bound is not None:
+            yield bound
+            return
         connection=sqlite3.connect(self.path,timeout=20)
         try:
             with connection: yield connection
         finally: connection.close()
+
+    @contextmanager
+    def atomic(self, *, reuse=False):
+        """Reuse one transaction for existing nested domain calls in this thread."""
+        if getattr(self._transaction,'connection',None) is not None:
+            if reuse:
+                yield self._transaction.connection
+                return
+            raise ValueError('nested_atomic_not_supported')
+        with self.db() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            self._transaction.connection=connection
+            try:yield connection
+            finally:self._transaction.connection=None
 
     @staticmethod
     def present(row):
@@ -38,7 +58,7 @@ class Core:
             except (ValueError,TypeError):raise ValueError('invalid_input')
             if len(payload)>20000:raise ValueError('input_too_large')
             with self.db() as c:
-                c.execute('BEGIN IMMEDIATE')
+                if not c.in_transaction:c.execute('BEGIN IMMEDIATE')
                 row=c.execute('SELECT * FROM tasks WHERE idempotency_key=?',(key,)).fetchone()
                 if row is not None:
                     if row[2]!=payload:raise ValueError('idempotency_conflict')
@@ -51,9 +71,10 @@ class Core:
                 return {'tasks':[self.present(r)for r in c.execute('SELECT * FROM tasks ORDER BY rowid DESC LIMIT 100')]}
             tid=args.get('task_id')
             if not isinstance(tid,str) or not tid:raise ValueError('invalid_task_id')
-            if name=='commerce_task_cancel':c.execute('BEGIN IMMEDIATE')
+            if name=='commerce_task_cancel' and not c.in_transaction:c.execute('BEGIN IMMEDIATE')
             row=c.execute('SELECT * FROM tasks WHERE id=?',(tid,)).fetchone()
             task=self.present(row)
             if name=='commerce_task_cancel':
-                c.execute("UPDATE tasks SET status='cancelled' WHERE id=?",(tid,));task['status']='cancelled'
+                if task['status'] not in ('queued','cancelled'):raise ValueError('task_not_cancellable')
+                c.execute("UPDATE tasks SET status='cancelled' WHERE id=? AND status='queued'",(tid,));task['status']='cancelled'
             return task

@@ -19,11 +19,11 @@ from translation import validate_response
 class ArticleWorkflow(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.service=Commerce(self.temp.name)
-        row=dict(id='1' * 24,source='fed',source_key='synthetic-fed',title='Synthetic policy statement',
+        row=dict(id='1234567890abcdef12345678',source='fed',source_key='synthetic-fed',title='Synthetic policy statement',
                  url='https://www.federalreserve.gov/newsevents/pressreleases/synthetic.htm',published=1700000000,
                  category='macro',country=None,country_code=None,location=None,publisher_alert=None,collected_at='2026-01-01T00:00:00Z')
         with self.service.core.db() as db:self.service.intelligence.store.archive(db,row,time.time())
-        self.item=self.service.intelligence.store.item('1' * 24)
+        self.item=self.service.intelligence.store.item('1234567890abcdef12345678')
         self.text='Synthetic cargo 25 USD. '*20
         self.service.articles.fetcher=lambda doc:dict(text=self.text,content_sha256=text_hash(self.text),
             source_url=doc['url'],captured_at='2026-01-01T00:00:00Z',routes=['urllib','native-curl'])

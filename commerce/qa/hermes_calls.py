@@ -17,7 +17,22 @@ async def main():
         assert not note.is_error
         note=json.loads(note.content[0].text)
         assert '跨境电商工作台'in note['content']
-        output={'status':'passed','client':'installed Hermes MCP client','tools':len(server._tools),'tool_calls':['commerce_status','commerce_knowledge_read'],'knowledge_scope':'dedicated business directory','model_turn_sent':False}
+        intel=await server.session.call_tool('commerce_intel_sources',{})
+        assert not intel.is_error
+        assert len(json.loads(intel.content[0].text)['sources'])==6
+        preference=await server.session.call_tool('commerce_ui_get_preferences',{})
+        assert not preference.is_error
+        assert json.loads(preference.content[0].text)['theme']in ['system','light','dark']
+        topics=await server.session.call_tool('commerce_intel_watch_list',{})
+        assert not topics.is_error
+        assert json.loads(topics.content[0].text)['notification_enabled']is False
+        archive=await server.session.call_tool('commerce_intel_search',{'scope':'archive','limit':'20'})
+        assert not archive.is_error
+        rows=json.loads(archive.content[0].text)['items'];assert rows
+        record=await server.session.call_tool('commerce_intel_item_get',{'item_id':rows[0]['id']})
+        assert not record.is_error
+        assert len(json.loads(record.content[0].text)['record_sha256'])==64
+        output={'status':'passed','client':'installed Hermes MCP client','tools':len(server._tools),'tool_calls':['commerce_status','commerce_knowledge_read','commerce_intel_sources','commerce_intel_search','commerce_intel_item_get','commerce_intel_watch_list','commerce_ui_get_preferences'],'knowledge_scope':'dedicated business directory','model_turn_sent':False}
         Path(__file__).with_name('hermes-result.json').write_text(json.dumps(output,indent=2));print(json.dumps(output))
     finally:await server.shutdown()
 

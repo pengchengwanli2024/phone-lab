@@ -1,20 +1,200 @@
 {
-  "schema":"commerce-agent-team-v1",
-  "deployment":{"phase":"mac-integration","target":"always-on-server-later","mobile_channel":"feishu-first","alternative":"wecom","gateway_status":"not_provisioned"},
-  "default_role":"commerce-chief",
-  "roles":[
-    {"id":"commerce-chief","name":"运营总控","responsibility":"接收手机和桌面指令，核对目标，分配任务，汇总进度，集中追问或请求确认。","scope":"all-authorized-stores","allowed":["read","analyze","create-task","draft","request-clarification"],"state":"configured"},
-    {"id":"platform-operator","name":"平台运营专员","responsibility":"按授权店铺与 Ozon、TikTok Shop、Amazon、Mercado Libre、Temu 的不同规则处理运营任务。","scope":"assigned-platform-and-store","allowed":["read","analyze","draft"],"state":"configured"},
-    {"id":"inventory-fulfillment","name":"库存与履约专员","responsibility":"核对可售库存、补货和物流异常，提出带来源与口径的处理方案。","scope":"assigned-stock-and-orders","allowed":["read","analyze","draft"],"state":"configured"},
-    {"id":"customer-care","name":"客服与售后专员","responsibility":"引用业务知识生成多语言回复草稿，缺少订单依据或规则时追问并转人工。","scope":"assigned-conversations","allowed":["read","draft","request-clarification"],"state":"configured"},
-    {"id":"technical-watch","name":"技术值班","responsibility":"监测连接、任务失败和服务心跳，定位故障并交给 Codex 或 Hermes 处理技术任务。","scope":"project-runtime","allowed":["read","analyze","create-task","draft"],"state":"configured"}
+  "schema": "commerce-agent-team-v2",
+  "deployment": {
+    "phase": "mac-integration",
+    "target": "always-on-server-later",
+    "mobile_channel": "feishu-first",
+    "alternative": "wecom",
+    "gateway_status": "not_provisioned"
+  },
+  "default_role": "conductor",
+  "roles": [
+    {
+      "id": "observer",
+      "name": "观察与复盘",
+      "responsibility": "检查本机服务、来源时间与证据链",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": [
+        "technical-watch"
+      ]
+    },
+    {
+      "id": "scout",
+      "name": "市场调研",
+      "responsibility": "保存原文、中文、来源与检索范围",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": []
+    },
+    {
+      "id": "economist",
+      "name": "经济测算",
+      "responsibility": "按同一币种、SKU 和来源计算贡献",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": []
+    },
+    {
+      "id": "sourcer",
+      "name": "供应链资料",
+      "responsibility": "补齐采购成本、交期和来源",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": []
+    },
+    {
+      "id": "creative",
+      "name": "创意与交付",
+      "responsibility": "将已登记素材交付给明确工作项并校验哈希",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": []
+    },
+    {
+      "id": "localizer",
+      "name": "语言与字段",
+      "responsibility": "校对译文、数字和平台采集字段",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": []
+    },
+    {
+      "id": "gatekeeper",
+      "name": "规则与合规核查",
+      "responsibility": "区分字段完整性与真正合规证据",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": []
+    },
+    {
+      "id": "grower",
+      "name": "增长方案",
+      "responsibility": "保留投流定价方案和归因边界",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": [
+        "platform-operator"
+      ]
+    },
+    {
+      "id": "fulfiller",
+      "name": "库存与履约观察",
+      "responsibility": "核对真实快照、库存口径和补货依据",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": [
+        "inventory-fulfillment"
+      ]
+    },
+    {
+      "id": "voice",
+      "name": "客户之声",
+      "responsibility": "需要真实评论或客服来源才能提炼需求",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": [
+        "customer-care"
+      ]
+    },
+    {
+      "id": "controller",
+      "name": "财务控制",
+      "responsibility": "核对币种、结算来源和计算口径",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": []
+    },
+    {
+      "id": "conductor",
+      "name": "编排协调",
+      "responsibility": "按产物契约派单并复查；不拥有批准权",
+      "scope": "explicit-work-item",
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker",
+      "legacy_ids": [
+        "commerce-chief"
+      ]
+    }
   ],
-  "policy":{
-    "clarification":"先询问最能改变决策的一个问题，说明缺失信息、推荐选项与影响；等待期间推进不依赖答案的工作。",
-    "confirmation":"超出已确认权限或结果难以撤回时，提交带对象、范围、成本、依据和有效期的具体方案；已有授权不重复询问。",
-    "truthfulness":"区分模拟数据、缺失数据、陈旧数据、排队、执行与结果未知；配置角色不代表已上线。",
-    "execution":"初始能力限于读取、分析、草稿与共享任务；平台写操作需实现适配器并配置执行权限。",
-    "memory":"跨端共用任务和确认记录；业务笔记按需引用；不迁移旧聊天或批量导入永久记忆。",
-    "notification":"渠道与接收范围确认并完成连接测试后，才发送状态与异常通知；去重、合并，并保留失败状态。"
-  }
+  "policy": {
+    "clarification": "先询问最能改变决策的一个问题，说明缺失信息、推荐选项与影响；等待期间推进不依赖答案的工作。",
+    "confirmation": "超出已确认权限或结果难以撤回时，提交带对象、范围、成本、依据和有效期的具体方案；已有授权不重复询问。",
+    "truthfulness": "区分模拟数据、缺失数据、陈旧数据、排队、执行与结果未知；配置角色不代表已上线。",
+    "execution": "初始能力限于读取、分析、草稿与共享任务；平台写操作需实现适配器并配置执行权限。",
+    "memory": "跨端共用任务和确认记录；业务笔记按需引用；不迁移旧聊天或批量导入永久记忆。",
+    "notification": "渠道与接收范围确认并完成连接测试后，才发送状态与异常通知；去重、合并，并保留失败状态。"
+  },
+  "source": "organization/org.json"
 }

@@ -1,87 +1,65 @@
-# 跨境电商共享后台
+# AI 跨境运营工作台
 
-一个本机 HTTP 服务和 stdio MCP 适配器供 DeepSeek Harness、Codex 与 Hermes 共用。客户端共享任务 ID 与领域状态，不复制彼此的聊天历史或账户配置。
+面向 DeepSeek Harness、Codex、Hermes 与浏览器的本机工作台。React 界面、HTTP 和 MCP 复用同一 Python 业务核心、对象、来源版本及任务账本。
 
-## 当前能力与边界
+当前为单机原型。账号接入、工具可用、任务入队、经营执行与消息送达分别核对；具体能力和未完成项见 [需求台账](../docs/PLATFORM_BACKLOG.md)。尚无独立多用户或多租户账号体系。
 
-- 五平台经营概览、订单和库存界面使用明确标注的合成演示数据。平台标识为 `ozon/tiktok/amazon/mercado/temu`。
-- 真实模式未接入或授权时返回空数据与缺失指标。五个平台的真实 API 适配器尚未实现，填写密钥不会自动获得真实经营能力。
-- 任务创建具有跨客户端幂等性，支持查询和取消；目前只有 queued/cancelled 状态，没有自动执行器。
-- 简报由本地模板生成，可归档为草稿；本版不调用模型生成经营结论。
-- 笔记访问仅限显式配置的业务目录，拒绝路径穿越、软链接与超限文件。笔记内容是资料，不是工具执行指令。
-- 单位经济与补货计算使用调用者显式提供的成本、费率和销量窗口；缺关键输入返回 HOLD，不自动换汇或内置历史费率。
-- 另含实验性的双语资料采集清单、完整性检查/导出，以及通过使用者现有 Hermes 模型配置进行的翻译任务。译文保持待校对状态；完整性检查和哈希不能证明资料真实。翻译请求会将显式选中的文本交给所配置的模型提供方，可能产生费用。
-- 当前为单机单用户原型，没有多用户、多租户或按店铺角色的权限管理，不开放公网。
+## 运行
 
-## 配置和启动
-
-在项目根目录执行：
+Python 3.11 或更新版本；本地进程锁依赖 Unix 接口，Windows 未验证。浏览器使用已打包资源，构建界面另需 Node.js。
 
 ```sh
-python3 commerce/runtime.py
-python3 commerce/prepare.py
+python3 commerce/manage.py open
 ```
 
-`runtime.py` 启动同一个回环服务；`prepare.py` 生成 `commerce/integrations/` 和 `commerce/harness/cordis.patch.yml`。生成文件含本次克隆的绝对路径，必须留在本机；客户端配置应引用相应生成内容。
-
-环境变量：
-
-| 变量 | 用途 |
-| --- | --- |
-| `COMMERCE_STATE` | 私有状态目录；默认为项目根目录下 `.commerce-state/` |
-| `COMMERCE_PORT` | 本机服务端口；默认 `38731`，所有客户端必须一致 |
-| `COMMERCE_PYTHON` | Harness 启动后台时使用的 Python 可执行文件 |
-| `DSH_PROFILE_PATH` | 可选 Harness desktop profile 目录覆盖 |
-| `COMMERCE_HERMES_PROFILE` | 可选独立 Hermes `commerce-bot` profile 目录覆盖 |
-
-若需要业务知识库，在私有状态目录的 `config.json` 中配置 `knowledge_root`，其值为自己选择的业务目录绝对路径。不要提交该文件，不要把整个私人 Vault 作为默认输入。
-
-`install_harness.py` 用于 macOS 上已有 desktop profile 的本地链接安装；先执行 `prepare.py`，停止其他 profile 写入者并检查脚本。安装器会备份 manifest/lock 并检查无关配置未改变；它会修改所选 profile，不是启动后台的必要步骤。
-
-`install_runtime.py` 是可选 macOS launchd 安装器，安装当前用户登录后的常驻服务。机器休眠、断电或退出用户后不保证在线。`agents/configure_profile.py` 需要已有的独立 Hermes profile 和 PyYAML，不启动机器人网关。
-
-## MCP 工具
-
-```text
-commerce_status
-commerce_dashboard
-commerce_orders_list
-commerce_products_list
-commerce_task_create
-commerce_task_list
-commerce_task_get
-commerce_task_cancel
-commerce_report_create
-commerce_reports_list
-commerce_knowledge_list
-commerce_knowledge_read
-commerce_knowledge_search
-commerce_summary_save
-commerce_unit_economics
-commerce_restock_plan
-commerce_collection_template
-commerce_collection_check
-commerce_collection_export
-commerce_translation_start
-commerce_translation_get
-```
-
-经营读取支持 `demo/platform/store_id/market`，其中 `demo` 默认 false；订单另支持 `query/status`。任务和简报写入本机账本，要求幂等键。任务排队不代表外部执行。
-
-内部 HTTP 接口为 `POST /v1/invoke`，请求结构是 `{tool, arguments, client}`，由运行时提供本机访问凭据。`client` 仅用于调用记录，不能作为独立授权身份。优先经 stdio 或 Harness 服务端桥接使用，勿把服务凭据写进客户端代码。
-
-## 验证与后续
+该命令启动本项目服务，并通过单次本机票据打开工作台。默认地址为 `127.0.0.1:38731`；随机凭据、数据库、连接设置和日志保存在被忽略的 `.commerce-state/`。不要公开这些文件或带认证信息的链接。
 
 ```sh
-python3 -m unittest discover -s commerce/qa -p 'test_*.py' -v
+python3 commerce/manage.py doctor
+python3 commerce/manage.py backup
 ```
 
-测试使用临时状态和合成笔记，覆盖访问校验、真实/演示隔离、并发读取、跨客户端幂等任务、受限归档、运营计算与知识检索。可选浏览器和宿主检查需要相应本机应用；其结果、截图和配置不分发。
+店铺连接通过工作台“能力库 → 接入与知识”的私有向导配置。保存字段、授权范围确认、读取成功和消息送达不是同一状态；没有授权时不使用示例结果代替真实数据。
 
-下一阶段仍需实现真实平台适配与授权、任务执行/确认/未知回执状态、渠道网关收发和常驻部署验收。角色设计见 [AGENT_TEAM.md](AGENT_TEAM.md)。适配来源、行为差异与许可见 [SOURCE-INTEGRATION.md](SOURCE-INTEGRATION.md) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+## MCP 与宿主
 
-## 信息聚合与桌面采集
+从项目根目录运行对应 stdio 服务：
 
-“全球情报”模块读取八个固定公开来源，其中六个 feed 支持多路采集快照。使用 `commerce_crawler_start/list/get/cancel/retry` 管理独立采集队列；操作入队不代表已完成。正文与中文通过 `commerce_intel_article_*` 明确请求，机器译文保持待校对。限频、失败保留、进程与磁盘保护范围见 [集成说明](../crawlers/integration.md)。
+```sh
+python3 commerce/mcp_server.py codex
+python3 commerce/mcp_server.py hermes
+python3 commerce/mcp_server.py harness
+```
 
-界面源码使用 `web/intel-ui.js/css` 与共享 `ui/kit.js`、`ui/tokens.json`；运行 `python3 commerce/ui/build.py` 后用 `--check` 核对。生成区块不直接修改；此公开副本只打包已选择的 UIKit 与 Intel 模块。
+`python3 commerce/prepare.py` 生成本机专用连接定义，不修改客户端设置；生成文件包含本机路径，属于私有配置。Harness 本地安装与恢复方法见 [安装说明](SOURCE-INTEGRATION.md)。宿主自己的聊天与导航仍由宿主管理；MCP 返回结构化数据不代表宿主原生富组件已验收。
+
+## 工作路径
+
+- 从已有商品继续，保持工作项、来源、币种和原任务身份。
+- 核对研究与报价资料，区分来源陈述、事实、判断和待补项。
+- 在同一商品中填写成本；空白为未知，明确零值为零，不自动换汇。
+- 编辑商品内容，核对字段和引用版本，再记录本地审阅或交接。
+- 在任务记录核对真实状态和回执；未知结果不自动重发。
+
+“智能助手”用于读取当前范围、追问和提出可审阅建议。补充问题使用同一输入框，Enter 换行，⌘ / Ctrl + Enter 明确发送；中文输入法确认选词不提交。示例资料范围与外观在设置中调整；切换资料范围会重新加载专业页，应先保存编辑。
+
+情报提供公开来源检索、分页、筛选、查看、收藏、关注主题和影响核查入口。来源新鲜不等于内容已独立核实，也不代表店铺或运输路线已受影响。
+
+消息渠道复用现有客户端适配，提供飞书、企业微信、微信与钉钉的接入类型选择和只读诊断。选择记录不包含凭据，不自动启动网关；专用客户端未配置共享 MCP、账号未授权或送达未核对时保持明确状态。微信须先选择账号类型，尚未适配的类型不给出虚假成功入口。
+
+## 构建与检查
+
+```sh
+npm ci --prefix commerce/workbench
+npm --prefix commerce/workbench run check
+npm --prefix commerce/workbench test
+python3 commerce/ui/build.py
+python3 commerce/ui/build.py --check
+node --test commerce/qa/intel_search_unit.mjs
+```
+
+共享组件源为 `ui/kit.js`、`ui/primitives.css` 和 `ui/tokens.json`。不要手改 `web/app.js`、`web/style.css` 中的生成区块。标准成本接口可独立使用；动态 Surface 的可选校验依赖见 `a2ui/requirements.txt`，采集依赖见 `../crawlers/requirements.lock`。缺依赖时保留明确的失败或标准入口，不制造成功状态。
+
+设计与业务范围见 [体验合同](../docs/PLATFORM_EXPERIENCE.md)、[需求主稿](../docs/PLATFORM_REQUIREMENTS.md)。第三方许可与固定来源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。运行数据、实际截图、私有回执及设备状态不随源码发布。
+
+合成后端回归可运行 `python3 -m unittest discover -s commerce/qa -p 'test_*.py'`。SeaLeap 原始仓库是可选本机依赖，不随本仓库分发；未提供快照时依赖原文件的测试明确跳过，目录存在但完整性不符时失败。安装及版本边界见 [sealeap/README.md](sealeap/README.md)。真实模型、媒体工具及宿主条件另行检查，跳过不表示通过。

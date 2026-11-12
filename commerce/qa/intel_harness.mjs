@@ -12,7 +12,6 @@ await symlink(path.join(root,'harness'),path.join(profile,'node_modules/@local/d
 await writeFile(path.join(profile,'package.json'),JSON.stringify({name:'commerce-isolated-acceptance',private:true,dependencies:{'@local/dsh-commerce':'link:'+path.join(root,'harness')},dsh:{profile:{bundles:['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app','@local/dsh-commerce']}}}));
 const l=net.createServer();await new Promise(r=>l.listen(0,'127.0.0.1',r));const port=l.address().port;await new Promise(r=>l.close(r));
 assert.equal(spawnSync('python3',[path.join(root,'qa/seed_intel_workspace.py'),state],{encoding:'utf8'}).status,0);
-assert.equal(spawnSync('python3',[path.join(root,'prepare.py')],{encoding:'utf8'}).status,0);
 const resources='/Applications/DeepSeek Harness.app/Contents/Resources',runtime=resources+'/app.asar/dsh';
 const host=fork(runtime+'/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js',[runtime,profile,resources+'/runtime/primary-runtime',resources+'/runtime/primary-runtime/dependencies/pnpm/bin/pnpm.mjs',resources+'/runtime/bin'],{execPath:'/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness',execArgv:['--expose-internals'],env:{...process.env,ELECTRON_RUN_AS_NODE:'1',DSH_CLIENT_VERSION:'0.2.2-rc.1',DSH_HOME:path.join(tmp,'dsh-home'),COMMERCE_STATE:state,COMMERCE_PORT:String(port),COMMERCE_PYTHON:process.env.COMMERCE_PYTHON||'/opt/homebrew/bin/python3'},stdio:['ignore','pipe','pipe','ipc']});
 const errors=[];for(const stream of [host.stdout,host.stderr])stream.on('data',chunk=>{for(const line of String(chunk).split('\n'))if(/error|failed|cannot|missing/i.test(line)&&!/token|cookie|authorization|bearer/i.test(line))errors.push(line.slice(0,280))});
@@ -51,6 +50,13 @@ try{
   let ready=false;
   for(let i=0;i<100;i++){if((await feval(`document.querySelector('.kpi-value')?.textContent`))?.includes('128,640')){ready=true;break}await delay(80)}
   assert.ok(ready,'Commerce iframe did not receive authenticated service data');
+  await feval(`document.querySelector('#workspace-module-search').click()`);
+  assert.equal(await feval(`document.activeElement.id`),'module-query');
+  await feval(`document.querySelector('#module-query').value='cost';document.querySelector('#module-query').dispatchEvent(new Event('input',{bubbles:true}))`);
+  assert.equal(await feval(`document.querySelector('[data-module-target]').dataset.moduleTarget`),'operations');
+  await feval(`document.querySelector('[data-module-target]').click()`);
+  assert.equal(await feval(`document.querySelector('h1').textContent`),'运营测算');
+  assert.equal(await feval(`document.activeElement.id`),'workspace-title');
   await feval(`document.querySelector('[data-tab="intelligence"]').click()`);
   for(let i=0;i<100;i++){if(await feval(`document.querySelectorAll('.intel-source-pill').length===8&&!document.querySelector('#intel-search button').disabled`))break;await delay(80)}
   assert.equal(await feval(`document.querySelectorAll('.intel-source-pill').length`),8);
@@ -59,6 +65,8 @@ try{
   assert.ok(await feval(`document.querySelector('#intel-source-fed').textContent.includes('导入最近快照')`));
   assert.ok(await feval(`document.querySelector('#intel-source-fed [data-intel-action="collect"]').focus();document.activeElement.dataset.intelAction==='collect'`));
   assert.ok(await feval(`document.querySelector('#intel-collection-jobs')!==null`));
+  assert.ok(await feval(`document.querySelector('[data-intel-action="job-archive"]').focus();document.activeElement.dataset.intelAction==='job-archive'`));
+
   for(let i=0;i<100;i++){if(await feval(`!!document.querySelector('[data-intel-action="job-alert-ack"]')`))break;await delay(50)}
   assert.ok(await feval(`!!document.querySelector('[data-intel-action="job-alert-ack"]')`));
   await feval(`document.querySelector('[data-intel-action="job-alert-ack"]').click()`);
@@ -77,9 +85,26 @@ try{
   await feval(`document.querySelector('.intel-timeline [data-intel-id]').click()`);
   for(let i=0;i<100;i++){if(await feval(`document.querySelector('.intel-record')?.textContent.includes('合成文章 25 USD')`))break;await delay(80)}
   assert.ok(await feval(`document.querySelector('.intel-record').textContent.includes('合成文章 25 USD')`));
+  await feval(`document.querySelector('[data-intel-action="article-edit"]').click()`);
+  assert.ok(await feval(`document.activeElement.id==='intel-review-text'`));
+  await feval(`document.querySelector('#intel-review-text').value='宿主合成修订 25 USD。';document.querySelector('[data-intel-action="article-review-save"]').click()`);
+  for(let i=0;i<100;i++){if(await feval(`!document.querySelector('.dialog')&&document.querySelector('.intel-record').textContent.includes('宿主合成修订 25 USD')`))break;await delay(50)}
+  assert.ok(await feval(`document.querySelector('.intel-record').textContent.includes('宿主合成修订 25 USD')`));
+
   assert.equal(await feval(`document.querySelectorAll('.intel-record script').length`),0);
   assert.ok(await feval(`document.querySelector('[data-intel-action="article-capture"]').focus();document.activeElement.dataset.intelAction==='article-capture'`));
-  const result={status:'passed',checks:['eight sources through native Harness bridge','local import scope and action label','macro source/category filter through authenticated iframe','truthful empty synthetic cache','filter keyboard focus','narrow iframe layout','article original/Chinese hash-bound evidence through native bridge','article control keyboard focus and escaped content'],marketplace_calls:false};
+  assert.equal(await feval(`document.querySelector('#ui-module').options.length`),await feval(`document.querySelectorAll('.tabs [data-tab]').length`));
+  await feval(`document.querySelector('#ui-module').value='tasks';document.querySelector('#ui-module').dispatchEvent(new Event('change',{bubbles:true}))`);
+  assert.equal(await feval(`document.querySelector('h1').textContent`),'设备与任务');
+  assert.equal(await feval(`document.querySelectorAll('.mobile-nav button').length`),5);
+  await feval(`document.querySelector('#mobile-mine').click()`);
+  assert.equal(await feval(`document.querySelector('#workspace-my-theme').value`),await feval(`document.querySelector('#ui-theme').value`));
+  await feval(`document.querySelector('[data-action="close"]').click();document.querySelector('#workspace-notices').click()`);
+  assert.equal(await feval(`document.querySelector('#dialog-title').textContent`),'本机提醒中心');
+  await feval(`document.querySelector('[data-action="close"]').click()`);
+  assert.equal(await feval(`CommerceUI.status('failed').tone`),'danger');
+  assert.equal(await feval(`CommerceUI.status('unrecognized').label`),'状态未知');
+  const result={status:'passed',checks:['approved mobile navigation, local preferences and notices through native bridge','module finder search, navigation and focus through installed Harness bridge','narrow shared module selector reaches tasks through native bridge','shared status presenter preserves failure and unknown semantics','eight sources through native Harness bridge','local import scope and action label','macro source/category filter through authenticated iframe','truthful empty synthetic cache','filter keyboard focus','narrow iframe layout','article original/Chinese hash-bound evidence through native bridge','article control keyboard focus and escaped content'],marketplace_calls:false};
   await writeFile(path.join(root,'qa/intel-harness-result.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify(result));
 

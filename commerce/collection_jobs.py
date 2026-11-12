@@ -11,7 +11,9 @@ import time
 import uuid
 
 from collection_state import create, evolve
-from crawler_feed_bridge import REGISTRY
+from collection_registry import REGISTRY
+from feed_planner import plan
+from evidence_capacity import EvidenceCapacity
 
 ROOT = Path(__file__).resolve().parents[1]
 ACTIVE = ('queued', 'running', 'cancelling')
@@ -60,6 +62,7 @@ class CollectionJobs:
         with core.db() as db:
             db.execute('CREATE TABLE IF NOT EXISTS collection_jobs (id TEXT PRIMARY KEY, idem TEXT UNIQUE NOT NULL, source TEXT NOT NULL, status TEXT NOT NULL, attempt INTEGER NOT NULL, document TEXT NOT NULL, owner TEXT, heartbeat REAL)')
             db.execute('CREATE TABLE IF NOT EXISTS collection_alerts (id TEXT PRIMARY KEY, job_id TEXT, attempt INTEGER, code TEXT, status TEXT, created_at REAL, UNIQUE(job_id,attempt,code))')
+        self.capacity=EvidenceCapacity(core,self.state)
 
     @staticmethod
     def alert(db,value):
@@ -82,28 +85,62 @@ class CollectionJobs:
         return max([0,*stamps])
 
     def request(self, source, idempotency_key):
-        if source not in ('all', *REGISTRY):
-            raise ValueError('invalid_collection_source')
-        value = create(source, idempotency_key, time.time())
         with self.core.db() as db:
             db.execute('BEGIN IMMEDIATE')
-            old = db.execute('SELECT document FROM collection_jobs WHERE idem=?', (idempotency_key,)).fetchone()
-            if old:
-                document = json.loads(old[0])
-                if document['source'] != source:
-                    raise ValueError('idempotency_conflict')
-                return document
-            active = db.execute("SELECT source FROM collection_jobs WHERE status IN ('queued','running','cancelling')").fetchall()
-            if len(active) >= 20:
-                raise ValueError('collection_queue_full')
-            if any(source == 'all' or other == 'all' or other == source for (other,) in active):
-                raise ValueError('collection_source_already_active')
-            value.update(id=uuid.uuid4().hex, progress={'processed': 0, 'total': len(REGISTRY) if source == 'all' else 1,
-                         'successful': 0, 'current_source': None, 'routes_checked': 0}, sources=[], finished_at=None)
-            value['not_before']=self.due(db,source)
-            db.execute('INSERT INTO collection_jobs VALUES (?,?,?,?,?,?,NULL,0)',
-                       (value['id'], idempotency_key, source, 'queued', 1, json.dumps(value)))
+            return self.enqueue(db,source,idempotency_key,time.time())
+
+    def enqueue(self,db,source,idempotency_key,at,trigger='manual'):
+        if source not in ('all', *REGISTRY):
+            raise ValueError('invalid_collection_source')
+        value = create(source, idempotency_key, at)
+        old = db.execute('SELECT document FROM collection_jobs WHERE idem=?', (idempotency_key,)).fetchone()
+        if old:
+            document = json.loads(old[0])
+            if document['source'] != source:
+                raise ValueError('idempotency_conflict')
+            return document
+        active = db.execute("SELECT source FROM collection_jobs WHERE status IN ('queued','running','cancelling')").fetchall()
+        if len(active) >= 20:
+            raise ValueError('collection_queue_full')
+        if any(source == 'all' or other == 'all' or other == source for (other,) in active):
+            raise ValueError('collection_source_already_active')
+        value.update(id=uuid.uuid4().hex, progress={'processed': 0, 'total': len(REGISTRY) if source == 'all' else 1,
+                     'successful': 0, 'current_source': None, 'routes_checked': 0}, sources=[], finished_at=None)
+        value['not_before']=self.due(db,source)
+        value.update(trigger=trigger,scheduled_at=at if trigger=='schedule' else None)
+        db.execute('INSERT INTO collection_jobs VALUES (?,?,?,?,?,?,NULL,0)',
+                   (value['id'], idempotency_key, source, 'queued', 1, json.dumps(value)))
         return value
+
+    def schedule_tick(self,enabled,interval,at=None):
+        at=time.time() if at is None else at
+        with self.core.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            # Same transaction as manual enqueue: another timer or caller cannot
+            # insert an overlapping source between planning and claiming.
+            jobs=[json.loads(r[0]) for r in db.execute('SELECT document FROM collection_jobs')]
+            due=plan(list(REGISTRY),jobs,at,interval,enabled)
+            for source in due:
+                self.enqueue(db,source,'schedule:'+source+':'+str(int(at//interval)),at,'schedule')
+        return self.schedule_status(interval,at)
+
+    def schedule_status(self,interval,at=None):
+        at=time.time() if at is None else at
+        with self.core.db() as db:jobs=[json.loads(r[0]) for r in db.execute('SELECT document FROM collection_jobs ORDER BY rowid')]
+        sources={}
+        for source in REGISTRY:
+            relevant=[j for j in jobs if j['source'] in (source,'all')]
+            latest=relevant[-1] if relevant else None
+            successes=[j['finished_at'] for j in relevant if j['status']=='succeeded' and j.get('finished_at') and (j['source']==source or source in (j.get('result') or {}).get('completed_sources',[]))]
+            started=[j['started_at'] for j in relevant if j.get('started_at') is not None]
+            sources[source]={'status':latest['status'] if latest else 'not_collected','error':latest.get('error') if latest else None,
+                             'job_id':latest['id'] if latest else None,'last_success':max(successes) if successes else None,
+                             'last_attempt':max(started) if started else None,'next_due':max(started)+interval if started else at}
+        attempts=[s['last_attempt'] for s in sources.values() if s['last_attempt'] is not None]
+        successes=[s['last_success'] for s in sources.values()]
+        return {'sources':sources,'last_attempt':max(attempts) if attempts else None,
+                'last_success':min(successes) if all(s is not None for s in successes) else None,
+                'next_attempt':min(s['next_due'] for s in sources.values()),'execution':'durable_serial_queue'}
 
     def get(self, job_id):
         if not isinstance(job_id, str) or not re.fullmatch('[a-f0-9]{32}', job_id):
@@ -116,8 +153,22 @@ class CollectionJobs:
             jobs = [json.loads(row[0]) for row in db.execute('SELECT document FROM collection_jobs ORDER BY rowid DESC LIMIT 50')]
             alerts=[dict(zip(('id','job_id','attempt','code','status','created_at'),row)) for row in db.execute('SELECT * FROM collection_alerts ORDER BY created_at DESC LIMIT 50')]
         return {'jobs': jobs, 'concurrency': 1, 'max_queued': 20,
+                'capacity':self.capacity.status(),
+                'endurance':self.endurance_status(),
                 'alerts':alerts,'cooldown_seconds':90,'private_evidence_limit_bytes':200_000_000,
                 'cancellation_scope': 'remaining_work_only_completed_source_snapshots_are_retained'}
+
+    def endurance_status(self):
+        try:
+            parent=self.state/'crawler-endurance'
+            pointer=json.loads((parent/'latest.json').read_text())['directory']
+            if not re.fullmatch('[a-f0-9]{32}',pointer):raise ValueError()
+            value=json.loads((parent/pointer/'status.json').read_text())
+            if value.get('status')=='in_progress' and time.time()-datetime.fromisoformat(value['observed_at']).timestamp()>120:
+                value.update(status='stale_observer',formal_acceptance=False)
+            if value.get('elapsed_seconds',0)<86400:value['formal_acceptance']=False
+            return value
+        except (OSError,ValueError,KeyError):return {'status':'not_started_or_unavailable','formal_acceptance':False}
 
     def cancel(self, job_id):
         self.get(job_id)
@@ -154,6 +205,8 @@ class CollectionJobs:
                 '--output', str(output)]
 
     def work_once(self):
+        with self.core.db() as db:pending=db.execute("SELECT 1 FROM collection_jobs WHERE status='queued' LIMIT 1").fetchone()
+        capacity=self.capacity.maintain()['capacity'] if pending else None
         with self.core.db() as db:
             db.execute('BEGIN IMMEDIATE')
             if db.execute("SELECT 1 FROM collection_jobs WHERE status IN ('running','cancelling')").fetchone():
@@ -171,7 +224,7 @@ class CollectionJobs:
         output = folder / 'result.json'
         result, error, process = None, None, None
         try:
-            if sum(p.stat().st_size for p in self.directory.rglob('*') if p.is_file())>200_000_000:
+            if capacity and capacity['status']=='blocked':
                 raise ValueError('collection_evidence_quota_reached')
             command = self.command(value, output)
             with (folder / 'worker.log').open('w') as log:
@@ -239,8 +292,12 @@ class CollectionJobs:
                     value['finished_at'] = value['updated_at'];save(db, value)
                     self.alert(db,value)
         def run():
+            next_capacity_check=0
             while not self.stop_event.is_set():
-                try:self.work_once()
+                try:
+                    if time.monotonic()>=next_capacity_check:
+                        self.capacity.maintain();next_capacity_check=time.monotonic()+60
+                    self.work_once()
                 except Exception:
                     # Recover only this runner's interrupted claim. Never clear a
                     # peer's owner, replay a job, or leave an exception invisible.

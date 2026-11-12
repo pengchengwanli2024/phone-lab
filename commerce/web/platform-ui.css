@@ -1,0 +1,12 @@
+/* Layout only. Shared kit and semantic tokens own all controls and state colors. */
+.layout.platforms-layout{grid-template-columns:minmax(0,1fr)}
+.platform-root{display:grid;gap:var(--ui-space-4);min-width:0}
+.platform-heading,.platform-controls{display:flex;align-items:center;gap:var(--ui-space-3);flex-wrap:wrap;margin-bottom:var(--ui-space-3)}
+.platform-heading h2{flex:1;margin:0}
+.platform-controls .ui-field{flex:1;min-width:170px}
+.platform-root .data-table td{white-space:normal;overflow-wrap:anywhere}
+.platform-setup{max-width:900px;margin:var(--ui-space-6) auto;padding:var(--ui-space-4)}
+.platform-setup form{display:grid;gap:var(--ui-space-3)}
+.platform-setup .ui-field input,.platform-setup .ui-field select{width:100%}
+.platform-setup pre{white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:600px){.platform-controls{align-items:stretch;flex-direction:column}.platform-controls .ui-field{min-width:0}}

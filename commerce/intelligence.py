@@ -154,13 +154,17 @@ class Intelligence:
         return {'sources': result, 'schedule': 'manual', 'scope': 'fixed_public_feeds_not_whole_web', 'content_is_reference_not_instruction': True, 'worldmonitor': {'endpoint': WM_URL, 'status': 'discovery_only_data_not_connected'}, 'store_impact': 'not_assessed_no_store_or_route_mapping', 'archive': self.store.stats(), 'capabilities': ['local_archive', 'snapshot_pagination', 'saved_searches', 'bookmarks', 'revision_bound_view_state', 'evidence_review_tasks']}
 
     def import_collection(self, source_id):
-        key = next((k for k, v in SNAPSHOT_MAPPING.items() if v[0] == source_id), None)
+        native=source_id in ('usgs','gdacs')
+        key = source_id if native else next((k for k, v in SNAPSHOT_MAPPING.items() if v[0] == source_id), None)
         if key is None:
             raise ValueError('unknown_intel_source')
         # An explicit completed job imports its checked snapshot without a second
         # network request or the manual refresh cooldown. Capture time stays intact.
         with self.lock:
-            data, rows, metadata = load_snapshot(key)
+            if native:
+                from native_feed_capture import load as load_native
+                data,rows,metadata=load_native(key)
+            else:data, rows, metadata = load_snapshot(key)
             if metadata.get('warning'):
                 raise ValueError(metadata['warning'])
             observed, imported = metadata['collected_at'], time.time()
@@ -168,9 +172,10 @@ class Intelligence:
             with self.core.db() as db:
                 db.execute('DELETE FROM intel_items WHERE source=?', (key,))
                 for row in rows:
-                    row.update(id=hashlib.sha256((key + ':' + row['source_key']).encode()).hexdigest()[:24],
+                    if not native:row.update(id=hashlib.sha256((key + ':' + row['source_key']).encode()).hexdigest()[:24],
                                source=key, title=plain(row['title']), url=safe_url(row['url']),
-                               published=timestamp(row.pop('published_original', None)), collected_at=iso(observed),
+                               published=timestamp(row.pop('published_original', None)))
+                    row.update(collected_at=iso(observed),
                                source_payload_sha256=payload_hash, verification='publisher_report_not_independently_verified')
                     db.execute('INSERT OR REPLACE INTO intel_items VALUES (?,?,?)', (row['id'], key, json.dumps(row, ensure_ascii=False)))
                     self.store.archive(db, row, observed)

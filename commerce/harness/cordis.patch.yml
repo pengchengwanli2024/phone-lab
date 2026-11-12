@@ -1,0 +1,13 @@
+# Example only. Replace both placeholders, or use install_harness.py.
+- insert:
+    - id: commerce-workspace
+      name: '@local/dsh-commerce'
+    - id: mcp-commerce
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: commerce
+        transport: stdio
+        command: "<PYTHON_EXECUTABLE>"
+        args: ["<COMMERCE_MCP_SERVER_PATH>", "harness"]
+        toolCallTimeoutMs: 20000
+        failOnStartupError: false

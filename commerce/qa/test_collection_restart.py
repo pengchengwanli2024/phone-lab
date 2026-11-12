@@ -11,7 +11,7 @@ def controller(folder,port):
     from collection_jobs import CollectionJobs
     folder=Path(folder);jobs=None
     def command(value,output):
-        return [str(ROOT/'.local/crawlers/venv/bin/python'),__file__,'--worker',str(folder),str(port),value['id'],str(value['attempt']),jobs.owner,str(output)]
+        return [sys.executable,__file__,'--worker',str(folder),str(port),value['id'],str(value['attempt']),jobs.owner,str(output)]
     jobs=CollectionJobs(Core(folder/'state.sqlite'),folder,command_builder=command)
     job=jobs.request('federal-reserve-press','synthetic-crash')
     (folder/'job.json').write_text(json.dumps(job));jobs.work_once()
@@ -41,7 +41,7 @@ class CrashRecovery(unittest.TestCase):
         thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
         with tempfile.TemporaryDirectory(prefix='crawler-crash-') as folder:
             folder=Path(folder)
-            child=subprocess.Popen([str(ROOT/'.local/crawlers/venv/bin/python'),__file__,'--controller',str(folder),str(server.server_port)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+            child=subprocess.Popen([sys.executable,__file__,'--controller',str(folder),str(server.server_port)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
             owned=None;recovery=None
             try:
                 self.assertTrue(received.wait(12),'owned route never reached local fixture')

@@ -1,0 +1,16 @@
+/* Layout only. Controls, colors, states and dialog come from Commerce UI. */
+.agent-root{display:grid;gap:var(--ui-space-4);min-width:0}
+.agent-heading,.agent-controls{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-space-3);flex-wrap:wrap}
+.agent-heading h2{margin:0}
+.agent-form-row{display:grid;grid-template-columns:1fr 1fr;gap:var(--ui-space-3);margin:var(--ui-space-4) 0}
+.agent-root textarea{width:100%;min-height:110px;resize:vertical;line-height:1.7}
+.agent-root details{margin:var(--ui-space-3) 0}
+.agent-root summary{cursor:pointer;color:var(--ui-color-muted)}
+.agent-controls{margin-top:var(--ui-space-3)}
+.agent-columns{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:var(--ui-space-4);align-items:start;min-width:0}
+.agent-history>button{display:block;text-align:left;white-space:normal;width:100%;margin-top:var(--ui-space-2);overflow-wrap:anywhere}
+.agent-text{white-space:pre-wrap;line-height:1.9;overflow-wrap:anywhere}
+.agent-proposal,.agent-questions,.agent-evidence{border-top:1px solid var(--ui-color-border);padding-top:var(--ui-space-3);margin-top:var(--ui-space-3)}
+.agent-root pre,.agent-root code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-width:100%}
+@media(max-width:1300px){.agent-columns{grid-template-columns:minmax(0,1fr)}.agent-history{max-height:260px;overflow:auto}}
+@media(max-width:600px){.agent-form-row{grid-template-columns:1fr}.agent-controls{align-items:stretch;flex-direction:column}}

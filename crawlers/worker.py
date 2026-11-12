@@ -19,13 +19,13 @@ from setup import STATE, environment
 
 ENGINES = ('scrapy', 'crawl4ai', 'crawlee-http', 'crawlee-browser', 'scrapling-http',
            'scrapling-browser', 'firecrawl', 'scrapy+crawl4ai', 'crawl4ai+scrapling',
-           'crawlee+scrapling', 'json-http', 'feed-http', 'feed-scrapling', 'feed-native')
+           'crawlee+scrapling', 'json-http', 'feed-http', 'feed-scrapling', 'feed-native', 'native-intel')
 FIELDS = ('sku', 'title', 'price', 'currency', 'stock')
 WAIT_SELECTORS = {'products': '.product', 'books': '.product_pod', 'quotes': '.quote',
                   'product-schema': 'body'}
 KIND_FIELDS = {'products': FIELDS, 'books': FIELDS, 'quotes': ('text', 'author'),
                'news': ('id', 'title', 'url', 'published'),
-               'product-schema': (*FIELDS, 'url')}
+               'product-schema': (*FIELDS, 'url'), 'native-usgs': ('id','title','url'), 'native-gdacs': ('id','title','url')}
 
 
 def identity(row):
@@ -107,6 +107,7 @@ class Result:
         self.record_evidence = {}
         self.markdown_chars = 0
         self.rendered = 0
+        self.native_capture = None
 
     def consume(self, url, html, status=200, scrapling=False):
         if status >= 400:
@@ -154,6 +155,7 @@ class Result:
         return {'engine': self.args.engine, 'status': 'blocked' if blocked else 'failed' if self.errors else 'ok',
                 'errors': self.errors, 'rows': rows, 'pages': self.pages,
                 'record_evidence': self.record_evidence,
+                'native_capture': self.native_capture,
                 'raw_records': len(self.rows), 'unique_records': len(rows),
                 'duplicates_removed': len(self.rows) - len(rows),
                 'rendered_pages': None if self.args.engine == 'firecrawl' else self.rendered,
@@ -406,6 +408,18 @@ def feed_run(args, output):
     output.add_page(args.url, parse_feed(data, args.url), data, status, 'rss_or_atom')
 
 
+def native_run(args,output):
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'commerce'))
+    from intelligence import SOURCES,parse
+    key=args.kind.removeprefix('native-')
+    if key not in ('usgs','gdacs') or args.url!=SOURCES[key]['url']:raise ValueError('native_source_rejected')
+    with public_request(args.url) as response:data=response.read(4_000_001);status=response.status
+    if len(data)>4_000_000:raise ValueError('native_payload_too_large')
+    output.add_page(args.url,parse(key,data),data,status,'native-publisher')
+    output.native_capture={'payload':data.decode('utf-8'),'payload_sha256':hashlib.sha256(data).hexdigest(),
+                           'captured_at':output.pages[-1]['captured_at']}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--engine', choices=ENGINES, required=True)
@@ -436,7 +450,9 @@ def main():
     started = time.perf_counter()
     output = Result(args)
     try:
-        if args.engine.startswith('scrapy'):
+        if args.engine=='native-intel':
+            native_run(args,output)
+        elif args.engine.startswith('scrapy'):
             scrapy_run(args, output)
         elif args.engine.startswith('crawl4ai'):
             asyncio.run(crawl4ai_run(args, output))

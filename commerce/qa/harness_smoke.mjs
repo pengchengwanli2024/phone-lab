@@ -1,4 +1,4 @@
-import {fork,spawn} from 'node:child_process';
+import {fork,spawn,execFileSync} from 'node:child_process';
 import {mkdtemp,mkdir,writeFile,readFile,symlink,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -9,6 +9,7 @@ const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const tmp=await mkdtemp(path.join(tmpdir(),'commerce-harness-'));
 const profile=path.join(tmp,'profile'),state=path.join(tmp,'state');await mkdir(path.join(profile,'node_modules/@local'),{recursive:true});await mkdir(state);
 await symlink(path.join(root,'harness'),path.join(profile,'node_modules/@local/dsh-commerce'));
+const exposureCase=execFileSync(process.env.COMMERCE_PYTHON||'python3',['-c',`import sys;sys.path[:0]=sys.argv[1:3];from service import Commerce;from fixture_agent_cases import seed;from test_pilot_bridge import seed as seedpilot;app=Commerce(sys.argv[3]);seedpilot(app);print(seed(app))`,root,path.join(root,'qa'),state],{encoding:'utf8'}).trim();
 await writeFile(path.join(profile,'package.json'),JSON.stringify({name:'commerce-isolated-acceptance',private:true,dependencies:{'@local/dsh-commerce':'link:'+path.join(root,'harness')},dsh:{profile:{bundles:['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app','@local/dsh-commerce']}}}));
 const l=net.createServer();await new Promise(r=>l.listen(0,'127.0.0.1',r));const port=l.address().port;await new Promise(r=>l.close(r));
 const resources='/Applications/DeepSeek Harness.app/Contents/Resources',runtime=resources+'/app.asar/dsh';
@@ -52,11 +53,58 @@ try{
   assert.equal(await feval(`document.querySelectorAll('.platform-bar').length`),5);
   await feval(`document.querySelector('[data-tab="connections"]').click()`);
   assert.equal(await feval(`document.querySelectorAll('.integration').length`),4);
+  await feval(`document.querySelector('[data-tab="intelligence"]').click()`);
+  for(let i=0;i<100;i++){if(await feval(`document.querySelectorAll('.intel-source-strip .intel-source-pill').length>=3&&!document.querySelector('#intel-search button').disabled`))break;await delay(80)}
+  const expectedSourceIds=JSON.parse((await import('node:child_process')).execFileSync('python3',['-c',`import sys,json;sys.path.insert(0,sys.argv[1]);from intelligence import SOURCES;print(json.dumps(list(SOURCES)))`,root],{encoding:'utf8'}));
+  const actualSourceIds=await feval(`[...document.querySelectorAll('.intel-source-strip .intel-source-pill')].map(n=>n.dataset.source||n.id)`);
+  assert.deepEqual(actualSourceIds.sort(),expectedSourceIds.sort(),'source inventory rendered without dropping concurrent additions');
+  assert.equal(await feval(`document.querySelector('#intel-map-svg').getAttribute('viewBox')`),'0 0 720 360');
+  assert.equal(await feval(`window.CommerceUI.version`),'1.1.2');
+  await ev(`window.__commerceIntelSubmitted=false;window.addEventListener('message',e=>{if(e.data?.type==='commerce:call'&&e.data.tool==='commerce_intel_search'&&e.data.arguments?.query==='地震')window.__commerceIntelSubmitted=true})`);
+  await feval(`document.querySelector('#intel-query').value='地震';document.querySelector('#intel-search button').click()`);
+  for(let i=0;i<100;i++){if(await ev(`window.__commerceIntelSubmitted`))break;await delay(50)}
+  assert.equal(await ev(`window.__commerceIntelSubmitted`),true,'shared control submits through sandbox bridge');
+  await feval(`document.querySelector('#ui-theme').value='dark';document.querySelector('#ui-theme').dispatchEvent(new Event('change',{bubbles:true}))`);
+  for(let i=0;i<100;i++){if(await feval(`document.documentElement.dataset.resolvedTheme==='dark'&&!document.querySelector('#ui-theme').disabled`))break;await delay(50)}
+  assert.equal(await feval(`getComputedStyle(document.body).backgroundColor`),'rgb(18, 18, 18)');
+  assert.equal(await feval(`document.querySelector('#ui-theme').value`),'dark');
   await feval(`document.querySelector('[data-tab="overview"]').click()`);
   await ev(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='继续');b?.click()})()`);
   await delay(150);
+  await feval(`document.querySelector('[data-tab="tasks"]').click()`);
+  for(let i=0;i<100;i++){if(await feval(`!!document.querySelector('#runtime-center')`))break;await delay(100)}
+  assert.ok(await feval(`document.querySelector('#runtime-center')?.textContent.includes('独立运行中心')`),'runtime through native bridge');
+  await feval(`document.querySelector('[data-action="runtime-settings"]').click()`);
+  assert.ok(await feval(`!!document.querySelector('#runtime-interval')`),'runtime dialog in no-forms iframe');
+  await feval(`document.querySelector('[data-action="close"]').click()`);
+  await feval(`document.querySelector('[data-tab="agent"]').click()`);
+  for(let i=0;i<100;i++){if(await feval(`!!document.querySelector('#agent-submit')&&!document.querySelector('#agent-submit').disabled`))break;await delay(100)}
+  assert.ok(await feval(`document.querySelector('#agent-role')?.options.length>=5`),'shared role request form through native bridge');
+  await feval(`document.querySelector('#agent-topic').value='organization_case';document.querySelector('#agent-topic').dispatchEvent(new Event('change',{bubbles:true}))`);
+  assert.equal(await feval(`document.querySelector('#agent-case')?.value`),'','native panel never substitutes a work item');
+  assert.ok(await feval(`document.querySelector('#agent-case')?.options.length>=1`),'scoped work-item picker through native bridge');
+  await feval(`document.querySelector('[data-tab="exposure"]').click()`);
+  for(let i=0;i<100;i++){if(await feval(`document.querySelector('#exposure-case')?.options.length>=2`))break;await delay(80)}
+  assert.equal(await feval(`document.querySelector('#exposure-case').value`),'','business mapping requires explicit native selection');
+  await feval(`document.querySelector('#exposure-case').value=${JSON.stringify(exposureCase)};document.querySelector('#exposure-case').dispatchEvent(new Event('change',{bubbles:true}))`);
+  for(let i=0;i<100;i++){if(await feval(`!!document.querySelector('#exposure-add')`))break;await delay(80)}
+  await feval(`document.querySelector('#exposure-add').click();document.querySelector('#exposure-label').value='Synthetic native market';document.querySelector('#exposure-countries').value='MEX';document.querySelector('#exposure-source_ref').value='synthetic:native-bridge';document.querySelector('#exposure-save').click()`);
+  for(let i=0;i<100;i++){if(await feval(`!document.querySelector('.dialog')&&document.querySelector('.exposure-root')?.textContent.includes('Synthetic native market')`))break;await delay(80)}
+  assert.ok(await feval(`document.querySelector('.exposure-root')?.textContent.includes('Synthetic native market')`),'shared mapping save through native no-forms iframe');
+  await feval(`document.querySelector('[data-tab="platforms"]').click()`);
+  for(let i=0;i<100;i++){if(await feval(`document.querySelector('.platform-root')?.textContent.includes('Amazon')&&document.querySelector('.platform-root')?.textContent.includes('Temu')`))break;await delay(80)}
+  assert.equal(await feval(`document.querySelector('#platform-store')?.value`),'','native platform picker does not select a store');
+  assert.ok(await feval(`document.querySelector('.platform-root')?.textContent.includes('Amazon')&&document.querySelector('.platform-root')?.textContent.includes('Temu')`),'current platform catalog through native shared bridge');
+  await feval(`document.querySelector('[data-tab="pilots"]').click()`);
+  for(let i=0;i<100;i++){if(await feval(`document.querySelector('#pilot-select')?.options.length===2`))break;await delay(80)}
+  assert.equal(await feval(`document.querySelector('#pilot-select')?.value`),'','native pilot selection remains explicit');
+  await feval(`document.querySelector('#pilot-select').value='synthetic-household-pilot';document.querySelector('#pilot-select').dispatchEvent(new Event('change',{bubbles:true}))`);
+  for(let i=0;i<100;i++){if(await feval(`!!document.querySelector('[data-pilot-action="link"]')`))break;await delay(80)}
+  await feval(`document.querySelector('[data-pilot-action="link"]').click();document.querySelector('[data-pilot-action="confirm"]').click()`);
+  for(let i=0;i<100;i++){if(await feval(`document.querySelector('.pilot-root')?.textContent.includes('已关联当前来源版本')`))break;await delay(80)}
+  assert.ok(await feval(`document.querySelector('.pilot-root')?.textContent.includes('已关联当前来源版本')`),'versioned existing pilot link through native shared bridge');
   const shot=await cdp('Page.captureScreenshot',{format:'png'});await writeFile(path.join(root,'qa/implemented-harness.png'),Buffer.from(shot.data,'base64'));
-  const result={status:'passed',runtime:'installed DeepSeek Harness desktop host 0.2.2-rc.1',isolation:'temporary profile and state',checks:['host bundle activation','unauthenticated page rejected','authenticated Connection Fetch routes','native sidebar panel registration','sandboxed iframe bridge receives five-platform data','connections view'],warnings:errors};
+  const result={status:'passed',runtime:'installed DeepSeek Harness desktop host 0.2.2-rc.1',isolation:'temporary profile and state',checks:['platform catalogue and explicit selection through native bridge','existing pilot source link through native bridge without duplicate tasks','explicit business mapping and synthetic save through native no-forms bridge (no model call)','explicit work-item picker through native bridge (no model call)','bounded role UI and current shared roles through native bridge (no model call)','runtime status through native iframe bridge and settings modal','host bundle activation','unauthenticated page rejected','authenticated Connection Fetch routes','native sidebar panel registration','sandboxed iframe bridge receives five-platform data','connections view','global intelligence through native bridge','shared UI version and no-forms search submission','dark theme saved through native bridge'],warnings:errors};
   await writeFile(path.join(root,'qa/harness-result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }catch(error){await writeFile(path.join(root,'qa/harness-result.json'),JSON.stringify({status:'failed',error:error.message,warnings:errors},null,2));throw error}
 finally{

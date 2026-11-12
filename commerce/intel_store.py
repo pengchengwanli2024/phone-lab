@@ -11,11 +11,14 @@ import json
 import re
 import time
 import unicodedata
+from crawler_feed_bridge import SOURCES as CRAWLER_SOURCES
 
 ARCHIVE_DAYS = 90
 MAX_UNSAVED = 20000
 MAX_WATCHES = 12
 MAX_REVISIONS = 20
+FILTER_SOURCES = {'all', 'usgs', 'gdacs', 'wto', *CRAWLER_SOURCES}
+FILTER_CATEGORIES = {'all', 'earthquake', 'disaster', 'trade', *(s['category'] for s in CRAWLER_SOURCES.values())}
 CONTENT_KEYS = ('id', 'source', 'source_key', 'title', 'url', 'published', 'category', 'country', 'country_code', 'location', 'publisher_alert')
 ALIASES = {
     '地震': ['earthquake'], '洪水': ['flood', 'inundacion'], '贸易': ['trade'],
@@ -123,7 +126,7 @@ class IntelligenceStore:
         values = {'query': query, 'source': source, 'category': category, 'country': country, 'hours': hours, 'scope': scope, 'view': view}
         if not all(isinstance(v, str) for v in values.values()) or len(query) > 100 or len(country) > 80:
             raise ValueError('invalid_intel_filter')
-        if source not in ('all', 'usgs', 'gdacs', 'wto', 'fed', 'ecb', 'eia') or category not in ('all', 'earthquake', 'disaster', 'trade', 'macro', 'energy') or hours not in ('all', '24', '168') or scope not in ('latest', 'archive') or view not in ('all', 'unviewed', 'bookmarked'):
+        if source not in FILTER_SOURCES or category not in FILTER_CATEGORIES or hours not in ('all', '24', '168') or scope not in ('latest', 'archive') or view not in ('all', 'unviewed', 'bookmarked'):
             raise ValueError('invalid_intel_filter')
         values.update(query=query.strip(), country=country.strip())
         return values

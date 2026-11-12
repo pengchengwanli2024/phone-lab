@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pengchengwanli2024/phone-lab/a2ui/commerce-cost-v1",
+  "catalogId": "https://github.com/pengchengwanli2024/phone-lab/a2ui/commerce-cost-v1",
+  "protocolVersion": "1.0",
+  "title": "Commerce Cost Catalog",
+  "description": "Bounded native controls. Rates are fractions from 0 to 1. Plain text only.",
+  "components": {
+    "Column": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "const": "Column"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+        },
+        "children": {
+          "$ref": "#/$defs/ChildList"
+        }
+      },
+      "required": [
+        "component",
+        "id",
+        "children"
+      ],
+      "additionalProperties": false
+    },
+    "Text": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "const": "Text"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+        },
+        "text": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "object",
+              "properties": {
+                "@path": {
+                  "type": "string",
+                  "pattern": "^/(input/[a-z_]+|display/[a-z_]+)$"
+                }
+              },
+              "required": [
+                "@path"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "variant": {
+          "enum": [
+            "body",
+            "caption"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "id",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "NumberField": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "const": "NumberField"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "value": {
+          "type": "object",
+          "properties": {
+            "@path": {
+              "type": "string",
+              "pattern": "^/(input/[a-z_]+|display/[a-z_]+)$"
+            }
+          },
+          "required": [
+            "@path"
+          ],
+          "additionalProperties": false
+        },
+        "minimum": {
+          "type": "number"
+        },
+        "maximum": {
+          "type": "number"
+        },
+        "unit": {
+          "enum": [
+            "amount",
+            "fraction"
+          ]
+        }
+      },
+      "required": [
+        "component",
+        "id",
+        "label",
+        "value",
+        "minimum",
+        "maximum",
+        "unit"
+      ],
+      "additionalProperties": false
+    },
+    "CurrencyField": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "const": "CurrencyField"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "value": {
+          "type": "object",
+          "properties": {
+            "@path": {
+              "type": "string",
+              "pattern": "^/(input/[a-z_]+|display/[a-z_]+)$"
+            }
+          },
+          "required": [
+            "@path"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "component",
+        "id",
+        "label",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "Button": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "const": "Button"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "commerce.cost.calculate"
+                },
+                "context": {
+                  "type": "object",
+                  "maxProperties": 0
+                }
+              },
+              "required": [
+                "name",
+                "context"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "event"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "component",
+        "id",
+        "label",
+        "action"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "functions": {},
+  "$defs": {
+    "anyComponent": {
+      "oneOf": [
+        {
+          "$ref": "#/components/Column"
+        },
+        {
+          "$ref": "#/components/Text"
+        },
+        {
+          "$ref": "#/components/NumberField"
+        },
+        {
+          "$ref": "#/components/CurrencyField"
+        },
+        {
+          "$ref": "#/components/Button"
+        }
+      ]
+    },
+    "anyFunction": {
+      "not": {}
+    },
+    "ComponentId": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+    },
+    "ChildList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ComponentId"
+      },
+      "minItems": 1,
+      "maxItems": 48
+    }
+  }
+}

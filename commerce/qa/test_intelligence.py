@@ -9,6 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from service import Commerce, TOOLS
 from intelligence import parse, safe_url, FixedRedirect
+from intelligence import SOURCES
 
 
 def quake():
@@ -68,6 +69,31 @@ class SharedIntelligence(unittest.TestCase):
             self.assertEqual(self.call('intel_search')['total'], 0)
             self.assertFalse(self.call('worldmonitor_status')['data_calls_made'])
             network.assert_not_called()
+
+    def test_every_advertised_source_and_category_can_be_filtered_and_watched(self):
+        advertised = next(item[2] for item in TOOLS if item[0] == 'commerce_intel_search')['properties']
+        self.assertEqual(set(advertised['source']['enum']), {'all', *SOURCES})
+        self.assertEqual(set(advertised['category']['enum']), {'all', *(s['category'] for s in SOURCES.values())})
+        # Synthetic records exercise the same durable store as imported feeds.
+        for source, config in SOURCES.items():
+            row = {**parse('gdacs', RSS)[0], 'id': 'synthetic-' + source,
+                   'source': source, 'category': config['category'],
+                   'url': 'https://example.org/' + source}
+            with self.app.core.db() as db:
+                self.app.intelligence.store.archive(db, row, 1700000100)
+                db.execute('INSERT INTO intel_items VALUES (?,?,?)', (row['id'], source, json.dumps(row)))
+        for source, config in SOURCES.items():
+            with self.subTest(source=source):
+                filters = {'source': source, 'category': config['category']}
+                found = self.call('intel_search', filters)
+                self.assertEqual([r['id'] for r in found['items']], ['synthetic-' + source])
+                self.call('intel_watch_save', {'name': 'Synthetic ' + source, **filters})
+        watches = self.call('intel_watch_list')['watches']
+        self.assertEqual(len(watches), len(SOURCES))
+        self.assertTrue(all(w['matches'] == 1 and not w['notification_enabled'] for w in watches))
+        for filters in ({'source': 'unregistered'}, {'category': 'unregistered'}):
+            with self.assertRaises(ValueError):
+                self.call('intel_search', filters)
 
     def test_refresh_shared_search_and_cooldown(self):
         with patch('intelligence.fetch', return_value=RSS) as network:

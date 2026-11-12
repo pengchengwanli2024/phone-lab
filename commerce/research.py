@@ -81,22 +81,33 @@ def web_url(value):
 
 
 def numbers(text):
-    # A conservative drift flag: locale/thousands conversions require human review too.
-    return Counter(re.findall(r'(?<!\w)[+-]?\d+(?:[.,]\d+)*(?:\s*%)?', text))
+    # Calendar dates may change notation in Chinese; values must stay equal.
+    # CJK letters are Unicode word characters, so \w must not hide nearby digits.
+    from datetime import date
+    months={name.lower():i+1 for i,name in enumerate(('January','February','March','April','May','June','July','August','September','October','November','December'))}
+    dates=[]
+    def calendar(match,chinese=False):
+        try:
+            year,month,day=(int(match[1]),int(match[2]),int(match[3])) if chinese else (int(match[3]),months[match[1].lower()],int(match[2]))
+            dates.append('date:'+date(year,month,day).isoformat());return ' '
+        except (ValueError,KeyError):return match[0]
+    text=re.sub(r'(?<!\d)(\d{4})年(\d{1,2})月(\d{1,2})日',lambda m:calendar(m,True),text)
+    text=re.sub(r'\b('+'|'.join(months)+r')\s+(\d{1,2}),?\s+(\d{4})\b',calendar,text,flags=re.I)
+    return Counter(dates+[re.sub(r'\s+','',n) for n in re.findall(r'(?<![\d.])[+-]?\d+(?:[.,]\d+)*(?:\s*%)?',text)])
 
 
 def drift(original, translated):
     warnings = []
     if numbers(original) != numbers(translated):
         warnings.append('数字或百分数与原文不一致，请核对小数和千位分隔符')
-    tokens = r'\b(?:USD|CNY|RUB|EUR|GBP|JPY|AED|SAR|MXN|BRL|kg|mg|cm|mm|ml|GB|mAh)\b|[$€£¥₽]'
+    tokens = r'(?<![A-Za-z])(?:USD|CNY|RUB|EUR|GBP|JPY|AED|SAR|MXN|BRL|kg|mg|cm|mm|ml|GB|mAh)(?![A-Za-z])|[$€£¥₽]'
     if Counter(re.findall(tokens, original, re.I)) != Counter(re.findall(tokens, translated, re.I)):
         warnings.append('币种或单位标记变化，请核对后保留原标记')
     return warnings
 
 
 def validate(record):
-    if not isinstance(record, dict) or len(canonical(record)) > 100000:
+    if not isinstance(record, dict) or len(canonical(record).encode('utf-8')) > 100000:
         raise ValueError('invalid_research_record')
     spec = template(record.get('platform'))
     allowed = set(spec['record'])
@@ -128,7 +139,7 @@ def validate(record):
         if not isinstance(value, dict) or set(value) - {'original', 'zh', 'reviewed', 'kind', 'source_url', 'locator', 'translation'}:
             raise ValueError('invalid_research_field')
         original = string(value.get('original', ''), 6000)
-        zh = string(value.get('zh', ''), 6000)
+        zh = string(value.get('zh', ''), 12000)
         locator = string(value.get('locator', ''), 500)
         url = string(value.get('source_url', ''), 2000) or record.get('source_url', '')
         reviewed = value.get('reviewed', False)
@@ -149,7 +160,11 @@ def validate(record):
         translation = value.get('translation')
         # Preserve only known translation provenance; caller-supplied model metadata is unverified.
         if translation is not None:
-            if not isinstance(translation, dict) or len(canonical(translation)) > 5000: raise ValueError('invalid_translation_provenance')
+            if not isinstance(translation, dict) or len(canonical(translation)) > 20000: raise ValueError('invalid_translation_provenance')
+            if translation.get('original_sha256') != digest(original):
+                issue(key, definition['label'] + '：译文对应的原文哈希不一致，请重新翻译或核对')
+            if 'model_output' in translation and (not isinstance(translation['model_output'], str) or translation.get('model_output_sha256') != digest(translation['model_output'])):
+                issue(key, definition['label'] + '：模型原始译文的哈希不一致')
         rows.append(dict(**definition, original=original, zh=zh, reviewed=reviewed,
                          kind=kind, source_url=url, locator=locator,
                          original_sha256=digest(original), translation=translation,

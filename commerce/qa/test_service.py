@@ -58,7 +58,7 @@ class Integration(unittest.TestCase):
         totals=[self.call('commerce_dashboard',{'demo':True,'platform':p})for p in ['ozon','tiktok','amazon','mercado','temu']]
         self.assertEqual(sum(x['orders']for x in totals),demo['orders']);self.assertEqual(sum(x['pending']for x in totals),32)
         status=self.call('commerce_status',{});self.assertFalse(status['marketplace_writes']);self.assertEqual(len(status['platforms']),5)
-        self.assertEqual(len(status['agent_team']['roles']),5)
+        self.assertEqual(len(status['agent_team']['roles']),12)
         self.assertEqual(status['agent_team']['deployment']['phase'],'mac-integration')
 
     def test_parallel_reads_no_resets(self):

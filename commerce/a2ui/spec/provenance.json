@@ -1,0 +1,13 @@
+{
+  "source": "https://github.com/a2ui-project/a2ui",
+  "commit": "8bf644a37d680a227296b8c0849a7f4b328b8b73",
+  "directory": "specification/v1_0/json",
+  "protocol": "1.0",
+  "license": "Apache-2.0",
+  "sha256": {
+    "common_types.json": "c4e78305be1de73eecb37f8179ba169730250611703683af291b18135a6430dc",
+    "catalog_definition.json": "836a48b2deb7ae76c3b68cb4e79c2faa24cba36d4d5396474894796797364d44",
+    "renderer_to_agent.json": "58ecde02101f0f37566b5e238dc6ef6af628c3ff312fce0e17ab7670b7215465",
+    "agent_to_renderer.json": "2f575f783fdda0e4d175fe5d331661655e4a4901613262322792dae7e823761d"
+  }
+}

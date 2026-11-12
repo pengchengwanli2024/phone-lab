@@ -1,0 +1,418 @@
+{
+  "schema": "commerce-organization-v1",
+  "default_role": "conductor",
+  "authority": {
+    "approval_roles": [],
+    "external_execution": false,
+    "stop_requires": [
+      "missing",
+      "owner",
+      "verify"
+    ],
+    "feishu": "user_deferred",
+    "status_definition": {
+      "PASS": "本轮受支持的检查通过；不等于经营效果或外部事实已验证",
+      "FAIL": "实测违反当前检查判据",
+      "BLOCKED": "能力、接入或上游产物尚不可用",
+      "HOLD": "资料缺失、待核实或已过期"
+    }
+  },
+  "roles": [
+    {
+      "id": "observer",
+      "name": "观察与复盘",
+      "mission": "检查本机服务、来源时间与证据链",
+      "legacy_ids": [
+        "technical-watch"
+      ],
+      "skill_pod": {
+        "tools": [
+          "commerce_live_status",
+          "commerce_organization_board"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "scout",
+      "name": "市场调研",
+      "mission": "保存原文、中文、来源与检索范围",
+      "legacy_ids": [],
+      "skill_pod": {
+        "tools": [
+          "commerce_collection_check",
+          "commerce_collection_export"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "economist",
+      "name": "经济测算",
+      "mission": "按同一币种、SKU 和来源计算贡献",
+      "legacy_ids": [],
+      "skill_pod": {
+        "tools": [
+          "commerce_unit_economics"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "sourcer",
+      "name": "供应链资料",
+      "mission": "补齐采购成本、交期和来源",
+      "legacy_ids": [],
+      "skill_pod": {
+        "tools": [
+          "commerce_organization_record"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "creative",
+      "name": "创意与交付",
+      "mission": "将已登记素材交付给明确工作项并校验哈希",
+      "legacy_ids": [],
+      "skill_pod": {
+        "tools": [
+          "commerce_creative_get",
+          "commerce_organization_deliver"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "localizer",
+      "name": "语言与字段",
+      "mission": "校对译文、数字和平台采集字段",
+      "legacy_ids": [],
+      "skill_pod": {
+        "tools": [
+          "commerce_translation_start",
+          "commerce_collection_check"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "gatekeeper",
+      "name": "规则与合规核查",
+      "mission": "区分字段完整性与真正合规证据",
+      "legacy_ids": [],
+      "skill_pod": {
+        "tools": [
+          "commerce_collection_template",
+          "commerce_organization_brief"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "grower",
+      "name": "增长方案",
+      "mission": "保留投流定价方案和归因边界",
+      "legacy_ids": [
+        "platform-operator"
+      ],
+      "skill_pod": {
+        "tools": [
+          "commerce_campaign_compare"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "fulfiller",
+      "name": "库存与履约观察",
+      "mission": "核对真实快照、库存口径和补货依据",
+      "legacy_ids": [
+        "inventory-fulfillment"
+      ],
+      "skill_pod": {
+        "tools": [
+          "commerce_live_restock_list",
+          "commerce_live_alerts"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "voice",
+      "name": "客户之声",
+      "mission": "需要真实评论或客服来源才能提炼需求",
+      "legacy_ids": [
+        "customer-care"
+      ],
+      "skill_pod": {
+        "tools": [
+          "commerce_organization_brief"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "controller",
+      "name": "财务控制",
+      "mission": "核对币种、结算来源和计算口径",
+      "legacy_ids": [],
+      "skill_pod": {
+        "tools": [
+          "commerce_unit_economics",
+          "commerce_organization_brief"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    },
+    {
+      "id": "conductor",
+      "name": "编排协调",
+      "mission": "按产物契约派单并复查；不拥有批准权",
+      "legacy_ids": [
+        "commerce-chief"
+      ],
+      "skill_pod": {
+        "tools": [
+          "commerce_organization_handoff",
+          "commerce_organization_capture"
+        ],
+        "format": "JSON 原文与中文说明、来源、哈希和缺项责任"
+      },
+      "allowed": [
+        "read",
+        "analyze",
+        "draft",
+        "create-local-task"
+      ],
+      "state": "configured_contract_not_autonomous_worker"
+    }
+  ],
+  "stages": [
+    {
+      "id": "S0",
+      "role": "observer",
+      "name": "本机与契约体检",
+      "depends_on": [],
+      "artifact_kind": "runtime",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S1",
+      "role": "scout",
+      "name": "调研资料完整性",
+      "depends_on": [
+        "S0"
+      ],
+      "artifact_kind": "research",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S3",
+      "role": "sourcer",
+      "name": "成本与交期资料",
+      "depends_on": [
+        "S1"
+      ],
+      "artifact_kind": "supply",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S2",
+      "role": "economist",
+      "name": "同币种贡献测算",
+      "depends_on": [
+        "S3"
+      ],
+      "artifact_kind": "economics",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S4",
+      "role": "creative",
+      "name": "素材交付完整性",
+      "depends_on": [
+        "S1"
+      ],
+      "artifact_kind": "images",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S5",
+      "role": "localizer",
+      "name": "中文与字段校对",
+      "depends_on": [
+        "S1"
+      ],
+      "artifact_kind": "research",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S6",
+      "role": "gatekeeper",
+      "name": "平台规则与合规证据",
+      "depends_on": [
+        "S2",
+        "S4",
+        "S5"
+      ],
+      "artifact_kind": "compliance",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S7",
+      "role": "grower",
+      "name": "增长与归因证据",
+      "depends_on": [
+        "S6"
+      ],
+      "artifact_kind": "growth",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S8",
+      "role": "fulfiller",
+      "name": "库存与履约快照核对",
+      "depends_on": [
+        "S0"
+      ],
+      "artifact_kind": "fulfillment",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S9",
+      "role": "voice",
+      "name": "真实客户之声",
+      "depends_on": [
+        "S8"
+      ],
+      "artifact_kind": "voice",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S10",
+      "role": "controller",
+      "name": "真实结算对账",
+      "depends_on": [
+        "S2",
+        "S8"
+      ],
+      "artifact_kind": "settlement",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    },
+    {
+      "id": "S11",
+      "role": "observer",
+      "name": "本轮与上轮复查",
+      "depends_on": [
+        "S0"
+      ],
+      "artifact_kind": "retrospective",
+      "contract_version": 1,
+      "verification": "重新读取当前产物和来源哈希；任务完成标记不能代替检查"
+    }
+  ],
+  "scope_keys": [
+    "connection",
+    "product_id",
+    "row_key",
+    "sku",
+    "market",
+    "fulfillment",
+    "currency"
+  ],
+  "limits": [
+    "门禁通过率不是商业闭环成功率。",
+    "缺少真实来源时不能把零订单、零广告花费或零差评当作事实。",
+    "其他项目提供的数字只属于外部案例，不进入本项目经营指标。",
+    "供应链成本在经济测算之前采集，避免相互等待。"
+  ]
+}

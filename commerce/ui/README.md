@@ -5,6 +5,7 @@
 ## 单一来源与分发
 
 - `tokens.json`：语义颜色、字体、间距、圆角、控件高度和弹窗阴影。
+- `status.js`：任务状态的纯描述器；内联时在 `kit.js` 前加载，接入向导同样遵守。
 - `kit.js`：`window.CommerceUI` 组件渲染与属性处理，固定版本 `1.1.2`。
 - `primitives.css`：同一组基础组件的样式、焦点、禁用、错误、只读及窄屏触控状态；兼容现有的语义 class。
 - `build.py`：把库与 tokens 放入既有 `web/app.js`、`style.css` 的标记区块，保留其它业务模块。`python3 commerce/ui/build.py --check` 检查漂移。构建无第三方依赖，不下载组件或连接外部服务。
@@ -21,7 +22,7 @@ Harness 和浏览器继续读取同一份内联产物，避免 opaque iframe 下
 | 标签 | `badge(label, tone)` | blue / gray / success / warning / danger；状态同时使用文字，避免只靠颜色 |
 | 卡片 | `card({title, content})` / `.card` | 相同 surface、border 与 radius-card；布局由模块管理 |
 | 表格 | `table(headers, rows)` | 相同表头、列作用域、滚动容器和空状态 |
-| 页签 | `tabs(items, active)` | 同一导航结构、选中状态和窄屏横向滚动 |
+| 页签 | `tabs(items, active)` | 同一导航结构；桌面按目录分组并显示当前组，窄屏保留完整模块选择器，二者调用相同导航方法 |
 | 弹窗 | `modal({title, body, actions})` | 标题关联、关闭按钮、统一操作区；工作台负责焦点进入、Tab 限制、Esc 与关闭后恢复 |
 | 提示与空状态 | `alert(message, tone)`, `empty(message)` | 消息转义，使用 status / alert；没有数据不能表达为「风险为零」 |
 
@@ -51,3 +52,16 @@ ui.badge('等待授权', 'warning');
 信息工作区的 `web/intel-ui.js` / `intel-ui.css` / `intel-land.txt` 由同一构建同步到 `COMMERCE_INTEL_*` 标记区块；业务交互与图形图层只复用现有组件和语义变量，不单独建立另一套主题。地图点位点击区按当前视口计算，窄屏仍可使用列表选择记录。
 
 ARIA 和 data 属性的布尔值使用明确的 `true` / `false` 字符串；原生 disabled/readonly 等保留 HTML 布尔属性语义。筛选展开与记录视图切换通过相同组件输出可读状态。
+
+状态文案与语义色由 `status.js` 的 `describe()` 提供，通过 `ui.status()` 读取；失败、中断、等待审核和完成分别展示。操作是否允许仍由各领域明确传入能力，不能仅凭标签推断。专业工作区使用单栏全宽，避免混入模拟经营侧栏。
+
+## 模块快速查找与视觉层级
+
+顶部“查找模块”与⌘/Ctrl+K使用同一弹窗，`moduleDirectory(items, query)`按当前导航登记生成结果，不冻结入口数量。`moduleDetails(key)`提供分组、说明及中英文关键词；新入口未补充说明时使用通用描述，不删除或假定其能力已验收。
+
+查找支持NFKC检索归一化、空态、方向键、Home/End和Enter；Escape或关闭返回原触发位置。打开其它业务弹窗时快捷键不会替换当前弹窗；页面表单值继续保留。`button()`可选`description`仍以文本转义，沿用共享按钮及状态样式。
+
+图像参考用于布局与层级讨论，实际界面继续使用HTML/CSS/SVG和已确认语义tokens；生成图不作为业务数据或新的按钮能力来源。筛选采用统一工具条，KPI以中性底色和克制的预警文字呈现，只有明确大于0的待处理量和预警量使用警告色。深色、浅色与跟随系统保持同一布局。
+
+
+分组导航、依据驱动的下一步、专业页面来源边界及视图接续规则见[工作台导航与任务接续](../WORKSPACE_NAVIGATION.md)。`web/workspace-ui.js` / `.css` 和 `ui/next-actions.js` 经同一构建进入共享产物；新模块沿用统一目录、按钮、状态与跳转方法。

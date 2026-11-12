@@ -7,15 +7,15 @@ import sys
 import yaml
 
 ROOT=Path(__file__).resolve().parents[1]
-PROFILE=Path(os.environ.get('COMMERCE_HERMES_PROFILE',str(Path.home()/'.hermes/profiles/commerce-bot'))).expanduser().resolve()
+PROFILE=Path(os.environ.get('COMMERCE_HERMES_PROFILE',str(Path.home()/'.hermes/profiles/commerce-bot'))).expanduser()
 assert PROFILE.is_dir(),'Create the dedicated commerce-bot profile first.'
 p=PROFILE/'config.yaml'
 backup=PROFILE/'config.before-commerce.yaml'
 if not backup.exists():shutil.copyfile(p,backup);backup.chmod(0o600)
 config=yaml.safe_load(p.read_text())
-config['mcp_servers']={'commerce':{'command':sys.executable,'args':[str(ROOT/'mcp_server.py'),'hermes'],'connect_timeout':20,'enabled':True}}
+config.setdefault('mcp_servers',{})['commerce']={'command':sys.executable,'args':[str(ROOT/'mcp_server.py'),'hermes'],'connect_timeout':20,'enabled':True}
 config['toolsets']=['mcp-commerce','clarify']
-config['platform_toolsets']={'cli':['mcp-commerce','clarify'],'feishu':['mcp-commerce','clarify']}
+config.setdefault('platform_toolsets',{}).update({'cli':['mcp-commerce','clarify'],'feishu':['mcp-commerce','clarify']})
 config.setdefault('terminal',{})['cwd']=str(ROOT.parent)
 config['group_sessions_per_user']=True
 config['timezone']='Asia/Shanghai'
@@ -24,4 +24,6 @@ p.write_text(yaml.safe_dump(config,allow_unicode=True,sort_keys=False));p.chmod(
 shutil.copyfile(ROOT/'agents/SOUL.md',PROFILE/'SOUL.md')
 (PROFILE/'SOUL.md').chmod(0o600)
 result={'profile':'commerce-bot','status':'configured_gateway_not_started','tools':['mcp-commerce','clarify'],'channel':'feishu_pending_setup','existing_channels_copied':False,'model_settings_changed':False}
-(ROOT/'qa/agent-profile.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))
+report=Path(os.environ.get('COMMERCE_STATE',str(ROOT.parent/'.commerce-state')))/'verification/agents'
+report.mkdir(parents=True,exist_ok=True,mode=0o700)
+(report/'profile-setup.json').write_text(json.dumps(result,indent=2));(report/'profile-setup.json').chmod(0o600);print(json.dumps(result))
