@@ -122,3 +122,44 @@
  .r-top-controls .r-theme-control{width:96px}.r-top-controls .r-theme-control select{width:100%;max-width:none;padding-left:8px!important}
 }
 
+
+/* Research candidates retain workspace identities and use the shared compact list rhythm. */
+.r-candidate-list{border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-card);overflow:hidden;background:var(--ui-color-surface)}
+.r-candidate-row{display:flex;align-items:center;gap:14px;padding:16px;border-bottom:1px solid var(--ui-color-border)}
+.r-candidate-row:last-child{border-bottom:0}
+.r-candidate-title{flex:1;min-width:0}
+.r-candidate-title h2{font-size:var(--ui-font-size-section);line-height:1.5;margin:0;overflow-wrap:anywhere}
+.r-candidate-title p{font-size:var(--ui-font-size-meta);color:var(--ui-color-muted);margin:6px 0 0;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.r-candidate-row>.r-object-icon{flex:none}
+.r-candidate-row>button{flex:none}
+@media(max-width:599px){.r-candidate-row{flex-wrap:wrap;padding:14px;gap:12px}.r-candidate-row>.r-object-icon{display:none}.r-candidate-title{flex-basis:100%}.r-candidate-row>button{margin-left:auto}.r-candidate-title h2{font-size:var(--ui-font-size-body)}}
+.r-research-jobs{margin-top:24px}
+.r-research-jobs>h2{font-size:var(--ui-font-size-section);margin:0 0 12px}
+.r-research-job{display:flex;width:100%;align-items:center;justify-content:space-between;gap:16px;text-align:left;border:0;border-bottom:1px solid var(--ui-color-border);border-radius:0;padding:14px 16px;background:transparent}
+.r-research-job:last-child{border-bottom:0}
+.r-research-job>div{min-width:0;flex:1}
+.r-research-job strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:var(--ui-font-size-body);font-weight:500;white-space:normal;overflow-wrap:anywhere}
+.r-research-job small{display:block;font-size:var(--ui-font-size-meta);color:var(--ui-color-muted);margin-top:6px}
+.r-research-state{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:var(--ui-font-size-meta);color:var(--ui-color-muted)}
+.r-research-detail>h3{font-size:var(--ui-font-size-section);margin:16px 0 8px;overflow-wrap:anywhere}
+.r-research-section{border-top:1px solid var(--ui-color-border);padding-top:20px;margin-top:24px}
+.r-research-section>h3{font-size:var(--ui-font-size-section);margin:0 0 14px}
+.r-research-section ul{padding-left:20px;line-height:1.7}
+.r-research-section li+li{margin-top:8px}
+.r-research-candidate{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--ui-color-border)}
+.r-research-candidate>div{flex:1;min-width:0;overflow-wrap:anywhere}
+.r-research-candidate strong{font-size:var(--ui-font-size-body)}
+.r-research-candidate small{display:block;font-size:var(--ui-font-size-meta);color:var(--ui-color-muted);margin-top:6px}
+.r-research-source{border-top:1px solid var(--ui-color-border);padding:12px 0}
+.r-research-source>summary{display:flex;justify-content:space-between;gap:12px;align-items:center;cursor:pointer}
+.r-research-source>summary>span:first-child{min-width:0;overflow-wrap:anywhere}
+.r-research-source>p{font-size:var(--ui-font-size-meta);color:var(--ui-color-muted)}
+.r-research-source .r-readable{font-size:var(--ui-font-size-body);color:var(--ui-color-text)}
+.r-source-hash{display:block;overflow-wrap:anywhere;color:var(--ui-color-muted);font-size:11px;line-height:1.6;margin-top:12px}
+.r-research-identities{margin-top:20px;font-size:var(--ui-font-size-meta);color:var(--ui-color-muted)}
+.r-research-identities code{display:block;overflow-wrap:anywhere;padding-top:10px}
+@media(max-width:599px){.r-research-candidate{flex-wrap:wrap}.r-research-candidate>div{flex-basis:100%}.r-research-candidate>button{margin-left:auto}.r-research-job{align-items:flex-start;gap:10px;padding:14px}.r-research-source>summary{align-items:flex-start}}
+
+.r-research-request{margin-top:14px;color:var(--ui-color-muted);font-size:var(--ui-font-size-meta)}
+.r-research-request>summary{cursor:pointer;min-height:32px;display:flex;align-items:center}
+.r-research-request>p{color:var(--ui-color-text)}

@@ -75,7 +75,7 @@ class AgentRuntime:
     def create(self, question, role, topic, idempotency_key, parameters=None, parent_id=None):
         return self._create(question,role,topic,idempotency_key,parameters,parent_id)
 
-    def _create(self, question, role, topic, idempotency_key, parameters=None, parent_id=None, _db=None, _conversation=None):
+    def _create(self, question, role, topic, idempotency_key, parameters=None, parent_id=None, _db=None, _conversation=None, _model_route=None):
         parameters={} if parameters is None else parameters
         if not isinstance(question,str) or not question.strip() or len(question)>2000 or topic not in TOPICS:raise ValueError('agent_invalid_request')
         if not isinstance(idempotency_key,str) or not idempotency_key.strip() or len(idempotency_key)>160:raise ValueError('invalid_idempotency_key')
@@ -103,6 +103,7 @@ class AgentRuntime:
         if not role_spec:raise ValueError('unknown_agent_role')
         payload={**request,'role':{k:role_spec[k] for k in ('id','name','responsibility')},'role_contract_sha256':sha(role_spec)}
         if _conversation is not None:payload['conversation']=_conversation
+        payload['model_route']=_model_route if _model_route is not None else self.service.models.default_snapshot()
         if topic=='organization_case':payload['case_binding']=self.cases.validate_scope(parameters)
         if topic=='business_exposure' and self.service.exposure.current(parameters['assessment_id'])!='current':raise ValueError('agent_exposure_evidence_changed')
         if parent_id:
@@ -138,12 +139,18 @@ class AgentRuntime:
                'parent_id':payload.get('parent_id'),'status':row[1],'created':row[2],'updated':row[3],
                'result':result,'result_sha256':sha(result) if result else None,'actions':actions,
                'marketplace_writes':False,'independently_verified':False}
+        value['model_choice']=self.service.models.public_snapshot(payload.get('model_route',{}))
+        value['research_job']=self.service.market_research.for_run(run_id, _db)
         if brief:
             value.pop('result');value.pop('parameters')
         else:value['trace']=json.loads(row[5])
         return value
 
     def cancel(self, run_id):
+        research=self.service.market_research.for_run(run_id)
+        if research and research['run_id']==run_id:
+            self.service.market_research.cancel(research['task_id'])
+            return self.get(run_id)
         with self.core.db() as db:
             db.execute("UPDATE agent_runs SET status=CASE WHEN status='queued' THEN 'cancelled' ELSE 'cancel_requested' END,updated=? WHERE id=? AND status IN ('queued','running')",(time.time(),run_id))
         return self.get(run_id)
@@ -214,6 +221,13 @@ class AgentRuntime:
             db.execute("UPDATE agent_runs SET status='running',owner=?,expires=?,updated=? WHERE id=?",(self.owner,time.time()+360,time.time(),ident))
         trace=[];observations=[];seen=set();calls_used=0
         try:
+            research=self.service.market_research.execute(ident,payload,lambda:self.cancelled(ident))
+            if research is not None:
+                job=self.service.market_research.for_run(ident)
+                state=job['status']
+                status='completed' if state in ('completed','partial') else state
+                self.finish(ident,status,research,[{'event':'market_research','task_id':job['task_id'],'status':state}])
+                return True
             for turn in range(3):
                 if self.cancelled(ident):raise model.Cancelled()
                 if payload['topic']=='organization_case':self.cases.check_binding(payload)
@@ -225,8 +239,10 @@ class AgentRuntime:
                     from copilot.methods import guidance_for
                     context['reviewed_workflow_guidance']=guidance_for(payload['parameters']['context'])
                 from .codex_provider import route
-                provider=route(self.service.state)
-                if provider['provider']=='codex':result=model.invoke(context,lambda:self.cancelled(ident),route=provider)
+                # New requests freeze their profile at enqueue; historical requests
+                # keep the legacy default route. Never switch a running model turn.
+                provider=self.service.models.runtime_route(payload.get('model_route') or route(self.service.state))
+                if provider['provider'] in ('codex','compatible'):result=model.invoke(context,lambda:self.cancelled(ident),route=provider)
                 else:result=model.invoke(context,lambda:self.cancelled(ident))
                 if payload['topic']=='business_exposure' and self.service.exposure.current(payload['parameters']['assessment_id'])!='current':raise ValueError('agent_exposure_evidence_changed')
                 calls,answer=self.step(result,payload,observations)
@@ -281,6 +297,7 @@ class AgentRuntime:
     def start(self, recover=False):
         if self.thread and self.thread.is_alive():return
         if recover:
+            self.service.market_research.recover()
             with self.core.db() as db:db.execute("UPDATE agent_runs SET status='interrupted',expires=0,updated=?,result=? WHERE status IN ('running','cancel_requested')",(time.time(),canonical({'error':'agent_interrupted_no_automatic_resubmit'})))
         def loop():
             while not self.stop_event.is_set():

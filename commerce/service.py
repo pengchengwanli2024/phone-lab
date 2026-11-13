@@ -20,6 +20,7 @@ from ops_alerts import OperationsAlerts
 from campaign_plans import compare as campaign_compare
 from live_connections import LiveConnections
 from channel_connections import ChannelConnections, definitions as channel_definitions
+from model_providers import ModelRegistry, definitions as model_definitions
 from live_planning import LivePlanning
 from creative_studio import CreativeStudio, tool_definitions as creative_tools
 from sealeap_library import SkillLibrary, definitions as skill_tools
@@ -38,6 +39,7 @@ from copilot import Copilot, definitions as copilot_definitions
 from form_drafts import FormDrafts, definitions as form_draft_definitions
 from product_workspace import ProductWorkspace, definitions as workspace_definitions
 from a2ui.cost import CostSurfaces, definitions as a2ui_definitions, dispatch as a2ui_dispatch
+from market_research import MarketResearch, definitions as market_research_definitions
 
 LABELS=dict(zip(PLATFORMS,['Ozon','TikTok Shop','Amazon','Mercado Libre','Temu']))
 SALES=[39200,34800,28640,18000,8000]
@@ -151,6 +153,8 @@ TOOLS.extend(form_draft_definitions(schema))
 TOOLS.extend(workspace_definitions(schema,S))
 TOOLS.extend(a2ui_definitions(schema))
 TOOLS.extend(channel_definitions(schema,S))
+TOOLS.extend(market_research_definitions(schema,S))
+TOOLS.extend(model_definitions(schema,S))
 
 
 class Commerce:
@@ -178,10 +182,12 @@ class Commerce:
         self.platforms=PlatformConnections(self)
         self.pilots=PilotBridge(self)
         self.social=SocialStore(self)
+        self.models=ModelRegistry(self)
         self.agent_runtime=AgentRuntime(self)
         self.business=BusinessWorkflows(self)
         self.workflow=WorkflowContinuity(self)
         self.copilot=Copilot(self)
+        self.market_research=MarketResearch(self)
         self.form_drafts=FormDrafts(self.core)
         self.product_workspace=ProductWorkspace(self)
         self.a2ui=CostSurfaces(self.core, unit_economics, workspace=self.product_workspace)
@@ -233,7 +239,10 @@ class Commerce:
         self.validate(name,args)
         if client not in ['codex','hermes','harness','browser','local','test']:raise ValueError('invalid_client')
         with self.core.db() as c:c.execute('INSERT OR REPLACE INTO clients VALUES (?,?)',(client,now()))
+        if name=='commerce_model_list':return self.models.catalog()
+        if name=='commerce_model_open_setup':return self.models.open_setup()
         if name.startswith('commerce_copilot_'):return self.copilot.invoke(name,args)
+        if name.startswith('commerce_market_research_'):return self.market_research.invoke(name,args)
         if name.startswith('commerce_form_draft_'):return self.form_drafts.invoke(name,args)
         if name.startswith('commerce_workspace_'):return self.product_workspace.invoke(name,args)
         if name.startswith('commerce_a2ui_'):return a2ui_dispatch(self.a2ui,name,args)
@@ -257,8 +266,12 @@ class Commerce:
         if name=='commerce_organization_capture':return self.organization.capture(args.get('case_id'))
         if name=='commerce_runtime_status':return self.autonomy.status()
         if name=='commerce_runtime_configure':return self.autonomy.configure(**args)
+        if name in ('commerce_task_execute','commerce_task_retry') and self.market_research.owns(args['task_id']):raise ValueError('market_research_resume_required')
+        if name=='commerce_task_cancel' and self.market_research.owns(args['task_id']):
+            self.market_research.cancel(args['task_id'])
+            return self.core.invoke('commerce_task_get',args)
         if name=='commerce_task_execute':return self.autonomy.request(**args)
-        if name=='commerce_task_result':return self.autonomy.result(**args)
+        if name=='commerce_task_result':return self.market_research.result(**args) if self.market_research.owns(args['task_id']) else self.autonomy.result(**args)
         if name=='commerce_task_retry':return self.autonomy.retry(**args)
         if name.startswith('commerce_creative_'):return self.creative.invoke(name,args)
         if name.startswith('commerce_skills_'):return self.skills.invoke(name,args)

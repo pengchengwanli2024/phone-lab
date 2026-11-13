@@ -27,12 +27,14 @@ export interface BusinessContext { module: string; demo?: boolean; platform?: st
 export interface SharedCopilotController {
   view: () => string; open: (context?: BusinessContext, options?: { focus?: boolean }) => void;
   close: () => void; afterPaint: () => void; contextChanged: () => void; dispose: () => void;
+  openThread: (id: string) => Promise<void>;
 }
 interface SharedCopilotOptions {
   api: (tool: string, args?: object) => Promise<unknown>; getContext: () => BusinessContext;
   isActive: () => boolean; repaint: () => void; inline: boolean; compact: boolean;
   modal: (title: string, body: string, actions?: string) => void; closeModal: () => void;
   toast: (text: string) => void; onWorkspace: () => void;
+  onResearch?: (taskId: string) => void; onOpenCandidate?: (caseId: string) => void;
   errorText: (failure: Error | { code?: string; message?: string }) => string;
 }
 export interface Run {

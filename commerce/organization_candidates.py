@@ -10,6 +10,25 @@ import uuid
 from research import canonical, digest
 
 
+def save_research_candidate(core, *, task_id, product):
+    """Called inside the research publish transaction; no connection or fake SKU."""
+    if getattr(core._transaction, 'connection', None) is None:
+        raise ValueError('research_candidate_transaction_required')
+    key = digest(product['url'])[:32]
+    scope = dict(platform='ozon', market='RU', fulfillment=[], product_id=None,
+                 row_key='research:' + key, sku=None, inventory_type='candidate',
+                 origin='research_candidate_not_inventory', label=product['title'],
+                 source_ref=product['url'], research_task_id=task_id)
+    with core.db() as db:
+        row = db.execute("SELECT id,scope,currency,created FROM org_cases WHERE connection='' AND row_key=?", (scope['row_key'],)).fetchone()
+        if row:
+            # The same actual product keeps its identity across explicit studies.
+            return dict(id=row[0], scope=json.loads(row[1]), currency=row[2], created_at=row[3])
+        ident, at = uuid.uuid4().hex, datetime.now(timezone.utc).isoformat()
+        db.execute('INSERT INTO org_cases VALUES (?,?,?,?,?,?)', (ident, '', scope['row_key'], canonical(scope), None, at))
+        return dict(id=ident, scope=scope, currency=None, created_at=at)
+
+
 def create_candidate(database, context, *, key, name, source_ref, currency=None):
     if not isinstance(context, dict) or set(context) != {'case_id', 'scope_sha256', 'origin'} or context['origin'] != 'manual':
         raise ValueError('invalid_exchange_context')

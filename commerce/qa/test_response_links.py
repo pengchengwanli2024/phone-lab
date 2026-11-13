@@ -9,6 +9,15 @@ from response_links import with_workspace_link
 
 
 class ResponseLinks(unittest.TestCase):
+    def test_queued_research_keeps_same_task_link_without_a_candidate(self):
+        result={'schema':'commerce-market-research-v1','task_id':'same-task','status':'queued','candidates':[],
+                'workspace_url':'/workspace?tab=pilots&research_task_id=same-task'}
+        linked=with_workspace_link('commerce_market_research_get',result,51235)
+        url=linked['links']['workspace']['url']
+        self.assertEqual(url,'http://127.0.0.1:51235/workspace?tab=pilots&research_task_id=same-task')
+        self.assertIn(url,linked['text'])
+        self.assertNotIn('links',result)
+
     def test_bound_surface_links_to_same_product_without_credentials_or_protocol_mutation(self):
         result={'surface_id':'cost_'+'a'*32,'binding':{'case_id':'existing-case'},'text':'Current saved cost','messages':[{'version':'1.0'}],'fallback':'standard_cost_form'}
         decorated=with_workspace_link('commerce_a2ui_get',result,51234)

@@ -15,6 +15,7 @@ from protocols.a2a import agent_card, dispatch as a2a_dispatch
 from platform_connections.setup import page as platform_setup_page
 from workspace_page import page as product_workspace_page
 from react_page import page as react_workspace_page
+from model_providers.setup import page as model_setup_page
 
 
 def page():
@@ -54,10 +55,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.trusted():return self.answer(403,{'error':'untrusted_origin'})
         parsed=urlparse(self.path)
-        if parsed.path in ('/setup','/open','/platform-setup') and 'ticket' in parse_qs(parsed.query):
+        if parsed.path in ('/setup','/open','/platform-setup','/model-setup') and 'ticket' in parse_qs(parsed.query):
             ticket=parse_qs(parsed.query).get('ticket',[''])[0]
             if not self.service.live.consume_ticket(ticket):return self.answer(401,{'error':'setup_ticket_expired'})
-            return self.answer(303,'',headers={'Location':parsed.path if parsed.path in ('/setup','/platform-setup') else '/','Set-Cookie':'commerce_session='+self.secret+'; HttpOnly; SameSite=Strict; Path=/'})
+            return self.answer(303,'',headers={'Location':parsed.path if parsed.path in ('/setup','/platform-setup','/model-setup') else '/','Set-Cookie':'commerce_session='+self.secret+'; HttpOnly; SameSite=Strict; Path=/'})
         if parsed.path=='/login':
             value=parse_qs(parsed.query).get('token',[''])[0]
             if not hmac.compare_digest(value,self.secret):return self.answer(401,{'error':'authentication_required'})
@@ -71,13 +72,14 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path=='/product-workspace':return self.answer(200,product_workspace_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'"})
         if parsed.path=='/setup':return self.answer(200,setup_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"})
         if parsed.path=='/platform-setup':return self.answer(200,platform_setup_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"})
+        if parsed.path=='/model-setup':return self.answer(200,model_setup_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"})
         if parsed.path=='/v1/connections/status':return self.answer(200,self.service.live.status(samples=True))
         return self.answer(404,{'error':'not_found'})
     def do_POST(self):
         if not self.trusted():return self.answer(403,{'error':'untrusted_origin'})
         if not self.authenticated():return self.answer(401,{'error':'authentication_required'})
         route=urlparse(self.path).path
-        allowed={'/a2a','/v1/invoke','/v1/connections/save','/v1/connections/sync','/v1/connections/test-feishu','/v1/connections/ticket','/v1/platforms/configure'}
+        allowed={'/a2a','/v1/invoke','/v1/connections/save','/v1/connections/sync','/v1/connections/test-feishu','/v1/connections/ticket','/v1/platforms/configure','/v1/models/configure','/v1/models/test','/v1/models/enabled'}
         if route not in allowed:return self.answer(404,{'error':'not_found'})
         if self.headers.get('Content-Type','').split(';')[0]!='application/json':return self.answer(415,{'error':'json_required'})
         try:
@@ -90,6 +92,9 @@ class Handler(BaseHTTPRequestHandler):
             elif route=='/v1/connections/sync':result=self.service.live.start_sync()
             elif route=='/v1/connections/test-feishu':result=self.service.live.test_feishu()
             elif route=='/v1/platforms/configure':result=self.service.platforms.configure(data)
+            elif route=='/v1/models/configure':result=self.service.models.configure(data)
+            elif route=='/v1/models/test':result=self.service.models.test(**data)
+            elif route=='/v1/models/enabled':result=self.service.models.set_enabled(**data)
             else:result={'ticket':self.service.live.new_setup_ticket()}
             return self.answer(200,result)
         except (ValueError,KeyError,TypeError) as e:return self.answer(400,{'error':str(e)if isinstance(e,ValueError)else'invalid_request'})

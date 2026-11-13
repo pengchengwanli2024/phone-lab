@@ -61,10 +61,15 @@ def main():
         if not model:raise ValueError('agent_model_not_configured')
         runtime=resolve_runtime_provider(target_model=model)
         data=json.load(sys.stdin)
+        instructions=SYSTEM
+        if data.get('market_research_phase') in ('planning','analyzing'):
+            from market_research.model import instructions as research_instructions
+            instructions=research_instructions(data['market_research_phase'],data['market_research_schema'])
+            data=data['market_research_payload']
         client,resolved=resolve_provider_client(runtime['provider'],model=model,main_runtime=runtime,api_mode=runtime.get('api_mode'))
         if client is None:raise ValueError('agent_model_unavailable')
         response=client.chat.completions.create(model=resolved or model,timeout=65,max_tokens=2200,tools=[],messages=[
-            {'role':'system','content':SYSTEM}, {'role':'user','content':json.dumps(data,ensure_ascii=False)}])
+            {'role':'system','content':instructions}, {'role':'user','content':json.dumps(data,ensure_ascii=False)}])
         text=response.choices[0].message.content.strip()
         if text.startswith('```') and text.endswith('```'):text=text.split('\n',1)[1].rsplit('```',1)[0].strip()
         result={'decision':json.loads(text),'provider':runtime.get('provider'),'model':getattr(response,'model',None) or resolved or model}

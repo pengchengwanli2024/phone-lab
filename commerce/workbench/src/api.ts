@@ -5,6 +5,8 @@ export function api<T>(tool: string, args: object = {}): Promise<T> {
   return transport(tool, args) as Promise<T>;
 }
 const errors: Record<string, string> = {
+  market_research_revision_conflict: '研究任务已有新版本，请刷新核对后再继续。',
+  market_research_not_found: '找不到这条研究任务，请核对任务入口。',
   agent_evidence_reference_required: '模型答复缺少来源引用，未采纳本轮结果；核对资料后可明确发送新问题。',
   authentication_required: '登录连接已过期，请从本机工作台入口重新打开。',
   unknown_tool: '当前后台尚未加载此功能，请更新服务后重试。',

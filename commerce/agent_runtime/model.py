@@ -10,6 +10,10 @@ class Cancelled(Exception):pass
 
 
 def invoke(payload, cancelled, route=None):
+    if route and route.get('provider')=='compatible':
+        from model_providers import inference
+        try:return inference.invoke(payload,cancelled,route)
+        except inference.Cancelled:raise Cancelled() from None
     if route and route.get('provider')=='codex':
         from . import codex_provider
         try:return codex_provider.invoke(payload,cancelled,route)

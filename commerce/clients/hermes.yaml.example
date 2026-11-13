@@ -1,0 +1,9 @@
+# Merge into an independent project profile; preserve existing models/channels.
+mcp_servers:
+  commerce:
+    command: python3
+    args:
+      - <PROJECT_ROOT>/commerce/mcp_server.py
+      - hermes
+    enabled: true
+    connect_timeout: 20

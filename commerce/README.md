@@ -63,3 +63,11 @@ node --test commerce/qa/intel_search_unit.mjs
 设计与业务范围见 [体验合同](../docs/PLATFORM_EXPERIENCE.md)、[需求主稿](../docs/PLATFORM_REQUIREMENTS.md)。第三方许可与固定来源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。运行数据、实际截图、私有回执及设备状态不随源码发布。
 
 合成后端回归可运行 `python3 -m unittest discover -s commerce/qa -p 'test_*.py'`。SeaLeap 原始仓库是可选本机依赖，不随本仓库分发；未提供快照时依赖原文件的测试明确跳过，目录存在但完整性不符时失败。安装及版本边界见 [sealeap/README.md](sealeap/README.md)。真实模型、媒体工具及宿主条件另行检查，跳过不表示通过。
+
+## 会话模型与市场研究增量
+
+智能助手支持选择项目默认或已配置的模型；“管理模型”打开本机私有页面，分别保存、合成推理测试和启用 llama.cpp、vLLM 或自定义兼容服务。配置服务地址和模型ID前，须自行启动对应模型服务；本模块不下载权重或管理其开机生命周期。密钥仅在私有配置页输入，模型选择及每轮请求的模型/配置版本保存在项目数据库；停用、非法输出或未知结果不会触发隐式换模型。
+
+明确发起俄罗斯市场研究后，可在原会话补充范围、查看公开来源和保存的候选、停止或明确恢复原任务。候选不是库存或采购；来源陈述、研究结论与经营事实分别保留。模型连接通过不代表研究质量或真实平台操作已验收。
+
+模型运行入口见 [助手说明](ASSISTANT.md)，目标和剩余范围见 [项目对齐](../docs/PROJECT_ALIGNMENT.md)。模型栏后续布局调整、三宿主自动选择、ComfyUI、可视化工作流及独立移动管理端不属于本次冻结版本。

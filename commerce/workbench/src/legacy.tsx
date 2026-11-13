@@ -3,7 +3,7 @@ import { api } from './api';
 import type { BusinessContext, Theme } from './types';
 import { Button } from './ui';
 declare const __PRODUCT_HTML__: string;
-export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, navigate, onCopilot, chatWidth, onChatWidth, assistantToggle = 0, onAssistantState }: { tab: string; demo: boolean; theme: Theme; caseId: string; active?: boolean; requestedTab?: string; navigate: (tab: string, caseId?: string) => void; onCopilot?: (context: BusinessContext) => void; chatWidth?: number; onChatWidth?: (width: number) => void; assistantToggle?: number; onAssistantState?: (visible: boolean) => void }) {
+export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, navigate, onCopilot, chatWidth, onChatWidth, assistantToggle = 0, onAssistantState, onResearch }: { tab: string; demo: boolean; theme: Theme; caseId: string; active?: boolean; requestedTab?: string; navigate: (tab: string, caseId?: string) => void; onCopilot?: (context: BusinessContext) => void; chatWidth?: number; onChatWidth?: (width: number) => void; assistantToggle?: number; onAssistantState?: (visible: boolean) => void; onResearch?: (id: string) => void }) {
   const frame = useRef<HTMLIFrameElement>(null), nonce = useRef(crypto.randomUUID()), [ready, setReady] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState('');
   const [refreshEpoch, setRefreshEpoch] = useState(0);
@@ -13,6 +13,7 @@ export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, 
   const widthCallback=useRef(onChatWidth);widthCallback.current=onChatWidth;
   const assistantCallback=useRef(onAssistantState);assistantCallback.current=onAssistantState;
   const lastAssistantToggle=useRef(assistantToggle);
+  const researchCallback=useRef(onResearch);researchCallback.current=onResearch;
   const product = tab === 'workspace';
   // Product selection must not rebuild an unrelated store/form document.
   const frameCaseId = product ? caseId : '';
@@ -31,6 +32,7 @@ export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, 
     const receive = async (event: MessageEvent) => {
       const m = event.data;
       if (event.source !== frame.current?.contentWindow || m?.nonce !== nonce.current) return;
+      if(product&&m.type==='commerce:workspace-research'&&typeof m.task_id==='string'&&/^[a-zA-Z0-9_-]{1,100}$/.test(m.task_id)){researchCallback.current?.(m.task_id);return;}
       if(product&&m.type==='commerce:workspace-assistant-state'){if(typeof m.visible==='boolean')assistantCallback.current?.(m.visible);return;}
       if(product&&m.type==='commerce:workspace-chat-width'){if(typeof m.width==='number'&&Number.isFinite(m.width)&&m.width>=320&&m.width<=960)widthCallback.current?.(m.width);return;}
       if (m.type === 'commerce:legacy-ready' || m.type === 'commerce:workspace-ready') { setReady(true); return; }

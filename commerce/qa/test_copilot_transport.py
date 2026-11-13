@@ -189,7 +189,7 @@ class CopilotTransport(unittest.TestCase):
     def test_04_three_stdio_clients_share_threads_runs_and_annotations(self):
         clients = []
         names = ['codex', 'hermes', 'harness']
-        expected = {'commerce_copilot_' + suffix for suffix in ['open', 'list', 'get', 'send', 'context', 'cancel', 'apply']}
+        expected = {'commerce_copilot_' + suffix for suffix in ['open', 'list', 'get', 'send', 'context', 'cancel', 'apply', 'model']}
         try:
             for name in names:
                 process = subprocess.Popen([sys.executable, str(ROOT / 'mcp_server.py'), name], env=self.env,
@@ -201,6 +201,10 @@ class CopilotTransport(unittest.TestCase):
                 self.assertEqual(hello['serverInfo']['name'], 'commerce-backend')
                 tools = {t['name']: t for t in self.rpc(process, 'tools/list')['tools'] if t['name'].startswith('commerce_copilot_')}
                 self.assertEqual(set(tools), expected)
+                model_schema = tools['commerce_copilot_model']['inputSchema']
+                self.assertEqual(set(model_schema['required']), {'thread_id', 'model_id', 'expected_revision'})
+                self.assertEqual(set(model_schema['properties']), {'thread_id', 'model_id', 'expected_revision'})
+                self.assertFalse(model_schema['additionalProperties'])
                 for tool_name, tool in tools.items():
                     annotation = tool['annotations']
                     self.assertEqual(annotation['readOnlyHint'], tool_name in {'commerce_copilot_list', 'commerce_copilot_get'})

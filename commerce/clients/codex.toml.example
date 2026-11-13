@@ -1,0 +1,5 @@
+# Merge this block into the client's existing configuration.
+# Replace <PROJECT_ROOT> locally. Do not commit a real home-directory path.
+[mcp_servers.commerce]
+command = "python3"
+args = ["<PROJECT_ROOT>/commerce/mcp_server.py", "codex"]

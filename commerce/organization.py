@@ -41,8 +41,10 @@ class Organization:
 
     def cases(self):
         connection=self.service.live.config().get('connection_id','')
-        with self.core.db()as db:rows=db.execute('SELECT id,scope,currency,created FROM org_cases WHERE connection=? ORDER BY created,id',(connection,)).fetchall()
-        return [dict(id=r[0],scope=json.loads(r[1]),currency=r[2],created_at=r[3])for r in rows]
+        with self.core.db()as db:rows=db.execute("SELECT id,scope,currency,created,connection FROM org_cases WHERE connection=? OR connection='' ORDER BY created,id",(connection,)).fetchall()
+        return [dict(id=r[0],scope=json.loads(r[1]),currency=r[2],created_at=r[3])for r in rows
+                if r[4] == connection or (json.loads(r[1]).get('origin') == 'research_candidate_not_inventory'
+                                         and json.loads(r[1]).get('research_task_id'))]
 
     def case(self, case_id):
         case=next((c for c in self.cases()if c['id']==case_id),None)
@@ -176,7 +178,13 @@ class Organization:
             elif sid in ('S1','S5'):
                 item=stored('research')
                 if item:
-                    research=item['payload']['record'];checked=research_check(research);same=research.get('platform')==scope.get('platform')and research.get('market')==scope.get('market')and item['payload'].get('sku')==scope.get('sku')and item['payload'].get('row_key')==scope.get('row_key')
+                    research=item['payload']['record'];checked=research_check(research)
+                    # A public-market candidate has a target marketplace, while its
+                    # source is a generic research record rather than a listing.
+                    public_research=(research.get('platform')=='research' and scope.get('origin')=='research_candidate_not_inventory'
+                                     and bool(scope.get('research_task_id')) and scope.get('inventory_type')=='candidate'
+                                     and scope.get('product_id') is None)
+                    same=(research.get('platform')==scope.get('platform') or public_research) and research.get('market')==scope.get('market') and item['payload'].get('sku')==scope.get('sku') and item['payload'].get('row_key')==scope.get('row_key')
                     add('research','PASS'if not checked['issues']and same else'HOLD','原文/中文/来源完整性通过，尚非独立事实核实'if not checked['issues']and same else'采集缺项、译文待校对或平台市场不匹配','补齐采集模板、中文校对、来源并核对平台和市场',[dict(ref='artifact:'+item['id'],sha256=item['sha256'])])
                     if not same:add('scope','FAIL','调研平台或市场与工作项不一致','按当前工作项重新采集')
             elif sid=='S3':

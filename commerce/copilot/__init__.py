@@ -21,7 +21,8 @@ def definitions(schema,string):
       ('commerce_copilot_open','打开共享业务对话；不会请求模型',schema({'title':string,'context':CONTEXT_SCHEMA,'idempotency_key':string},['context','idempotency_key'])),
       ('commerce_copilot_list','读取最近共享业务对话；不包含宿主聊天记录',schema()),
       ('commerce_copilot_get','读取业务对话及同一模型运行结果；不会重发模型',schema({**tid,'before':string},['thread_id'])),
-      ('commerce_copilot_send','明确发送业务问题到现有有界模型队列',schema({**tid,'message':{'type':'string','minLength':1,'maxLength':2000},'context_sha256':string,'idempotency_key':string},['thread_id','message','context_sha256','idempotency_key'])),
+      ('commerce_copilot_model','为当前会话选择已启用模型；活动请求期间拒绝切换，不触发推理',schema({**tid,'model_id':string,'expected_revision':string},['thread_id','model_id','expected_revision'])),
+      ('commerce_copilot_send','明确发送业务问题到现有有界模型队列',schema({**tid,'message':{'type':'string','minLength':1,'maxLength':2000},'context_sha256':string,'idempotency_key':string,'expected_model_sha256':{'type':'string','pattern':'^[a-f0-9]{64}$'}},['thread_id','message','context_sha256','idempotency_key'])),
       ('commerce_copilot_context','显式更新对话业务范围；旧范围建议失效',schema({**tid,'context':CONTEXT_SCHEMA,'expected_context_sha256':string},['thread_id','context','expected_context_sha256'])),
       ('commerce_copilot_cancel','取消本对话的一次排队或运行请求',schema({**tid,'run_id':string},['thread_id','run_id'])),
       ('commerce_copilot_apply','按范围及结果哈希审阅单条本地建议；不执行店铺写操作',schema(review,list(review))),
@@ -39,7 +40,7 @@ class Copilot:
 
     def invoke(self,name,args):
         from inspect import signature
-        methods={'open':self.open,'list':self.list,'get':self.get,'send':self.send,'context':self.context,'cancel':self.cancel,'apply':self.apply}
+        methods={'open':self.open,'list':self.list,'get':self.get,'send':self.send,'context':self.context,'cancel':self.cancel,'apply':self.apply,'model':self.model}
         fn=methods.get(name.removeprefix('commerce_copilot_')) if name.startswith('commerce_copilot_') else None
         if not fn:raise ValueError('unknown_tool')
         if not isinstance(args,dict) or set(args)-set(signature(fn).parameters):raise ValueError('copilot_invalid_arguments')
@@ -60,9 +61,13 @@ class Copilot:
     def get(self,thread_id,before=None):
         return self._get(thread_id,before=before)
 
+    def model(self,thread_id,model_id,expected_revision):
+        return self.service.models.select(thread_id,model_id,expected_revision)
+
     def _get(self,thread_id,before=None,include_turn=None):
         with self.core.db() as db:
             thread=self._thread(db,thread_id)
+            thread['model_selection']=self.service.models.selection(db,thread_id)
             boundary='';values=[thread_id]
             if before is not None or include_turn is not None:
                 cursor=before if before is not None else include_turn
@@ -78,6 +83,7 @@ class Copilot:
             thread['next_cursor']=rows[0][0] if thread['has_more'] else None
             latest=db.execute('SELECT run_id FROM copilot_turns WHERE thread_id=? ORDER BY rowid DESC LIMIT 1',(thread_id,)).fetchone()
             thread['latest_run']=self.runtime._get(latest[0],_db=db) if latest else None
+            thread['research_job']=self.service.market_research.for_run(latest[0], db) if latest else None
         from .methods import method_for
         thread['method']=method_for(thread['context'])
         thread['memory']={'model_history_max_turns':6,'model_history_max_bytes':32000,'full_history':'persistent_paginated'}
@@ -102,10 +108,11 @@ class Copilot:
             else:db.execute('INSERT INTO copilot_threads VALUES(?,?,?,?,?,?,?,?,?,NULL)',(ident,idempotency_key,request,title or '业务助手',canonical(context),sha(context),1,at,at))
         return self.get(ident)
 
-    def send(self,thread_id,message,context_sha256,idempotency_key):
+    def send(self,thread_id,message,context_sha256,idempotency_key,expected_model_sha256=None):
         self.key(idempotency_key)
         if not isinstance(message,str) or not message.strip() or len(message)>2000:raise ValueError('copilot_invalid_message')
-        request=canonical({'message':message.strip(),'context_sha256':context_sha256})
+        if expected_model_sha256 is not None and (not isinstance(expected_model_sha256,str) or not re.fullmatch('[a-f0-9]{64}',expected_model_sha256)):raise ValueError('copilot_model_changed')
+        request=canonical({'message':message.strip(),'context_sha256':context_sha256,**({'expected_model_sha256':expected_model_sha256} if expected_model_sha256 is not None else {})})
         with LOCK,self.core.db() as db:
             db.execute('BEGIN IMMEDIATE');thread=self._thread(db,thread_id)
             if idempotency_key.startswith('a2a:'):
@@ -127,12 +134,15 @@ class Copilot:
                     result=json.loads(result) if result else {}
                     history.append({'question':question[:2000],'answer':str(result.get('answer',''))[:5000],'run_id':run_id})
                 while len(canonical(history).encode())>32000:history.pop(0)
-                run=self.runtime._create(question=message.strip(),role='conductor',topic=topic,parameters=parameters,parent_id=parent,idempotency_key='copilot:'+ident,_db=db,_conversation=history)
+                selected_model=self.service.models.snapshot(db,thread_id=thread_id,expected_sha256=expected_model_sha256)
+                run=self.runtime._create(question=message.strip(),role='conductor',topic=topic,parameters=parameters,parent_id=parent,idempotency_key='copilot:'+ident,_db=db,_conversation=history,_model_route=selected_model)
                 db.execute('INSERT INTO copilot_turns VALUES(?,?,?,?,?,?,?,?,?)',(ident,thread_id,idempotency_key,request,message.strip(),run['id'],context_sha256,thread['revision'],at))
+                self.service.market_research.bind_send(db,run['id'],thread_id,message.strip(),thread['context'])
                 db.execute('UPDATE copilot_threads SET updated=? WHERE id=?',(at,thread_id))
         return self._get(thread_id,include_turn=old[1] if old else ident)
 
     def _idle(self,db,thread_id):
+        if self.service.market_research.active_for_thread(db,thread_id):raise ValueError('copilot_active_run')
         if db.execute('SELECT approving FROM copilot_threads WHERE id=?',(thread_id,)).fetchone()[0]:raise ValueError('copilot_active_review_retry_required')
         if db.execute("SELECT 1 FROM copilot_turns t JOIN agent_runs r ON r.id=t.run_id WHERE t.thread_id=? AND r.status IN ('queued','running','cancel_requested')",(thread_id,)).fetchone():raise ValueError('copilot_active_run')
 

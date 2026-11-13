@@ -19,6 +19,21 @@ class Dialogue(unittest.TestCase):
         return self.chat.invoke('commerce_copilot_send',{**dict(thread_id=self.thread['id'],message='核对经营范围',context_sha256=self.thread['context_sha256'],idempotency_key='send'),**overrides})
     def complete(self,proposals=None):
         with patch('agent_runtime.model.invoke',side_effect=[inspect(),answer(proposals=proposals)]):self.app.agent_runtime.run_once()
+    def test_stale_model_binding_rejects_new_send_without_creating_a_run(self):
+        with self.assertRaisesRegex(ValueError,'copilot_model_changed'):
+            self.send(expected_model_sha256='0'*64)
+        self.assertEqual(self.chat.get(self.thread['id'])['total_turns'],0)
+        with self.app.core.db() as db:self.assertEqual(db.execute('SELECT count(*) FROM agent_runs').fetchone()[0],0)
+
+    def test_idempotent_send_returns_original_run_before_current_model_check(self):
+        binding=self.chat.get(self.thread['id'])['model_selection']['sha256']
+        first=self.send(expected_model_sha256=binding)
+        # An independent window can publish a new model binding after enqueue.
+        with self.app.core.db() as db:
+            db.execute('INSERT OR REPLACE INTO copilot_models VALUES (?,?,?)',(self.thread['id'],'project-default',1))
+        retried=self.send(expected_model_sha256=binding)
+        self.assertEqual(retried['latest_run']['id'],first['latest_run']['id'])
+        self.assertEqual(retried['total_turns'],1)
     def test_concurrent_idempotency_persistence_and_no_implicit_calls(self):
         with patch('agent_runtime.model.invoke') as model:
             with ThreadPoolExecutor(max_workers=4) as pool:values=list(pool.map(lambda _:self.send(),range(4)))
