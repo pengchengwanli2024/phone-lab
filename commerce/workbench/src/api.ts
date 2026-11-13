@@ -5,6 +5,9 @@ export function api<T>(tool: string, args: object = {}): Promise<T> {
   return transport(tool, args) as Promise<T>;
 }
 const errors: Record<string, string> = {
+  invalid_model_catalog: '模型列表未能读取，请刷新或检查连接。',
+  agent_model_setup_required: '模型运行入口尚未配置，请在能力库的模型管理中完成配置。',
+  agent_interrupted_no_automatic_resubmit: '回复已中断，未自动重发。核对原记录后可重新编辑问题。',
   market_research_revision_conflict: '研究任务已有新版本，请刷新核对后再继续。',
   market_research_not_found: '找不到这条研究任务，请核对任务入口。',
   agent_evidence_reference_required: '模型答复缺少来源引用，未采纳本轮结果；核对资料后可明确发送新问题。',

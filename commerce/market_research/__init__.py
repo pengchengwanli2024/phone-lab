@@ -3,10 +3,10 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-import re
 import time
 import uuid
 from research import canonical, digest, template
+from research_intent import research_request, requests_research
 from . import collector, model
 
 ACTIVE = ('queued', 'running', 'cancelling')
@@ -18,15 +18,6 @@ class _SupersededAttempt(Exception):
 
 
 def stamp(): return datetime.now(timezone.utc).isoformat()
-
-
-def requests_research(message, context):
-    if not isinstance(message, str): return False
-    if re.search(r'如何|怎么|介绍|功能[？?]|是否支持', message): return False
-    ru = context.get('market') == 'RU' or bool(re.search(r'俄罗斯|俄区|俄语|\bRU\b', message, re.I))
-    subject = bool(re.search(r'选品|市场调研|调研|研究.*市场', message))
-    execute = bool(re.search(r'请|帮我|开始|采集|收集|保存.*候选|筛选|我要|我想', message))
-    return ru and subject and execute
 
 
 def definitions(schema, string):
@@ -120,7 +111,20 @@ class MarketResearch:
             prior.update(run_id=run_id, status='queued', phase='planning', questions=[], error=None, _plan=None)
             db.execute('INSERT INTO market_research_runs VALUES (?,?)', (run_id, prior['task_id']))
             self._save(db, prior); return
-        if not requests_research(question, context): return
+        # Only the immediately previous human turn may supply missing intent.
+        # Match both revision and hash so navigating away/back cannot revive it.
+        row = db.execute('''SELECT p.question,r.status,r.result,p.context_sha,p.revision,c.context_sha,c.revision
+            FROM copilot_turns p JOIN agent_runs r ON r.id=p.run_id
+            JOIN copilot_turns c ON c.run_id=?
+            WHERE p.thread_id=? AND p.rowid<c.rowid ORDER BY p.rowid DESC LIMIT 1''', (run_id, thread_id)).fetchone()
+        previous = None
+        if row and row[3:5] == row[5:7]:
+            previous = {'question': row[0], 'status': row[1],
+                        'questions': json.loads(row[2] or '{}').get('questions', [])}
+        has_research = bool(db.execute('''SELECT 1 FROM market_research_runs m
+            JOIN copilot_turns t ON t.run_id=m.run_id WHERE t.thread_id=? LIMIT 1''', (thread_id,)).fetchone())
+        question = research_request(question, context, previous=previous, has_research=has_research)
+        if question is None: return
         task_id = str(uuid.uuid4()); at = stamp()
         task_payload = {'kind': 'analysis', 'input': {'operation': 'market_research', 'title': question[:100],
                         'query': question, 'market': 'RU', 'thread_id': thread_id, 'demo': False}}

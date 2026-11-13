@@ -44,8 +44,9 @@ test('another product cannot supply the assistant scope', () => {
 });
 test('seven destinations retain every old route exactly once, including cost deep links', () => {
   const routes = navigation.flatMap(destination => destination.items);
-  assert.equal(navigation.length, 7); assert.equal(routes.length, 21); assert.equal(new Set(routes).size, 21);
+  assert.equal(navigation.length, 7); assert.equal(routes.length, 22); assert.equal(new Set(routes).size, 22);
   assert.equal(destinationFor('support').id, 'orders'); assert.equal(destinationFor('live').id, 'orders');
+  assert.equal(destinationFor('models').id, 'skills'); assert.equal(businessModule('models'), 'connections');
   assert.equal(destinationFor('connections').id, 'skills'); assert.equal(destinationFor('old:operations').id, 'workspace');
   assert.equal(destinationFor('restock').id, 'orders');
   assert.equal(businessModule('restock'), 'operations'); assert.equal(businessModule('workspace'), 'organization');

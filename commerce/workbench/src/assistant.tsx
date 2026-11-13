@@ -6,17 +6,17 @@ import { productScope } from './copilot-scope';
 import type { BusinessContext, Product, SharedCopilotController } from './types';
 import { Button, Dialog, Empty, ErrorNotice } from './ui';
 
-interface Props { context: BusinessContext; visible?: boolean; close: () => void; onWorkspace?: () => void; requestedThreadId?: string; onResearch?: (id: string) => void; onOpenCandidate?: (id: string) => void; }
+interface Props { context: BusinessContext; visible?: boolean; close: () => void; onWorkspace?: () => void; requestedThreadId?: string; onResearch?: (id: string) => void; onOpenCandidate?: (id: string) => void; onModels?: () => void; }
 interface Review { title: string; body: string; actions: string; }
 
 /** The exact product Copilot factory, mounted once across module navigation. */
-export function Assistant({ context, visible = true, close: _close, onWorkspace, requestedThreadId, onResearch, onOpenCandidate }: Props) {
+export function Assistant({ context, visible = true, close: _close, onWorkspace, requestedThreadId, onResearch, onOpenCandidate, onModels }: Props) {
   const host = useRef<HTMLDivElement>(null), controller = useRef<SharedCopilotController | null>(null);
-  const current = useRef(context), active = useRef(false), workspace = useRef(onWorkspace), research = useRef(onResearch), candidate = useRef(onOpenCandidate), generation = useRef(0);
+  const current = useRef(context), active = useRef(false), workspace = useRef(onWorkspace), research = useRef(onResearch), candidate = useRef(onOpenCandidate), models = useRef(onModels), generation = useRef(0);
   const shown = useRef(visible), scopeReady = useRef(false);
   const [ready, setReady] = useState(false), [error, setError] = useState(''), [retry, setRetry] = useState(0);
   const [review, setReview] = useState<Review | null>(null), [announcement, setAnnouncement] = useState('');
-  workspace.current = onWorkspace; research.current = onResearch; candidate.current = onOpenCandidate;
+  workspace.current = onWorkspace; research.current = onResearch; candidate.current = onOpenCandidate; models.current = onModels;
   shown.current = visible;
   const signature = JSON.stringify(context);
   active.current = visible && ready;
@@ -32,7 +32,7 @@ export function Assistant({ context, visible = true, close: _close, onWorkspace,
       api: (tool, args) => api(tool, args), inline: true, compact: true,
       getContext: () => current.current, isActive: () => active.current, repaint,
       modal: (title, body, actions = '') => setReview({ title, body, actions }), closeModal: () => setReview(null),
-      toast: setAnnouncement, onWorkspace: () => workspace.current?.(), onResearch: id => research.current?.(id), onOpenCandidate: id => candidate.current?.(id),
+      toast: setAnnouncement, onWorkspace: () => workspace.current?.(), onModels: () => models.current?.(), onResearch: id => research.current?.(id), onOpenCandidate: id => candidate.current?.(id),
       errorText: failure => errorText(failure instanceof Error ? failure : Error(failure.message || failure.code || 'request_failed')),
     });
     return () => { alive = false; controller.current?.dispose(); controller.current = null; };

@@ -5,6 +5,7 @@ import { Overview } from './overview';
 import { CostPage } from './cost-page';
 import { Tasks } from './tasks';
 import { Candidates } from './candidates';
+import { Models } from './models';
 import { Assistant } from './assistant';
 import { Legacy } from './legacy';
 import { SurfaceProvider } from './surface-provider';
@@ -14,7 +15,7 @@ import { navigation, labels, destinationFor, businessModule } from './navigation
 import { initialDataMode, ThemeControl, WorkspaceSettings, UserPanel } from './workspace-controls';
 import './style.css';
 
-const migrated = ['overview', 'workspace', 'operations', 'tasks', 'pilots'];
+const migrated = ['overview', 'workspace', 'operations', 'tasks', 'pilots', 'models'];
 const params = new URL(location.href).searchParams;
 const initial = params.get('tab') || 'overview';
 function Workspace() {
@@ -125,7 +126,7 @@ function Workspace() {
     </header>
     <div ref={workArea} className={`r-work-area ${assistant&&activeTab!=='workspace'?'with-assistant':''} ${compact?'is-compact':''}`} data-mobile-view={mobileView} style={{'--r-chat-width':`${chatWidth}px`} as CSSProperties}>
       {activeTab!=='workspace'&&compact&&<div className="r-mode-switcher" role="group" aria-label="工作视图"><Button aria-pressed={mobileView==='chat'} onClick={()=>{setAssistant(true);setMobileView('chat');}}>AI 对话</Button><Button aria-pressed={mobileView==='page'} onClick={()=>setMobileView('page')}>{destination.label}</Button></div>}
-      <Assistant context={context} visible={assistant&&activeTab!=='workspace'&&(!compact||mobileView==='chat')} close={()=>{setAssistant(false);setMobileView('page');}} onWorkspace={()=>navigate('workspace',productCaseId||undefined)} requestedThreadId={requestedThreadId} onResearch={openResearch} onOpenCandidate={id=>navigate('workspace',id)}/>
+      <Assistant context={context} visible={assistant&&activeTab!=='workspace'&&(!compact||mobileView==='chat')} close={()=>{setAssistant(false);setMobileView('page');}} onWorkspace={()=>navigate('workspace',productCaseId||undefined)} requestedThreadId={requestedThreadId} onResearch={openResearch} onModels={()=>navigate('models')} onOpenCandidate={id=>navigate('workspace',id)}/>
       {assistant&&activeTab!=='workspace'&&<div className="r-chat-splitter" role="separator" tabIndex={compact?-1:0} aria-label="调整对话区宽度" aria-orientation="vertical" aria-valuemin={320} aria-valuemax={chatMax} aria-valuenow={chatWidth} aria-controls="commerce-copilot main-workspace" onPointerDown={event=>{if(event.button!==0)return;event.preventDefault();drag.current={x:event.clientX,width:chatWidth};event.currentTarget.setPointerCapture(event.pointerId);}} onPointerMove={event=>{if(event.currentTarget.hasPointerCapture(event.pointerId))resizeChat(drag.current.width+event.clientX-drag.current.x);}} onPointerUp={event=>{if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}} onKeyDown={event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();resizeChat(event.key==='Home'?320:event.key==='End'?chatMax:chatWidth+(event.key==='ArrowRight'?16:-16));}}/>}
       <main className="r-main" id="main-workspace" tabIndex={-1} ref={headingRef}>
         {destination.items.length>1&&activeTab!=='workspace'&&<nav className="r-section-tabs" aria-label={`${destination.label}页面`}>{destination.items.map(id=><Button key={id} aria-current={activeTab===id?'page':undefined} onClick={()=>navigate(id,id==='operations'?'':undefined)}>{labels[id]||id}</Button>)}</nav>}
@@ -135,6 +136,7 @@ function Workspace() {
         <div hidden={tab!=='workspace'} className="r-approved-product">{visited.has('workspace')&&<Legacy tab="workspace" chatWidth={chatWidth} onChatWidth={value=>resizeChat(value)} assistantToggle={assistantToggle} onResearch={openResearch} onAssistantState={setProductAssistant} requestedTab={productTab} active={tab==='workspace'} demo={demo} theme={theme} caseId={productCaseId} navigate={navigate}/>}</div>
         <div hidden={tab!=='tasks'}><Tasks navigate={navigate} onResearch={openResearch}/></div>
         {visited.has('pilots')&&<div hidden={tab!=='pilots'}><Candidates active={tab==='pilots'} requestedTask={researchTaskId} closeTask={closeResearch} openTask={openResearch} openThread={id=>void openResearchThread(id)} navigate={navigate}/></div>}
+        {visited.has('models')&&<div hidden={tab!=='models'}><Models active={tab==='models'}/></div>}
         {legacyStarted&&<div hidden={!legacy} className="r-legacy-container"><Legacy tab={legacyTab} onCopilot={openBusinessCopilot} demo={demo} theme={theme} caseId={caseId} navigate={navigate}/></div>}
       </main>
     </div>

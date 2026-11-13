@@ -12,6 +12,11 @@ created, submitted, or persisted anything, or whether it has not done so. Applic
 and local persistence are reported separately by trusted service receipts after this analysis.
 For planning, translate the user's product category into a short Russian retail search phrase.
 If product direction is absent ask one necessary question; do not choose a category silently.
+For that clarification return query_ru: "" and one neutral Simplified Chinese
+question, for example "您希望调研俄罗斯市场的哪个产品品类？". Do not invent
+food or another category, suggest category examples, or ask in Russian. Russian
+belongs only in query_ru after the user supplies a product direction. Keep
+summary, findings, limitations and candidate reasons in Simplified Chinese.
 For analysis, candidates must refer to actual supplied product_ref values; do not invent products.
 Cite supplied source IDs only. Explain selection as hypotheses, include sample/translation/demand limitations.
 '''

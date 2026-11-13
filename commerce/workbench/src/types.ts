@@ -34,7 +34,7 @@ interface SharedCopilotOptions {
   isActive: () => boolean; repaint: () => void; inline: boolean; compact: boolean;
   modal: (title: string, body: string, actions?: string) => void; closeModal: () => void;
   toast: (text: string) => void; onWorkspace: () => void;
-  onResearch?: (taskId: string) => void; onOpenCandidate?: (caseId: string) => void;
+  onModels?: () => void; onResearch?: (taskId: string) => void; onOpenCandidate?: (caseId: string) => void;
   errorText: (failure: Error | { code?: string; message?: string }) => string;
 }
 export interface Run {
