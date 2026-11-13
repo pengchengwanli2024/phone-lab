@@ -5,6 +5,13 @@ export function api<T>(tool: string, args: object = {}): Promise<T> {
   return transport(tool, args) as Promise<T>;
 }
 const errors: Record<string, string> = {
+  attention_item_changed: '事项已处理或依据已变化，请刷新后核对。',
+  attention_source_unavailable: '事项来源暂未完整读到，请刷新核对，不会自动重发执行。',
+  host_plan_model_conflict: '原研究任务已固定执行模型。请沿用原模型；更换模型可新建会话。',
+  host_unavailable_use_workbench: '执行端暂不可用，原记录和输入已保留。请稍后刷新或选择固定模型。',
+  agent_host_unavailable_use_workbench: '执行端暂不可用，原记录和输入已保留。请稍后刷新或选择固定模型。',
+  agent_provider_outcome_unknown: '结果尚未确认，已暂停自动重发。请先核对原任务，再明确恢复。',
+  copilot_model_changed: '模型配置已变化，请刷新模型列表后核对。输入已保留。',
   invalid_model_catalog: '模型列表未能读取，请刷新或检查连接。',
   agent_model_setup_required: '模型运行入口尚未配置，请在能力库的模型管理中完成配置。',
   agent_interrupted_no_automatic_resubmit: '回复已中断，未自动重发。核对原记录后可重新编辑问题。',

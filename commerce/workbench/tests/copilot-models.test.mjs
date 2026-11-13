@@ -6,22 +6,24 @@ import { randomUUID } from 'node:crypto';
 
 const source = await readFile('../web/copilot-ui.js', 'utf8');
 const flush = () => new Promise(setImmediate);
-function setup({ compact = true, selection, catalog, override, query, onModels } = {}) {
+function setup({ compact = true, selection, catalog, defaultId, uncreated = false, override, query, onModels } = {}) {
   const events = new Map(), calls = [];
   const listeners = { addEventListener(name, fn) { if (!events.has(name)) events.set(name, []); events.get(name).push(fn); }, removeEventListener() {} };
   const escape = v => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
   const ui = { escape, icon: () => '', badge: escape, alert: escape, field: (a, b) => a + b, select: () => '', button: ({ label, attrs }) => '<button ' + Object.entries(attrs).filter(([, v]) => v !== false && v != null).map(([k, v]) => k + '="' + escape(v) + '"').join(' ') + '>' + escape(label) + '</button>' };
   const document = { ...listeners, querySelector: query || (() => null), getElementById: () => null, activeElement: null };
   const window = { ...listeners, CommerceUI: ui, innerWidth: 1440, dispatchEvent() {} };
-  const context = { module: 'organization', demo: true, entity: { kind: 'case', id: 'model-qa' } };
+  const context = uncreated ? { module: 'overview', demo: true } : { module: 'organization', demo: true, entity: { kind: 'case', id: 'model-qa' } };
   const state = { catalog: catalog ?? [{ id: 'project-default', label: '项目默认', model: 'default-model', selectable: true }], thread: { id: 'thread', context, context_sha256: 'scope', turns: [], model_selection: selection ?? { model_id: 'project-default', available: true, sha256: 'a'.repeat(64) } } };
-  vm.runInNewContext(source, { window, document, crypto: { randomUUID }, setInterval() {}, clearInterval() {}, CustomEvent: class {}, localStorage: { getItem: () => null, setItem() {} } });
+  state.defaultId = defaultId;
+  const draftValues = new Map();
+  vm.runInNewContext(source, { window, document, crypto: { randomUUID }, setInterval() {}, clearInterval() {}, CustomEvent: class {}, localStorage: { getItem: key => key.startsWith('commerce-copilot-draft-v1:') ? draftValues.get(key) ?? null : null, setItem: (key, value) => draftValues.set(key, value) } });
   const controller = window.CommerceCopilot({ api: async (name, args) => {
     calls.push([name, args]);
     if (override) { const value = await override(name, args); if (value !== undefined) return value; }
-    if (name === 'commerce_model_list') return { models: state.catalog };
-    if (name === 'commerce_copilot_list') return { threads: [state.thread] };
-    if (name === 'commerce_copilot_get' || name === 'commerce_copilot_send') return structuredClone(state.thread);
+    if (name === 'commerce_model_list') return { models: state.catalog, ...(state.defaultId === undefined ? {} : { default_model_id: state.defaultId }) };
+    if (name === 'commerce_copilot_list') return { threads: uncreated ? [] : [state.thread] };
+    if (name === 'commerce_copilot_open' || name === 'commerce_copilot_get' || name === 'commerce_copilot_send') return structuredClone(state.thread);
     throw Error('unexpected API: ' + name);
   }, getContext: () => context, inline: true, compact, scopeLabel: () => '合成模型验收', onModels, repaint() {}, toast() {} });
   const emit = (name, event) => { for (const fn of events.get(name) || []) fn(event); };
@@ -32,6 +34,57 @@ function setup({ compact = true, selection, catalog, override, query, onModels }
   controller.open(undefined, { focus: false });
   return { ...state, state, controller, calls, click, input, enter, emit, sendButton };
 }
+
+const autoCatalog = () => [{ id: 'project-default', label: '固定 Codex', model: 'fixed-model', selectable: true }, { id: 'project-auto', label: '智能选择', engine: 'builtin', provider: 'host_auto', model: '按任务选择', selectable: true }];
+test('an uncreated conversation displays the catalog default before sending and pins the opened model', async () => {
+  const s = setup({ uncreated: true, catalog: autoCatalog(), defaultId: 'project-auto', selection: { model_id: 'project-auto', available: true, sha256: 'c'.repeat(64) } });
+  await flush(); assert.match(s.controller.view(), /value="project-auto" selected/);
+  assert.equal(s.calls.filter(([name]) => name === 'commerce_copilot_open').length, 0);
+  s.input('先用当前显示的智能选择回复'); s.enter(); await flush();
+  const sends = s.calls.filter(([name]) => name === 'commerce_copilot_send');
+  assert.equal(sends.length, 1); assert.equal(sends[0][1].expected_model_sha256, 'c'.repeat(64)); s.controller.dispose();
+});
+test('a catalog default never replaces an explicitly selected fixed conversation model', async () => {
+  const s = setup({ catalog: autoCatalog(), defaultId: 'project-auto' }); await flush();
+  assert.match(s.controller.view(), /value="project-default" selected/);
+  s.input('沿用原固定模型'); s.enter(); await flush();
+  assert.equal(s.calls.find(([name]) => name === 'commerce_copilot_send')[1].expected_model_sha256, 'a'.repeat(64)); s.controller.dispose();
+});
+test('an unavailable automatic default blocks a new send without falling back to the fixed route', async () => {
+  const catalog = autoCatalog(); catalog[1].selectable = false;
+  const s = setup({ uncreated: true, catalog, defaultId: 'project-auto' }); await flush(); s.input('保留等待执行端的输入');
+  assert.match(s.controller.view(), /value="project-auto" selected disabled/); assert.match(s.sendButton(), /disabled/);
+  s.enter(); s.click('send'); await flush();
+  assert.equal(s.calls.filter(([name]) => /commerce_copilot_(open|send|model)$/.test(name)).length, 0);
+  assert.ok(s.controller.view().includes('保留等待执行端的输入')); s.controller.dispose();
+});
+test('a new conversation cannot send while its default catalog is still loading', async () => {
+  let complete;
+  const s = setup({ uncreated: true, override: name => name === 'commerce_model_list' ? new Promise(resolve => { complete = resolve; }) : undefined });
+  s.input('尚未读到默认模型'); s.enter(); await flush();
+  assert.equal(s.calls.filter(([name]) => name === 'commerce_copilot_open').length, 0); assert.match(s.sendButton(), /disabled/);
+  complete({ models: autoCatalog(), default_model_id: 'project-auto' }); await flush();
+  assert.ok(s.controller.view().includes('尚未读到默认模型')); assert.match(s.controller.view(), /value="project-auto" selected/); s.controller.dispose();
+});
+test('a changed default between catalog and opening preserves the draft without sending under a different model', async () => {
+  const s = setup({ uncreated: true, catalog: autoCatalog(), defaultId: 'project-auto' }); await flush(); s.input('先核对改变后的默认模型');
+  s.enter(); await flush();
+  assert.equal(s.calls.filter(([name]) => name === 'commerce_copilot_open').length, 1);
+  assert.equal(s.calls.filter(([name]) => name === 'commerce_copilot_send').length, 0);
+  assert.ok(s.controller.view().includes('先核对改变后的默认模型')); assert.ok(s.controller.view().includes('模型配置已变化')); s.controller.dispose();
+});
+test('a transient initial catalog failure cannot pretend the fixed model is the default', async () => {
+  const s = setup({ uncreated: true, override: name => { if (name === 'commerce_model_list') throw Error('temporarily_unavailable'); } });
+  await flush(); s.input('目录恢复后再发送'); s.enter(); await flush();
+  assert.match(s.sendButton(), /disabled/); assert.equal(s.calls.filter(([name]) => name === 'commerce_copilot_open').length, 0);
+  assert.ok(s.controller.view().includes('目录恢复后再发送')); s.controller.dispose();
+});
+test('refreshing a new-conversation default keeps its unsent input and never creates a thread', async () => {
+  const s = setup({ uncreated: true, catalog: autoCatalog(), defaultId: 'project-auto' }); await flush(); s.input('默认变化时保留草稿');
+  s.state.defaultId = 'project-default'; s.click('models-refresh'); await flush();
+  assert.match(s.controller.view(), /value="project-default" selected/); assert.ok(s.controller.view().includes('默认变化时保留草稿'));
+  assert.equal(s.calls.filter(([name]) => name === 'commerce_copilot_open').length, 0); s.controller.dispose();
+});
 
 test('explicit model refresh reads the catalog and selection while retaining an unsent draft', async () => {
   const s = setup(); await flush(); s.input('刷新后保留这条草稿');

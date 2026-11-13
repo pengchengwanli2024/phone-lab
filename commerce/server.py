@@ -79,15 +79,20 @@ class Handler(BaseHTTPRequestHandler):
         if not self.trusted():return self.answer(403,{'error':'untrusted_origin'})
         if not self.authenticated():return self.answer(401,{'error':'authentication_required'})
         route=urlparse(self.path).path
+        if route=='/v1/host-worker' and not hmac.compare_digest(self.headers.get('Authorization',''),'Bearer '+self.secret):
+            return self.answer(401,{'error':'native_worker_bearer_required'})
         allowed={'/a2a','/v1/invoke','/v1/connections/save','/v1/connections/sync','/v1/connections/test-feishu','/v1/connections/ticket','/v1/platforms/configure','/v1/models/configure','/v1/models/test','/v1/models/enabled'}
+        allowed.add('/v1/host-worker')
         if route not in allowed:return self.answer(404,{'error':'not_found'})
         if self.headers.get('Content-Type','').split(';')[0]!='application/json':return self.answer(415,{'error':'json_required'})
         try:
             size=int(self.headers.get('Content-Length','0'))
             if not 0<size<=131072:return self.answer(413,{'error':'request_too_large'})
             data=json.loads(self.rfile.read(size))
+            if not isinstance(data,dict):return self.answer(400,{'error':'invalid_request'})
             if route=='/a2a':return self.answer(200,a2a_dispatch(self.service,data))
             if route=='/v1/invoke':result=with_workspace_link(data['tool'],self.service.invoke(data['tool'],data.get('arguments',{}),data.get('client','local')),PORT)
+            elif route=='/v1/host-worker':result=self.service.host_execution.broker(data.get('operation'),data.get('arguments'))
             elif route=='/v1/connections/save':result=self.service.live.configure(data)
             elif route=='/v1/connections/sync':result=self.service.live.start_sync()
             elif route=='/v1/connections/test-feishu':result=self.service.live.test_feishu()

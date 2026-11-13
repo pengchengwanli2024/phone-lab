@@ -12,6 +12,7 @@
   },
   "files": [
     "index.js",
+    "host-worker.js",
     "client.js",
     "cordis.patch.yml"
   ],

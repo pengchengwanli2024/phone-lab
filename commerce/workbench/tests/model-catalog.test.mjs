@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
 const compiled = await build({ entryPoints: ['src/model-catalog.ts'], bundle: true, write: false, format: 'esm', platform: 'node' });
-const { modelReadiness } = await import('data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64'));
+const { modelReadiness, modelEngine } = await import('data:text/javascript;base64,' + Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const profile = { id: 'synthetic-model', label: '合成模型', engine: 'custom', revision: '2', enabled: true, selectable: true, test_status: 'passed', tested_revision: '2' };
 
 test('a test for an older configuration cannot mark the current model enabled', () => {
@@ -21,4 +21,11 @@ test('a successful connectivity test alone does not mean the profile was enabled
 test('the existing default route is checked at request time rather than claiming a live connection', () => {
   assert.equal(modelReadiness({ ...profile, engine: 'builtin' }).label, '按请求检查');
   assert.equal(modelReadiness({ ...profile, engine: 'builtin', selectable: false, test_status: 'invalid_configuration' }).label, '配置待修复');
+});
+test('automatic routing distinguishes an offline pool from invalid configuration', () => {
+  const auto = { ...profile, engine: 'builtin', provider: 'host_auto' };
+  assert.equal(modelReadiness({ ...auto, selectable: false }).label, '暂无可用执行端');
+  assert.equal(modelReadiness({ ...auto, selectable: false, test_status: 'invalid_configuration' }).label, '配置待修复');
+  assert.equal(modelReadiness(auto).label, '按可用端选择');
+  assert.equal(modelEngine(auto), 'Harness / Hermes / Codex');
 });

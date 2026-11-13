@@ -34,7 +34,7 @@ interface SharedCopilotOptions {
   isActive: () => boolean; repaint: () => void; inline: boolean; compact: boolean;
   modal: (title: string, body: string, actions?: string) => void; closeModal: () => void;
   toast: (text: string) => void; onWorkspace: () => void;
-  onModels?: () => void; onResearch?: (taskId: string) => void; onOpenCandidate?: (caseId: string) => void;
+  onModels?: () => void; onResearch?: (taskId: string) => void; onOpenCandidate?: (caseId: string, researchTaskId?: string) => void;
   errorText: (failure: Error | { code?: string; message?: string }) => string;
 }
 export interface Run {
@@ -56,6 +56,8 @@ export type Theme = 'light' | 'dark' | 'system';
 declare global {
   const __LEGACY_HTML__: string;
   interface Window {
+    CommerceResearchContext: { task: (value?: string | null) => string; mergeJob: <T extends { task_id: string; revision?: string | number }>(jobs: T[], readback: T) => T[]; mergeJobs: <T extends { task_id: string; revision?: string | number }>(jobs: T[], readback: T[]) => T[] };
+    CommerceCopilotDraftStorage: () => { request: (op: string, key: string, value?: string, expected?: string) => Promise<string>; dispose: () => void };
     CommerceCopilot: (options: SharedCopilotOptions) => SharedCopilotController;
     CommerceUI: { icon: (name: string) => string; applyTheme: (theme: string) => void; status: (status: string) => { label: string; tone: string } };
   }

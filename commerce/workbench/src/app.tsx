@@ -13,6 +13,7 @@ import { Button, Dialog, Empty, ErrorNotice, Icon } from './ui';
 import type { BusinessContext, Theme, Thread } from './types';
 import { navigation, labels, destinationFor, businessModule } from './navigation';
 import { initialDataMode, ThemeControl, WorkspaceSettings, UserPanel } from './workspace-controls';
+import '../../web/research-context.js';
 import './style.css';
 
 const migrated = ['overview', 'workspace', 'operations', 'tasks', 'pilots', 'models'];
@@ -31,6 +32,7 @@ function Workspace() {
   const [caseId, setCaseId] = useState(params.get('case_id') || ''), [demo, setDemo] = useState(() => initialDataMode(params));
   const [costCaseId,setCostCaseId] = useState(params.get('tab')==='operations' ? params.get('case_id')||'' : '');
   const [productCaseId,setProductCaseId] = useState(params.get('case_id') || '');
+  const [productResearchTask, setProductResearchTask] = useState(initial === 'workspace' ? params.get('research_task_id') || '' : '');
   const productSelection = useRef(productCaseId); productSelection.current=productCaseId;
   const [theme, setTheme] = useState<Theme>('system'), [themeBusy, setThemeBusy] = useState(false), [error, setError] = useState('');
   const [settings, setSettings] = useState(false), [user, setUser] = useState(false);
@@ -42,17 +44,18 @@ function Workspace() {
   const [legacyStarted, setLegacyStarted] = useState(!migrated.includes(tab));
   const headingRef = useRef<HTMLDivElement>(null), themeRevision = useRef(0);
   const activeTab = tab.replace('old:', ''), legacy = !migrated.includes(tab);
-  function navigate(next: string, id?: string) {
+  function navigate(next: string, id?: string, taskId?: string) {
     if (!labels[next.replace('old:', '')]) return;
+    const selectedResearch=next==='workspace'?(taskId===undefined&&id===undefined?productResearchTask:taskId||''):'';
     setAssistantContext(null);
     threadRequest.current++; setRequestedThreadId(''); setResearchTaskId('');
     if (next === 'workspace') {setProductTab(undefined);if(id===undefined)id=productSelection.current;}
-    if(next==='workspace')setProductCaseId(id||'');else if(next==='operations'&&id)setProductCaseId(id);
+    if(next==='workspace'){setProductCaseId(id||'');setProductResearchTask(selectedResearch);}else if(next==='operations'&&id)setProductCaseId(id);
     if (next==='operations') {if(id===undefined)id='';setCostCaseId(id);}
     setVisited(previous => new Set([...previous,next])); setTab(next); setMobileView('page'); if (id !== undefined) setCaseId(id);
     if (!migrated.includes(next)) { setLegacyTab(next.replace('old:', '')); setLegacyStarted(true); }
     // Opaque iframe documents may not change their URL. The host owns its route.
-    if (window.parent === window) { const url = new URL(location.href); url.searchParams.set('tab', next); url.searchParams.delete('research_task_id'); if (id !== undefined) { if (id) url.searchParams.set('case_id', id); else url.searchParams.delete('case_id'); } history.pushState({}, '', url); }
+    if (window.parent === window) { const url = new URL(location.href); url.searchParams.set('tab', next); url.searchParams.delete('research_task_id'); if(next==='workspace'&&selectedResearch)url.searchParams.set('research_task_id',selectedResearch); if (id !== undefined) { if (id) url.searchParams.set('case_id', id); else url.searchParams.delete('case_id'); } history.pushState({}, '', url); }
     requestAnimationFrame(() => headingRef.current?.focus());
   }
   function openResearch(id: string) {
@@ -72,8 +75,8 @@ function Workspace() {
     } catch (failure) { if (version === threadRequest.current) setError(errorText(failure)); }
   }
   useEffect(() => {
-    const hostNavigate = (event: MessageEvent) => { if (event.source === parent && event.data?.nonce === '__COMMERCE_BRIDGE_NONCE__' && event.data?.type === 'commerce:host-navigate' && labels[event.data.tab]) navigate(event.data.tab); };
-    const back = () => { const p = new URL(location.href).searchParams; const next = p.get('tab') || 'overview'; setAssistantContext(null); setRequestedThreadId(''); threadRequest.current++; setResearchTaskId(p.get('research_task_id')||''); if (labels[next.replace('old:', '')]) { setTab(next); setVisited(previous => new Set([...previous,next])); setCaseId(p.get('case_id') || ''); if(next==='operations')setCostCaseId(p.get('case_id')||''); if(next==='workspace'||(next==='operations'&&p.get('case_id')))setProductCaseId(p.get('case_id')||''); if (!migrated.includes(next)) { setLegacyTab(next.replace('old:', '')); setLegacyStarted(true); } } };
+    const hostNavigate = (event: MessageEvent) => { if (event.source === parent && event.data?.nonce === '__COMMERCE_BRIDGE_NONCE__' && event.data?.type === 'commerce:host-navigate' && labels[event.data.tab]) {if(event.data.tab==='pilots'&&typeof event.data.research_task_id==='string'&&/^[a-zA-Z0-9_-]{1,160}$/.test(event.data.research_task_id))openResearch(event.data.research_task_id);else navigate(event.data.tab);} };
+    const back = () => { const p = new URL(location.href).searchParams; const next = p.get('tab') || 'overview'; setAssistantContext(null); setRequestedThreadId(''); threadRequest.current++; setResearchTaskId(p.get('research_task_id')||''); setProductResearchTask(next==='workspace'?p.get('research_task_id')||'':''); if (labels[next.replace('old:', '')]) { setTab(next); setVisited(previous => new Set([...previous,next])); setCaseId(p.get('case_id') || ''); if(next==='operations')setCostCaseId(p.get('case_id')||''); if(next==='workspace'||(next==='operations'&&p.get('case_id')))setProductCaseId(p.get('case_id')||''); if (!migrated.includes(next)) { setLegacyTab(next.replace('old:', '')); setLegacyStarted(true); } } };
     const keyboard = (event: KeyboardEvent) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setFinder(true); } };
     window.addEventListener('popstate', back); window.addEventListener('keydown', keyboard); window.addEventListener('message', hostNavigate);
     const revision = themeRevision.current;
@@ -126,14 +129,14 @@ function Workspace() {
     </header>
     <div ref={workArea} className={`r-work-area ${assistant&&activeTab!=='workspace'?'with-assistant':''} ${compact?'is-compact':''}`} data-mobile-view={mobileView} style={{'--r-chat-width':`${chatWidth}px`} as CSSProperties}>
       {activeTab!=='workspace'&&compact&&<div className="r-mode-switcher" role="group" aria-label="工作视图"><Button aria-pressed={mobileView==='chat'} onClick={()=>{setAssistant(true);setMobileView('chat');}}>AI 对话</Button><Button aria-pressed={mobileView==='page'} onClick={()=>setMobileView('page')}>{destination.label}</Button></div>}
-      <Assistant context={context} visible={assistant&&activeTab!=='workspace'&&(!compact||mobileView==='chat')} close={()=>{setAssistant(false);setMobileView('page');}} onWorkspace={()=>navigate('workspace',productCaseId||undefined)} requestedThreadId={requestedThreadId} onResearch={openResearch} onModels={()=>navigate('models')} onOpenCandidate={id=>navigate('workspace',id)}/>
+      <Assistant context={context} visible={assistant&&activeTab!=='workspace'&&(!compact||mobileView==='chat')} close={()=>{setAssistant(false);setMobileView('page');}} onWorkspace={()=>navigate('workspace',productCaseId||undefined)} requestedThreadId={requestedThreadId} onResearch={openResearch} onModels={()=>navigate('models')} onOpenCandidate={(id,taskId)=>navigate('workspace',id,taskId)}/>
       {assistant&&activeTab!=='workspace'&&<div className="r-chat-splitter" role="separator" tabIndex={compact?-1:0} aria-label="调整对话区宽度" aria-orientation="vertical" aria-valuemin={320} aria-valuemax={chatMax} aria-valuenow={chatWidth} aria-controls="commerce-copilot main-workspace" onPointerDown={event=>{if(event.button!==0)return;event.preventDefault();drag.current={x:event.clientX,width:chatWidth};event.currentTarget.setPointerCapture(event.pointerId);}} onPointerMove={event=>{if(event.currentTarget.hasPointerCapture(event.pointerId))resizeChat(drag.current.width+event.clientX-drag.current.x);}} onPointerUp={event=>{if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}} onKeyDown={event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();resizeChat(event.key==='Home'?320:event.key==='End'?chatMax:chatWidth+(event.key==='ArrowRight'?16:-16));}}/>}
       <main className="r-main" id="main-workspace" tabIndex={-1} ref={headingRef}>
         {destination.items.length>1&&activeTab!=='workspace'&&<nav className="r-section-tabs" aria-label={`${destination.label}页面`}>{destination.items.map(id=><Button key={id} aria-current={activeTab===id?'page':undefined} onClick={()=>navigate(id,id==='operations'?'':undefined)}>{labels[id]||id}</Button>)}</nav>}
         <ErrorNotice>{error}</ErrorNotice>
         <div hidden={tab!=='overview'}><Overview demo={demo} navigate={navigate}/></div>
         {visited.has('operations')&&<div hidden={tab!=='operations'}><CostPage key={costCaseId||'general'} caseId={costCaseId} onReturn={()=>{navigate('workspace',costCaseId||undefined);setProductTab('cost');}}/>{!costCaseId&&<div className="r-page r-secondary-entry"><Button onClick={()=>navigate('restock')}>补货计划</Button></div>}</div>}
-        <div hidden={tab!=='workspace'} className="r-approved-product">{visited.has('workspace')&&<Legacy tab="workspace" chatWidth={chatWidth} onChatWidth={value=>resizeChat(value)} assistantToggle={assistantToggle} onResearch={openResearch} onAssistantState={setProductAssistant} requestedTab={productTab} active={tab==='workspace'} demo={demo} theme={theme} caseId={productCaseId} navigate={navigate}/>}</div>
+        <div hidden={tab!=='workspace'} className="r-approved-product">{visited.has('workspace')&&<Legacy tab="workspace" chatWidth={chatWidth} onChatWidth={value=>resizeChat(value)} assistantToggle={assistantToggle} onResearch={openResearch} onAssistantState={setProductAssistant} requestedTab={productTab} active={tab==='workspace'} demo={demo} theme={theme} caseId={productCaseId} researchTaskId={productResearchTask} onResearchContext={(id,taskId)=>{if(id!==productSelection.current)return;setProductResearchTask(taskId);if(window.parent===window&&activeTab==='workspace'){const url=new URL(location.href);if(taskId)url.searchParams.set('research_task_id',taskId);else url.searchParams.delete('research_task_id');history.replaceState({},'',url);}}} navigate={navigate}/>}</div>
         <div hidden={tab!=='tasks'}><Tasks navigate={navigate} onResearch={openResearch}/></div>
         {visited.has('pilots')&&<div hidden={tab!=='pilots'}><Candidates active={tab==='pilots'} requestedTask={researchTaskId} closeTask={closeResearch} openTask={openResearch} openThread={id=>void openResearchThread(id)} navigate={navigate}/></div>}
         {visited.has('models')&&<div hidden={tab!=='models'}><Models active={tab==='models'}/></div>}

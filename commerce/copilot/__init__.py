@@ -22,7 +22,7 @@ def definitions(schema,string):
       ('commerce_copilot_list','读取最近共享业务对话；不包含宿主聊天记录',schema()),
       ('commerce_copilot_get','读取业务对话及同一模型运行结果；不会重发模型',schema({**tid,'before':string},['thread_id'])),
       ('commerce_copilot_model','为当前会话选择已启用模型；活动请求期间拒绝切换，不触发推理',schema({**tid,'model_id':string,'expected_revision':string},['thread_id','model_id','expected_revision'])),
-      ('commerce_copilot_send','明确发送业务问题到现有有界模型队列',schema({**tid,'message':{'type':'string','minLength':1,'maxLength':2000},'context_sha256':string,'idempotency_key':string,'expected_model_sha256':{'type':'string','pattern':'^[a-f0-9]{64}$'}},['thread_id','message','context_sha256','idempotency_key'])),
+      ('commerce_copilot_send','明确发送业务问题到现有有界模型队列',schema({**tid,'message':{'type':'string','minLength':1,'maxLength':2000},'context_sha256':string,'idempotency_key':string,'expected_model_sha256':{'type':'string','pattern':'^[a-f0-9]{64}$'},'execution_hosts':{'type':'array','minItems':1,'maxItems':3,'items':{'type':'object','properties':{'host_id':{'type':'string','enum':['dsh','hermes','codex']},'expected_route_sha256':{'type':'string','pattern':'^[a-f0-9]{64}$'}},'required':['host_id','expected_route_sha256'],'additionalProperties':False}}},['thread_id','message','context_sha256','idempotency_key'])),
       ('commerce_copilot_context','显式更新对话业务范围；旧范围建议失效',schema({**tid,'context':CONTEXT_SCHEMA,'expected_context_sha256':string},['thread_id','context','expected_context_sha256'])),
       ('commerce_copilot_cancel','取消本对话的一次排队或运行请求',schema({**tid,'run_id':string},['thread_id','run_id'])),
       ('commerce_copilot_apply','按范围及结果哈希审阅单条本地建议；不执行店铺写操作',schema(review,list(review))),
@@ -63,6 +63,40 @@ class Copilot:
 
     def model(self,thread_id,model_id,expected_revision):
         return self.service.models.select(thread_id,model_id,expected_revision)
+
+    def _conversation(self, db, thread):
+        rows=db.execute('''SELECT t.question,r.result,r.id,r.status FROM copilot_turns t
+            JOIN agent_runs r ON r.id=t.run_id WHERE t.thread_id=? AND t.revision=?
+            ORDER BY t.rowid DESC LIMIT 40''',(thread['id'],thread['revision'])).fetchall()
+        research=db.execute('''SELECT t.run_id,j.document FROM copilot_turns t
+            JOIN market_research_runs m ON m.run_id=t.run_id
+            JOIN market_research_jobs j ON j.task_id=m.task_id
+            WHERE t.thread_id=? AND t.revision=? ORDER BY t.rowid DESC LIMIT 1''',
+            (thread['id'],thread['revision'])).fetchone()
+        current=None; replacement=None
+        if research:
+            job=json.loads(research[1])
+            if job['_context']==thread['context']:
+                current={key:job[key] for key in ('task_id','run_id','status','phase','revision',
+                                                'source_count','candidate_count','questions')}
+                effective=db.execute('SELECT result,id,status FROM agent_runs WHERE id=?',
+                                     (job['run_id'],)).fetchone()
+                if effective and effective[2] in ('completed','awaiting_input','awaiting_review'):
+                    replacement=(research[0],effective)
+        replyable=[]
+        for question,result,run_id,status in rows:
+            # Resume runs have no new human turn. Use their real result for the
+            # corresponding human request; preserve the old journal unchanged.
+            if replacement and run_id==replacement[0]:
+                result,run_id,status=replacement[1]
+            if status in ('completed','awaiting_input','awaiting_review'):
+                replyable.append((question,json.loads(result) if result else {},run_id))
+            if len(replyable)==6:break
+        parent=replyable[0][2] if replyable else None
+        history=[{'question':q[:2000],'answer':str(result.get('answer',''))[:5000],'run_id':run_id}
+                 for q,result,run_id in reversed(replyable)]
+        while len(canonical(history).encode())>32000:history.pop(0)
+        return parent,history,current
 
     def _get(self,thread_id,before=None,include_turn=None):
         with self.core.db() as db:
@@ -108,11 +142,12 @@ class Copilot:
             else:db.execute('INSERT INTO copilot_threads VALUES(?,?,?,?,?,?,?,?,?,NULL)',(ident,idempotency_key,request,title or '业务助手',canonical(context),sha(context),1,at,at))
         return self.get(ident)
 
-    def send(self,thread_id,message,context_sha256,idempotency_key,expected_model_sha256=None):
+    def send(self,thread_id,message,context_sha256,idempotency_key,expected_model_sha256=None,execution_hosts=None):
         self.key(idempotency_key)
         if not isinstance(message,str) or not message.strip() or len(message)>2000:raise ValueError('copilot_invalid_message')
         if expected_model_sha256 is not None and (not isinstance(expected_model_sha256,str) or not re.fullmatch('[a-f0-9]{64}',expected_model_sha256)):raise ValueError('copilot_model_changed')
-        request=canonical({'message':message.strip(),'context_sha256':context_sha256,**({'expected_model_sha256':expected_model_sha256} if expected_model_sha256 is not None else {})})
+        if execution_hosts is not None:self.service.host_execution.validate_plan_request(execution_hosts)
+        request=canonical({'message':message.strip(),'context_sha256':context_sha256,**({'expected_model_sha256':expected_model_sha256} if expected_model_sha256 is not None else {}),**({'execution_hosts':execution_hosts} if execution_hosts is not None else {})})
         with LOCK,self.core.db() as db:
             db.execute('BEGIN IMMEDIATE');thread=self._thread(db,thread_id)
             if idempotency_key.startswith('a2a:'):
@@ -124,18 +159,35 @@ class Copilot:
             else:
                 if thread['context_sha256']!=context_sha256:raise ValueError('copilot_context_changed')
                 self._idle(db,thread_id)
+                # Native uncertainty survives policy/default changes. Only the
+                # task's explicit recovery or cancellation settles that boundary.
+                self.service.host_execution.guard_conversation(db,thread_id)
                 topic,parameters=route(thread['context'])
-                previous=db.execute("SELECT t.run_id FROM copilot_turns t JOIN agent_runs r ON r.id=t.run_id WHERE t.thread_id=? AND t.revision=? AND r.status IN ('completed','awaiting_input','awaiting_review') ORDER BY t.rowid DESC LIMIT 1",(thread_id,thread['revision'])).fetchone()
-                parent=previous[0] if previous else None
+                parent,history,current_research=self._conversation(db,thread)
                 ident=uuid.uuid4().hex;at=time.time()
-                history_rows=db.execute("SELECT t.question,r.result,r.id FROM copilot_turns t JOIN agent_runs r ON r.id=t.run_id WHERE t.thread_id=? AND t.revision=? AND r.status IN ('completed','awaiting_input','awaiting_review') ORDER BY t.rowid DESC LIMIT 6",(thread_id,thread['revision'])).fetchall()
-                history=[]
-                for question,result,run_id in reversed(history_rows):
-                    result=json.loads(result) if result else {}
-                    history.append({'question':question[:2000],'answer':str(result.get('answer',''))[:5000],'run_id':run_id})
-                while len(canonical(history).encode())>32000:history.pop(0)
                 selected_model=self.service.models.snapshot(db,thread_id=thread_id,expected_sha256=expected_model_sha256)
+                host_plan=self.service.host_execution.freeze(db,execution_hosts) if execution_hosts is not None else self.service.host_execution.inherited_plan(db,thread_id)
+                if selected_model.get('provider')=='host_auto':
+                    if execution_hosts is not None:
+                        selected_model=self.service.host_execution.native_snapshot(selected_model,host_plan[0],'explicit_host_plan')
+                    else:
+                        selected_model=self.service.host_execution.resolve_auto(db,selected_model,thread_id,parent)
+                if host_plan and execution_hosts is None and parent:
+                    original=json.loads(db.execute('SELECT payload FROM agent_runs WHERE id=?',(parent,)).fetchone()[0])['model_route']
+                    if not self.service.host_execution.same_model(selected_model,original):
+                        raise ValueError('host_plan_model_conflict')
                 run=self.runtime._create(question=message.strip(),role='conductor',topic=topic,parameters=parameters,parent_id=parent,idempotency_key='copilot:'+ident,_db=db,_conversation=history,_model_route=selected_model)
+                if current_research is not None:
+                    payload=json.loads(db.execute('SELECT payload FROM agent_runs WHERE id=?',(run['id'],)).fetchone()[0])
+                    payload['current_research']=current_research
+                    db.execute('UPDATE agent_runs SET payload=? WHERE id=?',(canonical(payload),run['id']))
+                if host_plan:
+                    if not self.service.market_research.active_for_thread(db,thread_id):
+                        from market_research import requests_research
+                        if not requests_research(message.strip(),thread['context']) and not self.service.host_execution.inherited_plan(db,thread_id):raise ValueError('host_research_request_required')
+                    payload=json.loads(db.execute('SELECT payload FROM agent_runs WHERE id=?',(run['id'],)).fetchone()[0])
+                    payload['execution_hosts']=host_plan
+                    db.execute('UPDATE agent_runs SET payload=? WHERE id=?',(canonical(payload),run['id']))
                 db.execute('INSERT INTO copilot_turns VALUES(?,?,?,?,?,?,?,?,?)',(ident,thread_id,idempotency_key,request,message.strip(),run['id'],context_sha256,thread['revision'],at))
                 self.service.market_research.bind_send(db,run['id'],thread_id,message.strip(),thread['context'])
                 db.execute('UPDATE copilot_threads SET updated=? WHERE id=?',(at,thread_id))

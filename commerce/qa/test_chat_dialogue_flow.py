@@ -125,8 +125,17 @@ class ChatDialogueFlow(unittest.TestCase):
             self.assertEqual(db.execute('SELECT count(*) FROM tasks').fetchone()[0], 1)
 
     def test_model_suggestion_does_not_create_research_from_a_greeting(self):
-        self.await_market('你好')
+        self.send('你好', 'greeting')
+        response = answer('需要补充研究市场。', ['希望调研哪个市场？'])
+        response['decision']['evidence_refs'] = []
+        with patch('agent_runtime.model.invoke', return_value=response) as provider:
+            self.app.agent_runtime.run_once()
+        self.assertEqual(provider.call_count, 1)
+        self.assertEqual(self.read()['latest_run']['status'], 'awaiting_input')
+        self.assertEqual(self.read()['latest_run']['result']['observations'], [])
         self.assertIsNone(self.send('俄罗斯。', 'market-reply')['research_job'])
+        with self.app.core.db() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM tasks').fetchone()[0], 0)
 
     def test_changed_scope_cannot_borrow_previous_research_intent(self):
         self.await_market()

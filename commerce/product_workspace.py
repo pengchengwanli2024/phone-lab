@@ -18,7 +18,7 @@ def definitions(schema, string):
                'expected_revision': {'type': 'integer', 'minimum': 0}}
     return [
         ('commerce_workspace_list', '读取当前连接下的商品工作项；不创建任务或读取店铺', schema()),
-        ('commerce_workspace_get', '读取一个明确商品工作项的原始产物、版本、缺项和关联任务；不标记事实已核实', schema(selected, ['case_id'])),
+        ('commerce_workspace_get', '读取商品当前工作项及可选研究任务的只读历史产物；不改商品创建归属或标记事实已核实', schema({**selected, 'research_task_id': string}, ['case_id'])),
         ('commerce_workspace_save', '按来源版本与草稿修订保存商品目标、测算输入或内容编辑；不自动执行模型或任务', schema({**guarded, 'form': {'type': 'string', 'enum': list(FORMS)}, 'payload': {'type': 'object'}}, [*guarded, 'form', 'payload'])),
         ('commerce_workspace_calculate', '使用已保存同币种参数测算并交接到原商品工作项；来源变化拒绝，不创建采购或平台动作', schema(guarded, list(guarded))),
         ('commerce_workspace_submit_content', '按当前商品来源版本与已保存修订生成本地待审阅版本；不接受未保存字段，不提交平台', schema(guarded, list(guarded))),
@@ -72,7 +72,7 @@ class ProductWorkspace:
                 'source_sha256': envelope.get('source_sha256'),
                 'stale': bool(envelope and envelope.get('source_sha256') != source)}
 
-    def get(self, case_id):
+    def get(self, case_id, research_task_id=None):
         case, artifacts, facts, source = self.sources(case_id)
         board = self.org.board(case_id)
         forms = {f: self.checkpoint(case_id, f, source) for f in FORMS}
@@ -93,12 +93,14 @@ class ProductWorkspace:
         for d in self.service.business.listing(case['scope'].get('synthetic') is True)['drafts']:
             if d['kind'] == 'listing' and d['scope']['subject_ref'] == case_id and d['scope']['platform'] == case['scope'].get('platform'):
                 content.append(self.service.business.get(d['id']))
+        from research_workspace import views
+        study = views(self.core, case, (artifacts['research'] or {}).get('id'), research_task_id)
         return {'schema': 'commerce-product-workspace-v1', 'case': case, 'name': self.label(case),
                 'source_sha256': source, 'artifacts': artifacts, 'forms': forms,
                 'stages': board['stages'], 'calculation': calculation, 'tasks': tasks,
                 'content_sources': sources, 'content_drafts': content,
                 'read_scope': 'selected_case_only', 'facts_independently_verified': False,
-                'external_execution_allowed': False}
+                'external_execution_allowed': False, **study}
 
     def validate_form(self, case_id, form, payload):
         if not isinstance(payload, dict):

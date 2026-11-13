@@ -4,6 +4,9 @@ export interface ModelOption {
   tested_revision?: string | null; base_url?: string; key_configured?: boolean;
 }
 export function modelReadiness(model: ModelOption) {
+  if (model.engine === 'builtin' && model.provider === 'host_auto') return model.test_status === 'invalid_configuration'
+    ? { label: '配置待修复', tone: 'warning' }
+    : model.selectable ? { label: '按可用端选择', tone: 'gray' } : { label: '暂无可用执行端', tone: 'warning' };
   if (model.engine === 'builtin') return model.selectable
     ? { label: '按请求检查', tone: 'gray' }
     : { label: '配置待修复', tone: 'warning' };
@@ -18,5 +21,5 @@ export function modelReadiness(model: ModelOption) {
 export function modelEngine(model: ModelOption) {
   const engines: Record<string, string> = { llama_cpp: 'llama.cpp', vllm: 'vLLM', custom: '自定义兼容服务' };
   if (model.engine !== 'builtin') return engines[model.engine] || model.engine;
-  return ({ codex: 'Codex', codex_cli: 'Codex', hermes: 'Hermes' } as Record<string, string>)[model.provider || ''] || '项目默认';
+  return ({ codex: 'Codex', codex_cli: 'Codex', hermes: 'Hermes', host_auto: 'Harness / Hermes / Codex' } as Record<string, string>)[model.provider || ''] || '项目默认';
 }

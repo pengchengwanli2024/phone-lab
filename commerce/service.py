@@ -40,6 +40,7 @@ from form_drafts import FormDrafts, definitions as form_draft_definitions
 from product_workspace import ProductWorkspace, definitions as workspace_definitions
 from a2ui.cost import CostSurfaces, definitions as a2ui_definitions, dispatch as a2ui_dispatch
 from market_research import MarketResearch, definitions as market_research_definitions
+from host_execution import HostExecution, definitions as host_execution_definitions
 
 LABELS=dict(zip(PLATFORMS,['Ozon','TikTok Shop','Amazon','Mercado Libre','Temu']))
 SALES=[39200,34800,28640,18000,8000]
@@ -154,6 +155,7 @@ TOOLS.extend(workspace_definitions(schema,S))
 TOOLS.extend(a2ui_definitions(schema))
 TOOLS.extend(channel_definitions(schema,S))
 TOOLS.extend(market_research_definitions(schema,S))
+TOOLS.extend(host_execution_definitions(schema,S))
 TOOLS.extend(model_definitions(schema,S))
 
 
@@ -188,6 +190,7 @@ class Commerce:
         self.workflow=WorkflowContinuity(self)
         self.copilot=Copilot(self)
         self.market_research=MarketResearch(self)
+        self.host_execution=HostExecution(self)
         self.form_drafts=FormDrafts(self.core)
         self.product_workspace=ProductWorkspace(self)
         self.a2ui=CostSurfaces(self.core, unit_economics, workspace=self.product_workspace)
@@ -240,6 +243,7 @@ class Commerce:
         if client not in ['codex','hermes','harness','browser','local','test']:raise ValueError('invalid_client')
         with self.core.db() as c:c.execute('INSERT OR REPLACE INTO clients VALUES (?,?)',(client,now()))
         if name=='commerce_model_list':return self.models.catalog()
+        if name=='commerce_execution_hosts':return self.host_execution.listing()
         if name=='commerce_model_open_setup':return self.models.open_setup()
         if name.startswith('commerce_copilot_'):return self.copilot.invoke(name,args)
         if name.startswith('commerce_market_research_'):return self.market_research.invoke(name,args)

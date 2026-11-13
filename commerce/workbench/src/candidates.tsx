@@ -6,7 +6,7 @@ import { activeResearch, researchPhase, researchStatus } from './research-types'
 import { ResearchDetails } from './research-details';
 import { Badge, Button, Dialog, Empty, ErrorNotice, Icon } from './ui';
 
-interface Props { active: boolean; requestedTask: string; closeTask: () => void; openTask: (id: string) => void; openThread: (id: string) => void; navigate: (tab: string, caseId?: string) => void; }
+interface Props { active: boolean; requestedTask: string; closeTask: () => void; openTask: (id: string) => void; openThread: (id: string) => void; navigate: (tab: string, caseId?: string, researchTaskId?: string) => void; }
 export function Candidates({ active, requestedTask, closeTask, openTask, openThread, navigate }: Props) {
   const [items, setItems] = useState<CaseItem[]>([]), [jobs, setJobs] = useState<ResearchJob[]>([]);
   const [query, setQuery] = useState(''), [market, setMarket] = useState('all'), [scope, setScope] = useState('real');
@@ -20,7 +20,7 @@ export function Candidates({ active, requestedTask, closeTask, openTask, openThr
     if (version !== generation.current) return;
     if (cases.status === 'fulfilled') setItems(cases.value.items.filter(item => item.candidate)); else { setItems([]); setError(errorText(cases.reason)); }
     if (research.status === 'fulfilled') {
-      setJobs(research.value.jobs);
+      setJobs(previous => window.CommerceResearchContext.mergeJobs(previous, research.value.jobs));
       const expected = research.value.jobs.flatMap(item => item.candidates.map(candidate => candidate.case_id));
       if (cases.status === 'fulfilled' && expected.some(id => !cases.value.items.some(item => item.id === id))) {
         try {
@@ -39,7 +39,7 @@ export function Candidates({ active, requestedTask, closeTask, openTask, openThr
     if (!quiet) setDetailLoading(true);
     try {
       const data = await api<ResearchJob>('commerce_market_research_get', { task_id: id });
-      if (version === detailGeneration.current && selected.current === id) { setJob(data); setDetailError(''); }
+      if (version === detailGeneration.current && selected.current === id) { setJob(data); setJobs(previous => window.CommerceResearchContext.mergeJob(previous, data)); setDetailError(''); }
     } catch (failure) { if (version === detailGeneration.current && selected.current === id) setDetailError(errorText(failure)); }
     finally { if (version === detailGeneration.current) setDetailLoading(false); }
   }
@@ -84,6 +84,6 @@ export function Candidates({ active, requestedTask, closeTask, openTask, openThr
     <div className="r-list-filters"><label className="ui-field">查找候选<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="商品名称或市场" /></label><label className="ui-field">市场<select value={market} onChange={event => setMarket(event.target.value)}><option value="all">全部市场</option>{markets.map(value => <option key={value} value={value}>{value}</option>)}</select></label><label className="ui-field">资料范围<select value={scope} onChange={event => setScope(event.target.value)}><option value="real">真实候选</option><option value="example">示例候选</option></select></label></div>
     {loading ? <Empty>正在读取已保存候选…</Empty> : error ? null : visible.length ? <div className="r-candidate-list" aria-label="已保存商品候选">{visible.map(item => <article className="r-candidate-row" key={item.id}><span className="r-object-icon"><Icon name="box" /></span><div className="r-candidate-title"><h2>{item.name}</h2><p>{[item.platform === 'ozon' ? 'Ozon' : item.platform, item.market || '市场待核对'].filter(Boolean).join(' · ')} <Badge>调研候选</Badge></p></div><Button onClick={() => navigate('workspace', item.id)}>继续研究</Button></article>)}</div> : <Empty>{query || market !== 'all' ? '没有匹配的候选。' : '从智能助手发起选品或市场调研，保存的候选会出现在这里。'}</Empty>}
     <section className="r-research-jobs" aria-label="公开市场研究任务"><h2>研究任务</h2><ErrorNotice>{jobError}</ErrorNotice>{loading ? <Empty>正在读取研究任务…</Empty> : jobs.length ? <div className="r-candidate-list">{jobs.map(item => <button className="r-research-job" key={item.task_id} onClick={() => openTask(item.task_id)}><div><strong>{item.query}</strong><small>{item.market === 'RU' ? '俄罗斯' : item.market} · 来源 {item.source_count} · 候选 {item.candidate_count}</small></div><Badge tone={item.status === 'failed' ? 'danger' : item.status === 'partial' ? 'warning' : 'gray'}>{activeResearch(item) ? researchPhase[item.phase] || '研究中' : researchStatus[item.status] || '待核对'}</Badge></button>)}</div> : !jobError && <Empty>尚无研究任务。</Empty>}</section>
-    {active && requestedTask && <Dialog title="市场研究" close={closeTask}><ErrorNotice>{detailError}</ErrorNotice>{detailLoading && !job ? <Empty>正在读取原研究任务…</Empty> : job && <ResearchDetails job={job} busy={busy} refresh={() => void readTask(job.task_id)} cancel={() => void action('cancel')} resume={() => void action('resume')} openCandidate={id => { closeTask(); navigate('workspace', id); }} openThread={id => { closeTask(); openThread(id); }} />}</Dialog>}
+    {active && requestedTask && <Dialog title="市场研究" close={closeTask}><ErrorNotice>{detailError}</ErrorNotice>{detailLoading && !job ? <Empty>正在读取原研究任务…</Empty> : job && <ResearchDetails job={job} busy={busy} refresh={() => void readTask(job.task_id)} cancel={() => void action('cancel')} resume={() => void action('resume')} openCandidate={(id, taskId) => { closeTask(); navigate('workspace', id, taskId); }} openThread={id => { closeTask(); openThread(id); }} />}</Dialog>}
   </div>;
 }

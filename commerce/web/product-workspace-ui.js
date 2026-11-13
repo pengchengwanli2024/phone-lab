@@ -3,7 +3,7 @@
   'use strict';
   const root = document.getElementById('product-app');
   if (!root) return;
-  const ui = window.CommerceUI, esc = ui.escape;
+  const ui = window.CommerceUI, esc = ui.escape, researchContext = window.CommerceResearchContext;
   const bootstrap = window.__COMMERCE_WORKSPACE_BOOTSTRAP__ || {};
   const reactHost = bootstrap.reactHost === true;
   const embedded = bootstrap.embedded === true && !reactHost;
@@ -17,6 +17,7 @@
   const itemLabel = c => c.name+(s.items.filter(x=>x.name===c.name).length>1?' · '+(platformNames[c.platform]||c.platform)+' / '+(c.market||'市场待核对')+' · '+c.id.slice(0,8):'');
   const platformNames = {ozon:'Ozon',tiktok:'TikTok Shop',amazon:'Amazon',mercado:'Mercado Libre',temu:'Temu'};
   const s = {id:bootstrap.case_id || new URL(location.href).searchParams.get('case_id') || '',tab:'overview',items:[],data:null,busy:false,error:'',errorCode:'',generation:0,edits:{},dirty:new Set(),changes:0,mobile:'product',chatVisible:true,fieldErrors:{},opener:null,dialogAction:null};
+  s.researchTaskId=bootstrap.research_task_id||(!bridged?new URL(location.href).searchParams.get('research_task_id'):'')||'';s.researchSequence=0;s.researchLoading=false;s.researchContextError='';
   let copilot, applyChatWidth, viewQueue=Promise.resolve();
   s.actionEpoch=0;
   const btn = (label,action,primary=false,attrs={}) => ui.button({label,leadingIcon:attrs.icon||'',variant:attrs.quiet?'quiet':primary?'primary':'secondary',attrs:{'data-pw-action':action,...attrs}});
@@ -28,7 +29,7 @@
   const json = value => JSON.stringify(value,null,2);
   function message(error) {
     const code = error.code || error.message;
-    const known = {agent_evidence_reference_required:'模型答复缺少来源引用，未采纳本轮结果；核对资料后可明确发送新问题。',workspace_source_changed:'资料已更新，输入已保留。请核对后重新保存。',form_draft_conflict:'草稿已有新版本，输入已保留。请核对后合并。',organization_case_not_found:'当前连接中找不到这个工作项。请核对连接与商品范围。',workspace_content_checkpoint_required:'请先保存当前内容编辑，再生成待审阅版本。',workspace_currency_required:'请先明确工作项币种，并使用相同币种测算。',workspace_artifact_changed:'原产物完整性检查未通过，请先核对来源。',workspace_handoff_held:'成本产物交接尚未确认，请核对原记录。',business_preflight_incomplete:'草稿仍有缺项、无效引用或过期来源，请补齐后再审阅。',business_draft_changed:'草稿版本已变化，请重新读取并审阅。',agent_provider_outcome_unknown:'模型结果尚未确认。请核对原请求记录，不会自动重发。',agent_model_setup_required:'当前模型入口尚未配置，请完成本机接入后继续。',agent_current_evidence_required:'当前依据不足或已改变，请重新核对来源后再分析。',authentication_required:'本次连接没有有效授权，请通过项目正常入口重新打开。',unknown_tool:'当前后台尚未加载商品工作区接口，请核对运行版本。',commerce_service_unavailable:'共享后台暂不可用。输入已保留，请恢复连接后查询原记录。'};
+    const known = {workspace_research_context_invalid:'研究链接无效，请从原研究任务重新打开。',workspace_research_context_mismatch:'本次研究与商品不匹配，请从原研究任务重新打开。',workspace_research_artifact_invalid:'本次研究快照完整性检查未通过，请回原研究核对。',workspace_research_context_unavailable:'本次研究快照未读回，请回原研究核对。当前商品输入仍保留。',agent_evidence_reference_required:'模型答复缺少来源引用，未采纳本轮结果；核对资料后可明确发送新问题。',workspace_source_changed:'资料已更新，输入已保留。请核对后重新保存。',form_draft_conflict:'草稿已有新版本，输入已保留。请核对后合并。',organization_case_not_found:'当前连接中找不到这个工作项。请核对连接与商品范围。',workspace_content_checkpoint_required:'请先保存当前内容编辑，再生成待审阅版本。',workspace_currency_required:'请先明确工作项币种，并使用相同币种测算。',workspace_artifact_changed:'原产物完整性检查未通过，请先核对来源。',workspace_handoff_held:'成本产物交接尚未确认，请核对原记录。',business_preflight_incomplete:'草稿仍有缺项、无效引用或过期来源，请补齐后再审阅。',business_draft_changed:'草稿版本已变化，请重新读取并审阅。',agent_provider_outcome_unknown:'模型结果尚未确认。请核对原请求记录，不会自动重发。',agent_model_setup_required:'当前模型入口尚未配置，请完成本机接入后继续。',agent_current_evidence_required:'当前依据不足或已改变，请重新核对来源后再分析。',authentication_required:'本次连接没有有效授权，请通过项目正常入口重新打开。',unknown_tool:'当前后台尚未加载商品工作区接口，请核对运行版本。',commerce_service_unavailable:'共享后台暂不可用。输入已保留，请恢复连接后查询原记录。'};
     if (known[code]) return known[code];
     if (code.startsWith('invalid_')) return '请核对输入的格式、数值范围、币种及单位。';
     return '本次操作未完成，当前输入已保留。请核对连接或展开技术详情。';
@@ -48,6 +49,7 @@
   window.addEventListener('message',event => {
     if (!bridged || event.source!==parent || event.data?.nonce!==nonce) return;
     const m=event.data;
+    if(m.type==='commerce:workspace-research-context'&&m.case_id===s.id&&typeof m.research_task_id==='string'){if(m.research_task_id!==s.researchTaskId)loadResearchContext(m.research_task_id);return;}
     if(reactHost&&m.type==='commerce:workspace-assistant-toggle'){if(innerWidth<1024)s.mobile=s.mobile==='chat'?'product':'chat';else s.chatVisible=!s.chatVisible;applyMobile();return;}
     if(reactHost&&m.type==='commerce:workspace-layout'){if(typeof m.chat_width==='number'&&Number.isFinite(m.chat_width)&&m.chat_width>=320&&m.chat_width<=960){s.hostChatWidth=m.chat_width;applyChatWidth?.(m.chat_width)}return;}
     if (m.type==='commerce:theme' && ['light','dark','system'].includes(m.theme)) {ui.applyTheme(m.theme);return}
@@ -59,7 +61,7 @@
       // Reading a new base while edits exist would silently rebase their CAS revision.
       if(s.busy||s.dirty.size){announce('当前输入已保留，请核对并保存后刷新商品资料。');if(s.dirty.size){s.error='商品资料待刷新，当前输入已保留。请先核对当前版本，再继续保存。';s.errorCode='workspace_refresh_deferred';render()}reply('deferred');return}
       const generation=s.generation+1;
-      reload({select:caseId}).then(()=>reply(s.generation!==generation||s.id!==caseId?'superseded':s.error?'failed':'refreshed'));
+      reload({select:caseId}).then(status=>reply(s.generation!==generation||s.id!==caseId?'superseded':status));
       return;
     }
     if (m.type!=='commerce:result') return;
@@ -80,7 +82,7 @@
   }
   function modelContext() {
     const c=s.data?.case;
-    return c?{module:'organization',demo:c.scope.synthetic===true,platform:c.scope.platform,market:c.scope.market,entity:{kind:'case',id:c.id}}:{module:'organization'};
+    return c?{module:'organization',demo:c.scope.synthetic===true,platform:c.scope.platform,market:c.scope.market,entity:{kind:'case',id:c.id}}:{module:'organization',demo:false};
   }
   function renderChat() {
     const host=document.getElementById('pw-chat');if(!host||!copilot)return;
@@ -160,16 +162,39 @@
     const next=!d.artifacts.research?['补充研究','tab-research']:d.calculation.status!=='CALCULATED'?['下一步：成本测算','tab-cost']:[hasContent?'审阅方案':'准备内容',hasContent?'tab-review':'tab-content'];
     return `<header class="pw-object-header"><span class="pw-object-symbol">${ui.icon('box')}</span><div class="pw-object-title"><div class="pw-title-row"><h1 title="${esc(d.name)}">${esc(d.name)}</h1>${btn('','choose-product',false,{quiet:true,icon:'chevronDown','aria-label':'切换商品',title:'切换商品',disabled:s.busy})}</div><div class="pw-object-meta"><span>${esc(platformNames[scope.platform]||scope.platform)} · ${esc(scope.market||'市场待核对')}</span>${scope.synthetic===true?ui.badge('合成数据','gray'):scope.origin==='research_candidate_not_inventory'?ui.badge('调研候选','gray'):''}<span>${esc(c.currency||'币种待核对')}</span>${scope.sku?`<span>SKU · ${esc(scope.sku)}</span>`:''}</div></div><div class="pw-header-actions">${s.tab==='overview'?btn(next[0],next[1],true,{disabled:s.busy}):''}${btn('','more',false,{quiet:true,icon:'more','aria-label':'更多商品操作',title:'更多商品操作'})}</div></header><nav class="pw-tabs" role="tablist" aria-label="商品工作区内容">${Object.entries(tabs).map(([key,label])=>`<button role="tab" type="button" data-pw-tab="${key}" id="pw-tab-${key}" aria-controls="pw-tabpanel" aria-selected="${key===s.tab}" tabindex="${key===s.tab?'0':'-1'}">${label}</button>`).join('')}</nav>`;
   }
+  function researchControls(){
+    const context=s.data.research_context,refs=s.data.research_contexts||[];
+    if(!context&&!s.researchTaskId&&!refs.length)return '';
+    const options=[{value:'',label:'商品当前研究'},...refs.map(ref=>({value:ref.task_id,label:'研究快照 · '+ref.task_id.slice(0,8)}))];
+    if(s.researchTaskId&&!options.some(option=>option.value===s.researchTaskId))options.push({value:s.researchTaskId,label:'指定研究 · '+s.researchTaskId.slice(0,8)});
+    const selected=s.researchTaskId||context?.task_id;
+    return `<div class="pw-research-context">${ui.field('研究记录',ui.select({id:'pw-research-context',value:s.researchTaskId,options,disabled:s.busy||s.researchLoading}))}<div class="pw-inline-meta">${ui.badge(context?.is_current_artifact===false?'历史研究快照':'研究快照','gray')}<span>只读</span>${selected?btn('回到原研究','research-task',false,{'data-task':selected}):''}</div></div>`;
+  }
+  function reportResearchSelection(){
+    if(bridged)parent.postMessage({type:'commerce:workspace-selected',nonce,case_id:s.id,research_task_id:s.researchTaskId},'*');
+    else{const url=new URL(location.href);if(s.researchTaskId)url.searchParams.set('research_task_id',s.researchTaskId);else url.searchParams.delete('research_task_id');history.replaceState(null,'',url)}
+  }
+  async function loadResearchContext(taskId){
+    const selectedCase=s.id,sequence=++s.researchSequence;s.tab='research';s.researchTaskId=taskId;s.researchContextError='';
+    if(!s.data){if(s.id)await reload({select:s.id,researchTaskId:taskId});return;}
+    s.researchLoading=true;render();
+    try{const requested=researchContext.task(taskId),data=await api('commerce_workspace_get',{case_id:selectedCase,...(requested?{research_task_id:requested}:{})});if(sequence!==s.researchSequence||selectedCase!==s.id)return;s.data=researchContext.merge(s.data,data,requested);s.researchContextError='';reportResearchSelection()}
+    catch(error){if(sequence===s.researchSequence&&selectedCase===s.id)s.researchContextError=message(error)}
+    finally{if(sequence===s.researchSequence&&selectedCase===s.id){s.researchLoading=false;render()}}
+  }
   function researchView(compact=false) {
-    const a=s.data.artifacts.research;
-    if(!a)return section('市场研究',empty('尚无研究资料。')+(compact?'':gaps(['S1','S5'])),btn(compact?'补充资料':'导入资料',compact?'tab-research':'research-source'));
+    const controls=researchControls();
+    if(s.researchLoading)return section('市场研究',controls+empty('正在读取研究快照…'));
+    if(s.researchContextError)return section('市场研究',controls+alert(s.researchContextError,'danger'));
+    let a;try{a=researchContext.artifact(s.data,s.researchTaskId)}catch(error){return section('市场研究',controls+alert(message(error),'danger'))}
+    if(!a)return section('市场研究',controls+empty('尚无研究资料。')+(compact?'':gaps(['S1','S5'])),btn(compact?'补充资料':'导入资料',compact?'tab-research':'research-source'));
     const record=a.payload.record,priority=['description','attributes','specifications','title','price','reviews'];
-    const rows=Object.entries(record.fields||{}).filter(([,f])=>f.original||f.zh).sort(([a],[b])=>(priority.includes(a)?priority.indexOf(a):99)-(priority.includes(b)?priority.indexOf(b):99));
+    const rows=Object.entries(record.fields||{}).filter(([key,f])=>key!=='subject'&&(f.original||f.zh)).sort(([a],[b])=>(priority.includes(a)?priority.indexOf(a):99)-(priority.includes(b)?priority.indexOf(b):99));
     const unique=rows.filter(([,f],i)=>rows.findIndex(([,v])=>(v.zh||v.original)===(f.zh||f.original))===i);
     const labels={findings:'研究结论',limitations:'资料限制',title:'商品标题',description:'商品描述',price:'价格依据',reviews:'评价依据',specifications:'规格',attributes:'商品属性',availability:'可售范围',barcode:'条码',brand:'品牌',category:'类目',dimensions:'包装尺寸',weight:'重量',images:'素材',quantity:'数量',stock:'库存',sku:'SKU',name:'商品名称'};
     const state=!a.intact?'完整性异常':rows.every(([,f])=>f.reviewed)?'已校对':'待校对';
-    if(compact)return section('市场研究 '+ui.badge(state,a.intact?'gray':'danger'),`${!a.intact?alert('资料完整性异常，请核对来源。','danger'):''}<dl class="pw-research-fields pw-research-brief">${(unique.filter(([k])=>k!=='title').length?unique.filter(([k])=>k!=='title'):unique).slice(0,2).map(([key,f])=>`<div><dt>${esc(labels[key]||key)}</dt><dd><p class="pw-research-summary">${esc(f.zh||f.original)}</p></dd></div>`).join('')}</dl><div class="pw-research-note"><span>${esc(record.language||'')} · ${stamp(record.captured_at).split(' ')[0]}</span></div>`,btn('查看研究','tab-research'));
-    return section('市场研究',`<div class="pw-inline-meta">${ui.badge(state,a.intact?'gray':'danger')}<span>${esc(record.language||'')} · ${stamp(record.captured_at)}</span></div>${!a.intact?alert('资料完整性异常，请核对来源。','danger'):''}<dl class="pw-research-fields">${unique.map(([key,f])=>`<div><dt>${esc(labels[key]||key)}</dt><dd><p>${esc(f.zh||f.original)}</p><details><summary>${f.reviewed?'原文与校对记录':'原文 · 待校对'}</summary>${f.zh?`<p lang="${esc(record.language||'en')}">${esc(f.original)}</p>`:''}<p>${esc(f.locator||'无定位信息')}</p></details></dd></div>`).join('')}</dl><details class="pw-disclosure"><summary>来源资料</summary><p class="pw-source-text">${esc(record.source_url||'来源未提供')}</p><p>${esc(record.raw_excerpt||'无原始摘录')}</p><p class="pw-meta">资料尚未独立核实。</p></details>`,btn('补充资料','research-source'))+supplyView();
+    if(compact)return section('市场研究 '+ui.badge(state,a.intact?'gray':'danger'),`${controls}${!a.intact?alert('资料完整性异常，请核对来源。','danger'):''}<dl class="pw-research-fields pw-research-brief">${(unique.filter(([k])=>k!=='title').length?unique.filter(([k])=>k!=='title'):unique).slice(0,2).map(([key,f])=>`<div><dt>${esc(labels[key]||key)}</dt><dd><p class="pw-research-summary">${esc(f.zh||f.original)}</p></dd></div>`).join('')}</dl><div class="pw-research-note"><span>${esc(record.language||'')} · ${stamp(record.captured_at).split(' ')[0]}</span></div>`,btn('查看研究','tab-research'));
+    return section('市场研究',`${controls}<div class="pw-inline-meta">${ui.badge(state,a.intact?'gray':'danger')}<span>${esc(record.language||'')} · ${stamp(record.captured_at)}</span></div>${!a.intact?alert('资料完整性异常，请核对来源。','danger'):''}<dl class="pw-research-fields">${unique.map(([key,f])=>`<div><dt>${esc(labels[key]||key)}</dt><dd><p>${esc(f.zh||f.original)}</p><details><summary>${f.reviewed?'原文与校对记录':'原文 · 待校对'}</summary>${f.zh?`<p lang="${esc(record.language||'en')}">${esc(f.original)}</p>`:''}<p>${esc(f.locator||'无定位信息')}</p></details></dd></div>`).join('')}</dl><details class="pw-disclosure"><summary>来源资料</summary><p class="pw-source-text">${esc(record.source_url||'来源未提供')}</p><p>${esc(record.raw_excerpt||'无原始摘录')}</p>${record.fields?.subject?`<p class="pw-source-text">研究需求：${esc(record.fields.subject.zh||record.fields.subject.original)}</p>`:''}<p class="pw-meta">资料尚未独立核实。</p></details>`,s.data.research_context?'':btn('补充资料','research-source'))+supplyView();
   }
   function supplyView(compact=false) {
     const a=s.data.artifacts.supply,p=a?.payload;
@@ -245,20 +270,23 @@
     const summary=document.querySelector('#copilot-log .pw-task-summary');if(summary)summary.outerHTML=taskSummary();
     if(focus||focusAction){const element=focus?document.getElementById(focus):document.querySelector('#pw-product [data-pw-action="'+focusAction+'"]');if(element){element.focus({preventScroll:true});if(start!=null&&element.setSelectionRange&&element.type!=='number')element.setSelectionRange(start,end)}}
   }
-  async function reload({select=s.id,clearEditors=false}={}) {
+  async function reload({select=s.id,clearEditors=false,researchTaskId=select===s.id?s.researchTaskId:''}={}) {
+    s.researchTaskId=researchTaskId;const researchSequence=++s.researchSequence;s.researchLoading=false;s.researchContextError='';
     const previousContext=JSON.stringify(modelContext()),restoreView=!s.data||select!==s.id,generation=++s.generation;s.busy=true;render();
+    const current=()=>generation===s.generation&&researchSequence===s.researchSequence&&researchTaskId===s.researchTaskId;
     try {
-      const list=await api('commerce_workspace_list');if(generation!==s.generation)return;
+      const list=await api('commerce_workspace_list');if(!current())return 'superseded';
       s.items=list.items;
       if(!select&&list.items.length===1)select=list.items[0].id;
-      if(select){const data=await api('commerce_workspace_get',{case_id:select});if(generation!==s.generation)return;s.id=select;s.data=data;if(restoreView){const requested=!bridged?new URL(location.href).searchParams.get('tab'):null;s.tab=tabs[requested]?requested:data.forms.view?.payload?.tab||'overview'}
+      if(select){const requestedResearch=researchContext.task(researchTaskId),data=await api('commerce_workspace_get',{case_id:select,...(requestedResearch?{research_task_id:requestedResearch}:{})});if(!current())return 'superseded';researchContext.artifact(data,requestedResearch);s.id=select;s.data=data;if(restoreView){const requested=!bridged?new URL(location.href).searchParams.get('tab'):null;s.tab=requestedResearch?'research':tabs[requested]?requested:data.forms.view?.payload?.tab||'overview'}
         if(clearEditors){s.edits={};s.dirty.clear()}
         if(!bridged){const url=new URL(location.href);url.searchParams.set('case_id',select);history.replaceState(null,'',url)}
         if(!embedded&&previousContext!==JSON.stringify(modelContext()))copilot?.contextChanged();
-        if(bridged)parent.postMessage({type:'commerce:workspace-selected',nonce,case_id:select},'*');
+        reportResearchSelection();
       }else{s.id='';s.data=null}
       s.error='';s.errorCode='';
-    } catch(error){if(generation===s.generation){s.error=message(error);s.errorCode=error.code||error.message}}
+      return 'refreshed';
+    } catch(error){if(!current())return 'superseded';s.error=message(error);s.errorCode=error.code||error.message;return 'failed'}
     finally{if(generation===s.generation){s.busy=false;render()}}
   }
   function selectTab(tab) {if(!tabs[tab])return;s.tab=tab;if(!embedded&&innerWidth<1024&&s.mobile!=='product'){s.mobile='product';applyMobile()}if(!bridged){const url=new URL(location.href);url.searchParams.set('tab',tab);history.replaceState(null,'',url)}persistView(tab);render();document.getElementById('pw-tab-'+tab)?.focus({preventScroll:true});document.getElementById('pw-tab-'+tab)?.scrollIntoView({block:'nearest',inline:'nearest'})}
@@ -278,10 +306,10 @@
     if(edit===s.changes){s.dirty.delete(form);delete s.edits[form]}
     await reload();announce('已保存当前商品的'+({plan:'工作目标',cost:'测算输入',content:'编辑草稿'})[form]);
   }
-  function openResearchCandidate(id) {
+  function openResearchCandidate(id,taskId='') {
     if(!id||s.busy)return;
-    if(id===s.id){selectTab('research');return}
-    const proceed=()=>{closeDialog();return reload({select:id,clearEditors:true})};
+    if(id===s.id){s.tab='research';loadResearchContext(taskId);return}
+    const proceed=()=>{closeDialog();return reload({select:id,clearEditors:true,researchTaskId:taskId})};
     if(s.dirty.size)dialog('打开调研候选','<p>当前商品有未保存输入，请先返回保存，或明确放弃后打开候选。</p>',btn('放弃修改并打开','dialog-proceed')+btn('返回编辑','dialog-close'),proceed);
     else proceed();
   }
@@ -291,6 +319,7 @@
   }
   function download(result) {const url=URL.createObjectURL(new Blob([result.content],{type:'application/json;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download=result.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
   async function act(action,target) {
+    if(action==='research-task'){const taskId=target.dataset.task;if(taskId){if(bridged)parent.postMessage({type:'commerce:workspace-research',nonce,task_id:taskId},'*');else location.assign('/workspace?tab=pilots&research_task_id='+encodeURIComponent(taskId))}return;}
     if(action.startsWith('tab-')){selectTab(action.slice(4));return}
     if(action==='dialog-close'){closeDialog();return}
     if(action==='dialog-proceed'){const callback=s.dialogAction;closeDialog();await callback?.();return}
@@ -343,6 +372,7 @@
     if(target.dataset.pwContent){const f=structuredClone(formData('content')),key=target.dataset.pwContent;f.fields[key]=key==='quantity'?(target.value===''?null:Number(target.value)):key==='image_refs'?target.value.split('\n').filter(Boolean):target.value;s.edits.content=f;dirty('content')}
   });
   document.addEventListener('change',event=>{
+    if(event.target.id==='pw-research-context'){loadResearchContext(event.target.value);return;}
     if(event.target.id==='pw-case'){
       const selected=event.target.value,prior=s.id;if(!selected||s.busy)return;s.actionEpoch++;
       if(s.dirty.size){event.target.value=prior;dialog('切换商品',`<p>当前商品有未保存输入。可以返回保存，或明确放弃本页未保存修改后切换。</p>`,btn('放弃修改并切换','dialog-proceed')+btn('返回编辑','dialog-close'),()=>reload({select:selected,clearEditors:true}))}

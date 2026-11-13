@@ -102,6 +102,8 @@ class AgentRuntime:
         role_spec=next((r for r in self.roles() if role==r['id'] or role in r.get('legacy_ids',[])),None)
         if not role_spec:raise ValueError('unknown_agent_role')
         payload={**request,'role':{k:role_spec[k] for k in ('id','name','responsibility')},'role_contract_sha256':sha(role_spec)}
+        from conversation_policy import requires_evidence
+        payload['evidence_required']=requires_evidence(question,topic)
         if _conversation is not None:payload['conversation']=_conversation
         payload['model_route']=_model_route if _model_route is not None else self.service.models.default_snapshot()
         if topic=='organization_case':payload['case_binding']=self.cases.validate_scope(parameters)
@@ -140,6 +142,15 @@ class AgentRuntime:
                'result':result,'result_sha256':sha(result) if result else None,'actions':actions,
                'marketplace_writes':False,'independently_verified':False}
         value['model_choice']=self.service.models.public_snapshot(payload.get('model_route',{}))
+        if payload.get('model_route',{}).get('provider')=='host_native':
+            value['routing_mode']='automatic_single_host'
+            value['execution_hosts']=self.service.host_execution.plan_for_payload(payload)
+            value['host_attempts']=self.service.host_execution.for_run(run_id)
+        if payload.get('execution_hosts'):
+            value['execution_hosts']=payload['execution_hosts']
+            value['model_choice']={'profile_id':'host-plan','profile_revision':sha(payload['execution_hosts']),
+                'label':'宿主执行计划','provider':'host_plan',
+                'model':' → '.join(r['host_id']+' / '+r['model'] for r in payload['execution_hosts'])}
         value['research_job']=self.service.market_research.for_run(run_id, _db)
         if brief:
             value.pop('result');value.pop('parameters')
@@ -164,12 +175,13 @@ class AgentRuntime:
             db.execute('BEGIN IMMEDIATE')
             row=db.execute('SELECT status FROM agent_runs WHERE id=?',(ident,)).fetchone()
             if row and row[0]=='cancel_requested':status,result='cancelled',{'error':'agent_cancelled_generation_may_have_started'}
-            db.execute("UPDATE agent_runs SET status=?,updated=?,expires=0,result=?,trace=? WHERE id=? AND owner=? AND status IN ('running','cancel_requested')",(status,time.time(),canonical(result),canonical(trace),ident,self.owner))
+            db.execute("UPDATE agent_runs SET status=?,updated=?,expires=0,result=?,trace=? WHERE id=? AND owner=? AND expires>? AND status IN ('running','cancel_requested')",(status,time.time(),canonical(result),canonical(trace),ident,self.owner,time.time()))
 
     def step(self, result, payload, observations):
         decision=result.get('decision') if isinstance(result,dict) else None
         if not isinstance(decision,dict):raise ValueError('agent_model_invalid_response')
         if decision.get('phase')=='inspect':
+            if payload.get('evidence_required',True) is False:raise ValueError('agent_tool_outside_scope')
             calls=decision.get('calls')
             if set(decision)!={'phase','calls'} or not isinstance(calls,list) or not 1<=len(calls)<=2:raise ValueError('agent_model_invalid_response')
             return calls,None
@@ -180,8 +192,9 @@ class AgentRuntime:
         known={r['id']:r for r in observations}
         if not isinstance(refs,list) or any(not isinstance(ref,str) or ref not in known for ref in refs):raise ValueError('agent_unknown_evidence_reference')
         if observations and not refs:raise ValueError('agent_evidence_reference_required')
-        if not observations and not questions and payload['topic'] in ('runtime','intelligence','organization_case','business_exposure','workspace'):raise ValueError('agent_current_evidence_required')
+        if not observations and not questions and payload.get('evidence_required',True) and payload['topic'] in ('runtime','intelligence','organization_case','business_exposure','workspace'):raise ValueError('agent_current_evidence_required')
         if not isinstance(proposals,list) or len(proposals)>3:raise ValueError('agent_model_invalid_response')
+        if payload.get('evidence_required',True) is False and proposals:raise ValueError('agent_invalid_proposal')
         reviewed=[]
         for i,p in enumerate(proposals):
             if not isinstance(p,dict) or set(p)-{'operation','reason','evidence_ref'} or not isinstance(p.get('reason'),str) or not 1<=len(p['reason'])<=500:raise ValueError('agent_invalid_proposal')
@@ -233,16 +246,20 @@ class AgentRuntime:
                 if payload['topic']=='organization_case':self.cases.check_binding(payload)
                 if payload['topic']=='business_exposure' and self.service.exposure.current(payload['parameters']['assessment_id'])!='current':raise ValueError('agent_exposure_evidence_changed')
                 context={'role':payload['role'],'question':payload['question'],'parameters':payload['parameters'],'previous':payload.get('previous'),'conversation':payload.get('conversation',[]),
-                         'tools':tool_menu(payload['topic'],payload['parameters']) if turn<2 else [],'observations':observations,
-                         'turn':turn+1,'final_turn':turn==2,'read_calls_remaining':4-calls_used}
+                         'tools':tool_menu(payload['topic'],payload['parameters']) if turn<2 and payload.get('evidence_required',True) else [],'observations':observations,
+                         'evidence_required':payload.get('evidence_required',True),
+                         'turn':turn+1,'final_turn':turn==2,'read_calls_remaining':4-calls_used if payload.get('evidence_required',True) else 0}
                 if payload['topic']=='workspace':
                     from copilot.methods import guidance_for
                     context['reviewed_workflow_guidance']=guidance_for(payload['parameters']['context'])
+                    if payload.get('current_research') is not None:
+                        context['current_research']=payload['current_research']
                 from .codex_provider import route
                 # New requests freeze their profile at enqueue; historical requests
                 # keep the legacy default route. Never switch a running model turn.
                 provider=self.service.models.runtime_route(payload.get('model_route') or route(self.service.state))
-                if provider['provider'] in ('codex','compatible'):result=model.invoke(context,lambda:self.cancelled(ident),route=provider)
+                if provider['provider']=='host_native':result=self.service.host_execution.invoke_run(ident,turn+1,context,lambda:self.cancelled(ident))
+                elif provider['provider'] in ('codex','compatible'):result=model.invoke(context,lambda:self.cancelled(ident),route=provider)
                 else:result=model.invoke(context,lambda:self.cancelled(ident))
                 if payload['topic']=='business_exposure' and self.service.exposure.current(payload['parameters']['assessment_id'])!='current':raise ValueError('agent_exposure_evidence_changed')
                 calls,answer=self.step(result,payload,observations)
@@ -298,7 +315,9 @@ class AgentRuntime:
         if self.thread and self.thread.is_alive():return
         if recover:
             self.service.market_research.recover()
-            with self.core.db() as db:db.execute("UPDATE agent_runs SET status='interrupted',expires=0,updated=?,result=? WHERE status IN ('running','cancel_requested')",(time.time(),canonical({'error':'agent_interrupted_no_automatic_resubmit'})))
+            with self.core.db() as db:
+                self.service.host_execution.recover_dialogues(db)
+                db.execute("UPDATE agent_runs SET status='interrupted',expires=0,updated=?,result=? WHERE status IN ('running','cancel_requested')",(time.time(),canonical({'error':'agent_interrupted_no_automatic_resubmit'})))
         def loop():
             while not self.stop_event.is_set():
                 try:

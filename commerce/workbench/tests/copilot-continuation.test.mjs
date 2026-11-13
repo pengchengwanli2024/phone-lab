@@ -19,7 +19,8 @@ async function setup() {
   let page = clone(original);
   const run = { id: 'run-a', status: 'awaiting_input', result_sha256: 'result-hash', result: { answer: '请补充预算。', questions: ['预算是多少？'], proposals: [{ id: 'P1', operation: 'report', reason: '合成审阅建议', input: {} }] } };
   const thread = { id: 'thread-a', title: '合成待补充会话', context: original, context_sha256: 'original-scope', latest_run: run, turns: [{ id: 'turn-a', question: '先核对资料', run }], model_selection: { model_id: 'project-default', available: true, sha256: 'a'.repeat(64) } };
-  vm.runInNewContext(source, { window, document, crypto: { randomUUID }, setInterval() {}, clearInterval() {}, CustomEvent: class {}, localStorage: { getItem: () => 'thread-a', setItem() {} } });
+  const draftValues = new Map();
+  vm.runInNewContext(source, { window, document, crypto: { randomUUID }, setInterval() {}, clearInterval() {}, CustomEvent: class {}, localStorage: { getItem: key => key.startsWith('commerce-copilot-draft-v1:') ? draftValues.get(key) ?? null : 'thread-a', setItem: (key, value) => draftValues.set(key, value) } });
   const controller = window.CommerceCopilot({ api: async (name, args) => {
     calls.push({ name, args: clone(args) });
     if (name === 'commerce_model_list') return { models: [{ id: 'project-default', label: '项目默认', selectable: true }] };

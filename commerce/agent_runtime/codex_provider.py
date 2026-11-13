@@ -8,7 +8,7 @@ import signal
 import subprocess
 import tempfile
 import time
-from .model_worker import SYSTEM
+from .model_worker import STRUCTURED_SYSTEM
 
 KNOWN_BINARIES=(Path('/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'),
                 Path('/Applications/Codex.app/Contents/Resources/codex'))
@@ -100,6 +100,17 @@ def check_events(output):
     if not completed:raise ValueError('agent_provider_outcome_unknown')
 
 
+def native_receipt(output, model):
+    """Bind a settled, tool-free native turn to the identity emitted by the CLI."""
+    check_events(output)
+    events=[json.loads(line) for line in output.splitlines()]
+    identities={event.get('thread_id') for event in events if event.get('type')=='thread.started'}
+    if len(identities)!=1 or not all(isinstance(value,str) and 0<len(value)<=200 for value in identities):
+        raise ValueError('agent_model_invalid_response')
+    return {'session_id':identities.pop(),'provider':'codex','model':model,
+            'finish_reason':'completed','tools_used':[]}
+
+
 def stop(process):
     # The leader exiting does not imply its owned group has stopped.
     try:os.killpg(process.pid,signal.SIGTERM)
@@ -111,7 +122,7 @@ def stop(process):
     process.wait(timeout=2)
 
 
-def invoke_json(payload, cancelled, config, output_schema, instructions, *, input_limit=100000, response_limit=40000):
+def invoke_json(payload, cancelled, config, output_schema, instructions, *, input_limit=100000, response_limit=40000, with_receipt=False):
     if cancelled():raise Cancelled()
     # An empty temporary working directory prevents ancestor project discovery.
     # All temporary outputs are owned and removed; no CLI auth is copied.
@@ -139,17 +150,16 @@ def invoke_json(payload, cancelled, config, output_schema, instructions, *, inpu
                     time.sleep(.1)
                 if cancelled():raise Cancelled()
                 if process.returncode:raise ValueError('agent_provider_failed_no_automatic_retry')
-                output.seek(0);check_events(output.read(1000001).decode('utf-8'))
+                output.seek(0);events=output.read(1000001).decode('utf-8');check_events(events)
                 response=work/'answer.json'
                 if not response.is_file():raise ValueError('agent_model_invalid_response')
                 if response.stat().st_size>response_limit:raise ValueError('agent_model_response_too_large')
                 try:value=json.loads(response.read_text())
                 except ValueError:raise ValueError('agent_model_invalid_json') from None
-                return value
+                return {'data':value,'receipt':native_receipt(events,config['model'])} if with_receipt else value
             finally:stop(process)
 
 
 def invoke(payload, cancelled, config):
-    instructions=SYSTEM+'\nTRANSPORT: Return the decision inside {"decision":...}. For inspect calls encode the exact arguments object in arguments_json. For answer proposals evidence_ref is required; use an empty string when no reference is needed. Treat the supplied tools as a menu of JSON requests to the parent runtime, never execute them yourself.\n'
-    value=invoke_json(payload,cancelled,config,schema(payload.get('observations',[])),instructions)
+    value=invoke_json(payload,cancelled,config,schema(payload.get('observations',[])),STRUCTURED_SYSTEM)
     return {'decision':decode(value),'provider':'codex_cli','model':config['model']}

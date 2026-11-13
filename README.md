@@ -74,3 +74,5 @@ python3 -m unittest discover -s network -p 'test_check_network.py' -v
 ## AI 跨境运营工作台
 
 共享 React 工作台覆盖运营、商品、店铺、内容、情报、任务和能力库。设置集中管理外观及示例资料范围；具体记录保留来源与版本。AI 建议、任务排队、业务执行和消息送达分别核对，不能互相代替。安装与验证见 [工作台说明](commerce/README.md)，功能边界见 [需求台账](docs/PLATFORM_BACKLOG.md)。
+
+智能对话支持同一输入框补充回答、原任务接续、本机草稿恢复及模型管理。可选固定模型、llama.cpp/vLLM 等兼容聊天服务，或开启按可用性和优先级选择一个 Harness、Hermes、Codex 执行端的私有策略；补充回答沿用本轮已冻结执行端，未知结果不换端重发。配置、鉴权和限制见 [对话与模型说明](commerce/ASSISTANT.md)。

@@ -133,7 +133,7 @@ def main():
             before, tail = expected.split(begin, 1);_, after = tail.split(end, 1);expected=before+block+after
         else:expected+='\n'+block+'\n'
     product_css = generated()+'\n'+(ROOT/'ui/primitives.css').read_text()+'\n'+(ROOT/'web/copilot-ui.css').read_text()+'\n'+(ROOT/'web/product-workspace-ui.css').read_text()
-    product_js = (ROOT/'ui/status.js').read_text()+'\n'+(ROOT/'ui/kit.js').read_text()+'\n'+(ROOT/'web/copilot-ui.js').read_text()+'\n'+(ROOT/'web/product-workspace-ui.js').read_text()
+    product_js = (ROOT/'ui/status.js').read_text()+'\n'+(ROOT/'ui/kit.js').read_text()+'\n'+(ROOT/'web/copilot-ui.js').read_text()+'\n'+(ROOT/'web/research-context.js').read_text()+'\n'+(ROOT/'web/product-workspace-ui.js').read_text()
     product_outputs = {ROOT/'web/product-workspace.bundle.css':product_css,ROOT/'web/product-workspace.bundle.js':product_js}
     if args.check:
         if any(not path.exists() or path.read_text()!=body for path,body in product_outputs.items()):

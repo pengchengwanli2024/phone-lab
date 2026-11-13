@@ -33,7 +33,7 @@ async function tree(folder) {
   const entries = await readdir(folder, { withFileTypes: true });
   return (await Promise.all(entries.map(e => e.isDirectory() ? tree(path.join(folder,e.name)) : [path.join(folder,e.name)]))).flat();
 }
-const sources = [...await tree(path.join(root,'src')), ...['build.mjs','embed.mjs','package.json','package-lock.json','tsconfig.json'].map(name=>path.join(root,name)), ...['index.html','app.js','style.css','product-workspace.html','product-workspace.bundle.js','product-workspace.bundle.css','copilot-ui.js','copilot-ui.css'].map(name=>path.join(web,name)), ...['tokens.json','kit.js','status.js','primitives.css'].map(name=>path.resolve(root,'../ui',name)),path.resolve(root,'../a2ui/catalog.json')];
+const sources = [...await tree(path.join(root,'src')), ...['build.mjs','embed.mjs','package.json','package-lock.json','tsconfig.json'].map(name=>path.join(root,name)), ...['index.html','app.js','style.css','product-workspace.html','product-workspace.bundle.js','product-workspace.bundle.css','copilot-ui.js','copilot-ui.css','research-context.js'].map(name=>path.join(web,name)), ...['tokens.json','kit.js','status.js','primitives.css'].map(name=>path.resolve(root,'../ui',name)),path.resolve(root,'../a2ui/catalog.json')];
 const digest = async file => createHash('sha256').update(await readFile(file)).digest('hex');
 const manifest = { sources: {}, outputs: {} };
 for (const file of sources.sort()) manifest.sources[path.relative(path.resolve(root,'..'),file)] = await digest(file);

@@ -6,7 +6,7 @@ import { productScope } from './copilot-scope';
 import type { BusinessContext, Product, SharedCopilotController } from './types';
 import { Button, Dialog, Empty, ErrorNotice } from './ui';
 
-interface Props { context: BusinessContext; visible?: boolean; close: () => void; onWorkspace?: () => void; requestedThreadId?: string; onResearch?: (id: string) => void; onOpenCandidate?: (id: string) => void; onModels?: () => void; }
+interface Props { context: BusinessContext; visible?: boolean; close: () => void; onWorkspace?: () => void; requestedThreadId?: string; onResearch?: (id: string) => void; onOpenCandidate?: (id: string, researchTaskId?: string) => void; onModels?: () => void; }
 interface Review { title: string; body: string; actions: string; }
 
 /** The exact product Copilot factory, mounted once across module navigation. */
@@ -32,7 +32,7 @@ export function Assistant({ context, visible = true, close: _close, onWorkspace,
       api: (tool, args) => api(tool, args), inline: true, compact: true,
       getContext: () => current.current, isActive: () => active.current, repaint,
       modal: (title, body, actions = '') => setReview({ title, body, actions }), closeModal: () => setReview(null),
-      toast: setAnnouncement, onWorkspace: () => workspace.current?.(), onModels: () => models.current?.(), onResearch: id => research.current?.(id), onOpenCandidate: id => candidate.current?.(id),
+      toast: setAnnouncement, onWorkspace: () => workspace.current?.(), onModels: () => models.current?.(), onResearch: id => research.current?.(id), onOpenCandidate: (id, taskId) => candidate.current?.(id, taskId),
       errorText: failure => errorText(failure instanceof Error ? failure : Error(failure.message || failure.code || 'request_failed')),
     });
     return () => { alive = false; controller.current?.dispose(); controller.current = null; };

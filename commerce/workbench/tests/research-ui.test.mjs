@@ -26,7 +26,7 @@ function setup(initial = 'running', apiOverride = null) {
     if (name === 'commerce_market_research_cancel') { job.status = 'cancelled'; return job; }
     if (name === 'commerce_market_research_resume') return job;
     throw Error('unexpected API: ' + name);
-  }, getContext: () => context, isActive: () => true, inline: true, compact: true, repaint() {}, toast() {}, scopeLabel: () => '研究 · RU', onResearch: id => opened.push(['task', id]), onOpenCandidate: id => opened.push(['case', id]) });
+  }, getContext: () => context, isActive: () => true, inline: true, compact: true, repaint() {}, toast() {}, scopeLabel: () => '研究 · RU', onResearch: id => opened.push(['task', id]), onOpenCandidate: (id, taskId) => opened.push(['case', id, taskId]) });
   const emit = (name, event) => { for (const handler of events.get(name) || []) handler(event); };
   const click = (action, data = {}) => { const target = { dataset: { copilotAction: action, ...data }, closest(selector) { return selector === '[data-copilot-action]' ? target : null; } }; emit('click', { target, preventDefault() {} }); };
   controller.open(undefined, { focus: false });
@@ -64,7 +64,7 @@ test('saved candidate navigation is bound to the server result and names are esc
   const s = setup('partial'); s.job.candidates = [{ case_id: 'case-a', name: '<img src=x onerror=alert(1)>', source_url: 'javascript:alert(1)', workspace_url: 'javascript:alert(1)', source_ids: ['S1'] }]; s.job.candidate_count = 1; await ready(s);
   const html = s.controller.view(); assert.ok(!html.includes('<img')); assert.ok(!html.includes('javascript:')); assert.ok(html.includes('部分完成'));
   s.click('research-candidate', { task: 'task-a', case: 'unlisted-case' }); await flush(); assert.equal(s.opened.length, 0);
-  s.click('research-candidate', { task: 'task-a', case: 'case-a' }); await flush(); assert.deepEqual(s.opened, [['case', 'case-a']]);
+  s.click('research-candidate', { task: 'task-a', case: 'case-a' }); await flush(); assert.deepEqual(s.opened, [['case', 'case-a', 'task-a']]);
   const before = s.calls.length; for (const poll of s.timers) poll(); await flush(); assert.equal(s.calls.length, before); s.controller.dispose();
 });
 test('one research task appears once across follow-up turns', async () => {

@@ -50,12 +50,19 @@ class ModelRegistry:
         config=route(self.state)
         return {**config,'profile_id':'project-default','label':'项目默认','profile_revision':'0'}
 
+    def auto_profile(self):
+        execution=getattr(self.service,'host_execution',None)
+        return execution.auto_profile() if execution and hasattr(execution,'auto_profile') else None
+
     def catalog(self):
         try:
             route=self.default_snapshot();default={'id':'project-default','label':'项目默认','engine':'builtin','model':route.get('model') or '既有Hermes配置','provider':route['provider'],'enabled':True,'selectable':True,'revision':'0','test_status':'existing_route'}
         except ValueError:default={'id':'project-default','label':'项目默认 · 配置待修复','engine':'builtin','enabled':False,'selectable':False,'revision':'0','test_status':'invalid_configuration','model':''}
         with self.core.db() as db:models=[self._public(self._record(db,r[0])) for r in db.execute('SELECT id FROM model_profiles ORDER BY updated DESC')]
-        return {'models':[default,*models],'selection_scope':'conversation','credentials_via_private_setup_only':True}
+        automatic=self.auto_profile()
+        return {'models':([automatic] if automatic else [])+[default,*models],
+                'default_model_id':'project-auto' if automatic else 'project-default',
+                'selection_scope':'conversation','credentials_via_private_setup_only':True}
 
     def _secret(self,reference):
         if not reference:return ''
@@ -127,8 +134,9 @@ class ModelRegistry:
 
     def selection(self,db,thread_id):
         row=db.execute('SELECT model_id,revision FROM copilot_models WHERE thread_id=?',(thread_id,)).fetchone()
-        ident,revision=(row[0],str(row[1])) if row else ('project-default','0')
-        candidate=next((r for r in self.catalog()['models'] if r['id']==ident),None)
+        catalog=self.catalog()
+        ident,revision=(row[0],str(row[1])) if row else (catalog['default_model_id'],'0')
+        candidate=next((r for r in catalog['models'] if r['id']==ident),None)
         binding={'model_id':ident,'revision':revision,'profile_revision':candidate['revision'] if candidate else None,'model':candidate.get('model') if candidate else None,'available':bool(candidate and candidate['selectable'])}
         binding['sha256']=hashlib.sha256(json.dumps(binding,sort_keys=True,separators=(',',':')).encode()).hexdigest()
         return {**binding,'label':candidate['label'] if candidate else '模型已不可用'}
@@ -140,6 +148,7 @@ class ModelRegistry:
             selected=self.selection(db,thread_id)
             if selected['revision']!=expected_revision:raise ValueError('model_selection_changed')
             self.service.copilot._idle(db,thread_id)
+            self.service.host_execution.guard_model_selection(db,thread_id,model_id)
             self.snapshot(db,model_id=model_id)
             db.execute('INSERT INTO copilot_models VALUES(?,?,?) ON CONFLICT(thread_id) DO UPDATE SET model_id=excluded.model_id,revision=excluded.revision',(thread_id,model_id,int(expected_revision)+1))
         return self.service.copilot.get(thread_id)
@@ -148,6 +157,11 @@ class ModelRegistry:
         selected=self.selection(db,thread_id) if thread_id else None
         if expected_sha256 is not None and (not selected or selected['sha256']!=expected_sha256):raise ValueError('copilot_model_changed')
         if model_id is None:model_id=selected['model_id'] if selected else 'project-default'
+        if model_id=='project-auto':
+            item=self.auto_profile()
+            if not item or not item['selectable']:raise ValueError('model_not_ready')
+            return {'provider':'host_auto','model':'auto','profile_id':'project-auto',
+                    'profile_revision':item['revision'],'label':'智能选择'}
         if model_id=='project-default':return self.default_snapshot()
         row=self._record(db,model_id)
         if not self._public(row)['selectable']:raise ValueError('model_not_ready')
@@ -161,7 +175,7 @@ class ModelRegistry:
 
     @staticmethod
     def public_snapshot(snapshot):
-        return {k:snapshot[k] for k in ('profile_id','profile_revision','label','provider','model','engine') if k in snapshot}
+        return {k:snapshot[k] for k in ('profile_id','profile_revision','label','provider','model','engine','host_id','native_provider','routing_reason') if k in snapshot}
 
     def open_setup(self):
         from runtime import PORT

@@ -32,7 +32,7 @@ def invoke_json(payload,cancelled,config,instructions,max_tokens=2200,output_sch
         for stream in (process.stdin,process.stdout,process.stderr):stream.close()
 
 def invoke(payload,cancelled,config):
-    from agent_runtime.model_worker import SYSTEM
+    from agent_runtime.model_worker import SYSTEM,STRUCTURED_SYSTEM
     if config.get('engine') in ('llama_cpp','vllm') and config.get('json_mode',True):
         from agent_runtime.codex_provider import schema,decode
         spec=schema(payload.get('observations',[]))
@@ -41,7 +41,7 @@ def invoke(payload,cancelled,config):
         answer['properties']['answer'].update(minLength=1,maxLength=5000)
         answer['properties']['questions'].update(maxItems=3)
         answer['properties']['proposals'].update(maxItems=3)
-        if not payload.get('observations'):answer['properties']['questions']['minItems']=1
+        if not payload.get('observations') and payload.get('evidence_required',True):answer['properties']['questions']['minItems']=1
         menu=payload.get('tools',[])
         if menu:
             variants=[]
@@ -56,7 +56,6 @@ def invoke(payload,cancelled,config):
                 variants.append(shape)
             inspect['properties']['calls']['items']={'anyOf':variants}
         else:spec['properties']['decision']['anyOf']=[answer]
-        instructions=SYSTEM+'\nTransport format: wrap your decision inside {"decision":...}. For inspect calls, use arguments_json as a JSON-encoded string instead of arguments. Follow the supplied JSON schema exactly.'
-        result=invoke_json(payload,cancelled,config,instructions,output_schema=spec)
+        result=invoke_json(payload,cancelled,config,STRUCTURED_SYSTEM,output_schema=spec)
         return {**result,'decision':decode(result['decision'])}
     return invoke_json(payload,cancelled,config,SYSTEM)
