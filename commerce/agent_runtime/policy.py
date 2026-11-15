@@ -75,7 +75,7 @@ def project(name, value):
                 'channels':[{**{key:row[key] for key in fields},'selected':row['binding']['selected'],
                              'mode':row['binding']['mode']} for row in value['channels']],
                 'configuration_is_not_authorization':True,'external_execution_allowed':False}
-    if name in ('commerce_workspace_get','commerce_orders_list','commerce_products_list','commerce_skills_search','commerce_skills_get'):
+    if name in ('commerce_project_memory_search','commerce_workspace_get','commerce_orders_list','commerce_products_list','commerce_skills_search','commerce_skills_get'):
         from copilot.reads import projection
         return projection(name,value)
     if name=='commerce_live_status':
@@ -92,9 +92,19 @@ def project(name, value):
     if name=='commerce_runtime_status':
         return {k:value.get(k) for k in ('worker','public_collection','requested_local_work','availability','marketplace_writes','model_executor','model_executor_scope','conversational_model_readiness')}
     if name=='commerce_intel_search':
+        items=[]
+        for row in value['items'][:5]:
+            item={k:row.get(k) for k in ITEM_FIELDS}
+            match=row.get('search_match')
+            if match:
+                fields=('kind','text_sha256','record_sha256','article_id','revision_id','reading_job_id','translation_status')
+                item['search_match']={'material_sha256':match['material_sha256'],
+                    'evidence':[{**{k:ref[k] for k in fields if k in ref},'snippet':ref['snippet'][:222],
+                                 'independently_verified':False} for ref in match['evidence'][:4]]}
+            items.append(item)
         return {'total':value['total'],'shown_to_model':min(5,len(value['items'])),
-                'items':[{k:r.get(k) for k in ITEM_FIELDS} for r in value['items'][:5]],
-                'scope':'latest_collected_metadata_not_whole_web','independently_verified':False}
+                'items':items,'scope':'latest_collected_local_evidence_not_whole_web',
+                'source_trust':'untrusted_reference_data','independently_verified':False}
     if name=='commerce_intel_item_get':
         return {k:value.get(k) for k in ITEM_FIELDS}
     return copy.deepcopy(value)

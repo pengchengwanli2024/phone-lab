@@ -67,6 +67,19 @@ if __name__ == '__main__':
     marker = server.STATE / 'fixture.json'
     cid = json.loads(marker.read_text())['case_id'] if marker.exists() else seed(server.Handler.service)
     marker.write_text(json.dumps({'case_id': cid}))
+    if os.environ.get('COMMERCE_QA_DELIVERY')=='1':
+        # Explicit synthetic files and operator-reviewed fixture data, no network.
+        import base64
+        app=server.Handler.service
+        research=app.organization.artifact(cid,'research')['payload']
+        research['record']['category_rules_checked']=True
+        for field in research['record']['fields'].values():field['reviewed']=True
+        app.organization.record(cid,'research',research,'fixture-reviewed-research')
+        project=app.creative.create({'product':{'name':'Synthetic delivery fixture','verified_facts':[]}},'fixture-delivery-project')
+        picture=server.STATE/'synthetic-delivery.png'
+        picture.write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRz8AAAAASUVORK5CYII='))
+        asset=app.creative.register(project['id'],'product_image',picture,{'source_ref':'synthetic:delivery-fixture','usage_scope':'synthetic_only'})
+        app.organization.deliver(cid,project['id'],[asset['id']],'fixture-delivery-images')
     original_get = server.Handler.do_GET
 
     def get(handler):

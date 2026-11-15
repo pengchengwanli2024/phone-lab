@@ -8,6 +8,7 @@ import math
 import re
 from operations_analysis import UNIT_FIELDS, RATES, unit_economics
 from research import canonical, digest
+from workflow_plan import validate_plan, preserve_graph
 
 FORMS = ('plan', 'cost', 'content', 'view')
 
@@ -17,6 +18,13 @@ def definitions(schema, string):
     guarded = {**selected, 'expected_source_sha256': string,
                'expected_revision': {'type': 'integer', 'minimum': 0}}
     return [
+        ('commerce_workspace_delivery_get','读取同一商品内容、图片交付和人工核对清单；不发布或批准平台操作',schema(selected,['case_id'])),
+        ('commerce_workspace_delivery_record','按当前产物版本保存待核清单或明确记录本地交付审阅；不代替负责人发布前核查或平台执行授权',schema({**selected,'expected_package_sha256':string,'expected_source_sha256':string,'expected_review_sha256':{'type':'string'},'checks':{'type':'object'},'decision':{'type':'string','enum':['save','reviewed','rejected']},'confirmed':{'type':'boolean'},'idempotency_key':string},['case_id','expected_package_sha256','expected_source_sha256','expected_review_sha256','checks','decision','confirmed','idempotency_key'])),
+        ('commerce_workspace_delivery_export','导出当前版本的私有内容、交付图片清单和审阅记录JSON；不上传或发布',schema({**selected,'expected_package_sha256':string},['case_id','expected_package_sha256'])),
+        ('commerce_workspace_quotes','读取当前工作项报价、版本与缺项；不选择报价或采购',schema(selected,['case_id'])),
+        ('commerce_workspace_quote_compare','按明确需求件数、MOQ与整包装比较同工作项报价货款；保留版本与缺项，不选供应商或采购',schema({**selected,'quantity':{'type':'integer','minimum':1,'maximum':10**9}},['case_id','quantity'])),
+        ('commerce_workspace_quote_save','按对象来源和报价修订保存操作者提供的报价；允许不完整资料，不创建采购',schema({**guarded,'quote_id':string,'payload':{'type':'object'},'idempotency_key':string},[*guarded,'quote_id','payload','idempotency_key'])),
+        ('commerce_workspace_quote_select','明确选择当前完整有效的同币种报价，交接原供应产物；不采购、不改库存',schema({**selected,'quote_id':string,'expected_quote_sha256':string,'expected_source_sha256':string,'idempotency_key':string},['case_id','quote_id','expected_quote_sha256','expected_source_sha256','idempotency_key'])),
         ('commerce_workspace_list', '读取当前连接下的商品工作项；不创建任务或读取店铺', schema()),
         ('commerce_workspace_get', '读取商品当前工作项及可选研究任务的只读历史产物；不改商品创建归属或标记事实已核实', schema({**selected, 'research_task_id': string}, ['case_id'])),
         ('commerce_workspace_save', '按来源版本与草稿修订保存商品目标、测算输入或内容编辑；不自动执行模型或任务', schema({**guarded, 'form': {'type': 'string', 'enum': list(FORMS)}, 'payload': {'type': 'object'}}, [*guarded, 'form', 'payload'])),
@@ -31,9 +39,18 @@ class ProductWorkspace:
         self.service = service
         self.core = service.core
         self.org = service.organization
+        from supply_quotes import SupplyQuotes
+        self.supply = SupplyQuotes(self)
+        from delivery_review import DeliveryReview
+        self.delivery = DeliveryReview(self)
 
-    @staticmethod
-    def label(case):
+    def label(self,case):
+        if not case['scope'].get('label'):
+            for source in self.facts(case):
+                doc=self.service.business.source(source['id'])
+                if doc['fresh']and doc['document']['origin_ref']=='private-export:ozon-'+case['id']:
+                    title=next((r['value']for r in doc['document']['records']if r['key']=='title'),None)
+                    if isinstance(title,str)and title.strip():return title
         return case['scope'].get('label') or case['scope'].get('sku') or '未命名商品'
 
     def listing(self):
@@ -57,6 +74,8 @@ class ProductWorkspace:
         source = {'case': case, 'artifacts': {k: {'id': v['id'], 'sha256': v['sha256'], 'intact': v['intact']}
                                             if v else None for k, v in artifacts.items()},
                   'facts': [{k: s[k] for k in ('id', 'version', 'sha256')} for s in facts]}
+        quotes=self.supply.heads(case_id)
+        if quotes:source['quote_heads']=quotes
         return case, artifacts, facts, digest(canonical(source))
 
     @staticmethod
@@ -78,8 +97,10 @@ class ProductWorkspace:
         forms = {f: self.checkpoint(case_id, f, source) for f in FORMS}
         saved = forms['cost']
         inputs = (saved['payload'] or {}).get('input', {}) if saved['payload'] else (artifacts['economics'] or {}).get('payload', {})
-        calculation = unit_economics(inputs) if not saved['stale'] and (not artifacts['economics'] or artifacts['economics']['intact']) else unit_economics({})
-        calculation['stale'] = saved['stale']
+        from supply_quotes import selection_issues
+        quote_stale=bool(selection_issues(self.org,case,artifacts['supply']))
+        calculation = unit_economics(inputs) if not saved['stale'] and not quote_stale and (not artifacts['economics'] or artifacts['economics']['intact']) else unit_economics({})
+        calculation['stale'] = saved['stale'] or quote_stale
         tasks = []
         with self.core.db() as db:
             for row in db.execute('SELECT * FROM tasks ORDER BY rowid DESC'):
@@ -89,34 +110,30 @@ class ProductWorkspace:
                 if len(tasks) >= 100:
                     break
         sources = [self.service.business.source(s['id']) for s in facts]
-        content = []
-        for d in self.service.business.listing(case['scope'].get('synthetic') is True)['drafts']:
-            if d['kind'] == 'listing' and d['scope']['subject_ref'] == case_id and d['scope']['platform'] == case['scope'].get('platform'):
-                content.append(self.service.business.get(d['id']))
+        content = self.content_for_case(case)
         from research_workspace import views
         study = views(self.core, case, (artifacts['research'] or {}).get('id'), research_task_id)
-        return {'schema': 'commerce-product-workspace-v1', 'case': case, 'name': self.label(case),
+        result = {'schema': 'commerce-product-workspace-v1', 'case': case, 'name': self.label(case),
                 'source_sha256': source, 'artifacts': artifacts, 'forms': forms,
                 'stages': board['stages'], 'calculation': calculation, 'tasks': tasks,
-                'content_sources': sources, 'content_drafts': content,
+                'content_sources': sources, 'content_drafts': content, 'supply_quotes':self.supply.listing(case_id),
                 'read_scope': 'selected_case_only', 'facts_independently_verified': False,
                 'external_execution_allowed': False, **study}
+        result['delivery_review']=self.delivery.from_snapshot(result)
+        return result
+
+    def content_for_case(self,case):
+        return [self.service.business.get(d['id'])for d in self.service.business.listing(case['scope'].get('synthetic')is True)['drafts']if d['kind']=='listing'and d['scope']['subject_ref']==case['id']and d['scope']['platform']==case['scope'].get('platform')]
 
     def validate_form(self, case_id, form, payload):
         if not isinstance(payload, dict):
             raise ValueError('workspace_invalid_form')
         if form == 'view':
-            if set(payload) != {'tab'} or payload['tab'] not in ('overview', 'research', 'cost', 'content', 'review', 'tasks'):
+            if set(payload) != {'tab'} or payload['tab'] not in ('overview', 'research', 'cost', 'content', 'review', 'tasks', 'media'):
                 raise ValueError('workspace_invalid_view')
         elif form == 'plan':
-            if set(payload) != {'goal', 'steps'} or not isinstance(payload['goal'], str) or len(payload['goal']) > 2000 or not isinstance(payload['steps'], list) or len(payload['steps']) > 12:
-                raise ValueError('workspace_invalid_plan')
             tasks = {t['id'] for t in self.get(case_id)['tasks']}
-            for step in payload['steps']:
-                if not isinstance(step, dict) or set(step) - {'title', 'task_id'} or not isinstance(step.get('title'), str) or not 1 <= len(step['title']) <= 160:
-                    raise ValueError('workspace_invalid_plan')
-                if step.get('task_id') and step['task_id'] not in tasks:
-                    raise ValueError('workspace_task_outside_scope')
+            validate_plan(payload, tasks)
         elif form == 'cost':
             if set(payload) != {'input'} or not isinstance(payload['input'], dict) or set(payload['input']) - set(UNIT_FIELDS):
                 raise ValueError('workspace_invalid_cost')
@@ -151,15 +168,27 @@ class ProductWorkspace:
         self.form_scope(case_id, form)
         with self.core.atomic(reuse=_reuse):
             self.guard(case_id, expected_source_sha256)
+            if form == 'plan':
+                previous=self.checkpoint(case_id,form,expected_source_sha256)
+                payload = preserve_graph(payload, previous['payload'])
             self.validate_form(case_id, form, payload)
             result = self.service.form_drafts.save(self.form_scope(case_id, form),
                       {'source_sha256': expected_source_sha256, 'data': deepcopy(payload)}, expected_revision)
+            if form=='plan':
+                from workflow_plan import normalized
+                if previous['revision']and previous['payload']:
+                    self.org._store(case_id,'workflow_plan_version',{'revision':previous['revision'],'source_sha256':previous['source_sha256'],
+                        'payload':normalized(previous['payload'])},'workflow-plan-version:'+str(previous['revision']))
+                self.org._store(case_id,'workflow_plan_version',{'revision':result['revision'],'source_sha256':expected_source_sha256,
+                    'payload':normalized(payload)},'workflow-plan-version:'+str(result['revision']))
             self.org.case(case_id)  # Reject a connection revoked during the write.
         return {**result, 'payload': payload, 'source_sha256': expected_source_sha256}
 
     def calculate(self, case_id, expected_revision, expected_source_sha256, *, _reuse=False):
         with self.core.atomic(reuse=_reuse):
             case = self.guard(case_id, expected_source_sha256)
+            from supply_quotes import selection_issues
+            if selection_issues(self.org,case,self.org.artifact(case_id,'supply')):raise ValueError('workspace_quote_not_ready')
             saved = self.checkpoint(case_id, 'cost', expected_source_sha256)
             if saved['revision'] != expected_revision:
                 raise ValueError('form_draft_conflict')
@@ -209,4 +238,8 @@ class ProductWorkspace:
             return result
 
     def invoke(self, name, args):
+        if name in ('commerce_workspace_delivery_get','commerce_workspace_delivery_record','commerce_workspace_delivery_export'):
+            return {'commerce_workspace_delivery_get':self.delivery.get,'commerce_workspace_delivery_record':self.delivery.record,'commerce_workspace_delivery_export':self.delivery.export}[name](**args)
+        if name in ('commerce_workspace_quotes','commerce_workspace_quote_compare','commerce_workspace_quote_save','commerce_workspace_quote_select'):
+            return {'commerce_workspace_quotes':self.supply.listing,'commerce_workspace_quote_compare':self.supply.compare,'commerce_workspace_quote_save':self.supply.save,'commerce_workspace_quote_select':self.supply.select}[name](**args)
         return {'list': self.listing, 'get': self.get, 'save': self.save, 'calculate': self.calculate, 'currency': self.currency, 'submit_content': self.submit_content}[name.removeprefix('commerce_workspace_')](**args)

@@ -9,14 +9,21 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from operations_analysis import UNIT_FIELDS, RATES, number
+from operations_analysis import number
 
 ROOT = Path(__file__).resolve().parent
-CATALOG = json.loads((ROOT / 'catalog.json').read_text())
+CONTRACT = json.loads((ROOT / 'contract.json').read_text())
+CATALOG = CONTRACT['catalog']
+FIELDS = CONTRACT['fields']
+NODES = CONTRACT['nodes']
+DISPLAY_FIELDS = CONTRACT['display']
+FIELD_BY_NODE = {'field_' + field['key']: field for field in FIELDS}
+UNIT_FIELDS = tuple(field['key'] for field in FIELDS)
+RATES = tuple(field['key'] for field in FIELDS if field['kind'] == 'rate')
 CATALOG_ID = CATALOG['catalogId']
-ACTION = 'commerce.cost.calculate'
-CURRENCIES = ('CNY', 'USD', 'RUB', 'EUR', 'GBP', 'JPY', 'SGD', 'MXN', 'BRL', 'AED', 'SAR', 'TRY', 'ZAR', 'NGN', 'KES', 'ETB')
-LABELS = dict(zip(UNIT_FIELDS, ('测算币种', '单件售价', '采购成本', '国内运费', '包装成本', '履约费用', '其他固定费用', '平台佣金率', '支付费率', '退货预留比例', '广告费用比例')))
+ACTION = CATALOG['components']['Button']['properties']['action']['properties']['event']['properties']['name']['const']
+CURRENCIES = tuple(CONTRACT['currencies'])
+LABELS = {field['key']: field['label'] for field in FIELDS}
 SOURCE = '来源：本次用户输入，尚未经独立核实。金额均使用所选币种，不自动换汇；费率以售价为基数。结果为贡献测算草稿，不是净利润或结算账单。'
 BOUND_SOURCE = '来源：当前商品工作项的已保存参数与原有产物，尚未经独立核实。金额同币种，不自动换汇；结果为贡献测算草稿。'
 _validators = None
@@ -52,7 +59,8 @@ def validate_input(data):
             if not isinstance(value, str) or value not in CURRENCIES:
                 raise ValueError('invalid_currency')
         else:
-            number(value, key, minimum=.01 if key == 'price' else 0, maximum=1 if key in RATES else 10**12)
+            field = FIELD_BY_NODE['field_' + key]
+            number(value, key, minimum=field['minimum'], maximum=field['maximum'])
 
 
 def validate_surface(messages):
@@ -66,6 +74,14 @@ def validate_surface(messages):
         nodes = surface['components']
         if not 1 <= len(nodes) <= 48:
             raise ValueError('a2ui_invalid_surface')
+        # A writable component may only address its canonical input; display labels
+        # and placement never grant permission to write another business field.
+        expected = {node['id']: node for node in field_nodes()}
+        for node in nodes:
+            if node['component'] in ('NumberField', 'CurrencyField'):
+                canonical = expected.get(node['id'])
+                if canonical is None or any(node.get(key) != value for key, value in canonical.items() if key != 'label'):
+                    raise ValueError('a2ui_invalid_field_binding')
         graph = {n['id']: n.get('children', []) for n in nodes}
         if len(graph) != len(nodes):
             raise ValueError('a2ui_duplicate_component')
@@ -76,7 +92,7 @@ def validate_surface(messages):
             seen.add(ident)
             for child in graph[ident]:
                 visit(child, depth + 1)
-        visit('root', 0)
+        visit(NODES['root'], 0)
         if len(seen) != len(graph):
             raise ValueError('a2ui_orphan_component')
     except (KeyError, TypeError, RecursionError):
@@ -98,18 +114,26 @@ def data_model(data, result, source=SOURCE):
     return {'input': data, 'display': display}
 
 
+def field_nodes(fields=FIELDS):
+    nodes = []
+    for field in fields:
+        key = field['key']
+        currency = field['kind'] == 'currency'
+        node = {'id': 'field_' + key, 'component': 'CurrencyField' if currency else 'NumberField', 'label': field['label'], 'value': {'@path': '/input/' + key}}
+        if not currency:
+            node.update(minimum=field['minimum'], maximum=field['maximum'], unit='fraction' if field['kind'] == 'rate' else 'amount')
+        nodes.append(node)
+    return nodes
+
+
 def messages(ident, data, result, source=SOURCE):
     fields = ['field_' + key for key in UNIT_FIELDS]
-    nodes = [{'id': 'root', 'component': 'Column', 'children': ['fields', 'output']},
-             {'id': 'fields', 'component': 'Column', 'children': fields + ['calculate']},
-             {'id': 'output', 'component': 'Column', 'children': ['status', 'contribution', 'contribution_rate', 'total_cost', 'source']}]
-    for key in UNIT_FIELDS:
-        node = {'id': 'field_' + key, 'component': 'CurrencyField' if key == 'currency' else 'NumberField', 'label': LABELS[key], 'value': {'@path': '/input/' + key}}
-        if key != 'currency':
-            node.update(minimum=.01 if key == 'price' else 0, maximum=1 if key in RATES else 10**12, unit='fraction' if key in RATES else 'amount')
-        nodes.append(node)
-    nodes.append({'id': 'calculate', 'component': 'Button', 'label': '计算单件贡献', 'action': {'event': {'name': ACTION, 'context': {}}}})
-    for key in ('status', 'contribution', 'contribution_rate', 'total_cost', 'source'):
+    nodes = [{'id': NODES['root'], 'component': 'Column', 'children': [NODES['fields'], NODES['output']]},
+             {'id': NODES['fields'], 'component': 'Column', 'children': fields + [NODES['calculate']]},
+             {'id': NODES['output'], 'component': 'Column', 'children': DISPLAY_FIELDS}]
+    nodes.extend(field_nodes())
+    nodes.append({'id': NODES['calculate'], 'component': 'Button', 'label': '计算单件贡献', 'action': {'event': {'name': ACTION, 'context': {}}}})
+    for key in DISPLAY_FIELDS:
         nodes.append({'id': key, 'component': 'Text', 'text': {'@path': '/display/' + key}, 'variant': 'caption' if key == 'source' else 'body'})
     payload = [{'version': '1.0', 'createSurface': {'surfaceId': ident, 'catalogId': CATALOG_ID, 'components': nodes, 'dataModel': data_model(data, result, source)}}]
     validate_surface(payload)
@@ -327,7 +351,7 @@ class CostSurfaces:
                 raise ValueError('a2ui_action_too_large')
             validators()['renderer_to_agent'].validate(event)
             action = event['action']
-            if set(action) != {'name', 'surfaceId', 'sourceComponentId', 'timestamp', 'context'} or action['name'] != ACTION or action['sourceComponentId'] != 'calculate' or action['context'] != {}:
+            if set(action) != {'name', 'surfaceId', 'sourceComponentId', 'timestamp', 'context'} or action['name'] != ACTION or action['sourceComponentId'] != NODES['calculate'] or action['context'] != {}:
                 raise ValueError('a2ui_action_forbidden')
             if datetime.fromisoformat(action['timestamp'].replace('Z', '+00:00')).tzinfo is None:
                 raise ValueError('a2ui_invalid_timestamp')

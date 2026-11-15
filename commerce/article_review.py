@@ -6,7 +6,9 @@ from research import canonical,drift
 class ArticleReviews:
     def __init__(self,core,articles):
         self.core,self.articles=core,articles
-        with core.db() as db:db.execute('CREATE TABLE IF NOT EXISTS article_reviews (id TEXT PRIMARY KEY,article_id TEXT,idem TEXT UNIQUE,fingerprint TEXT,document TEXT)')
+        with core.db() as db:
+            db.execute('CREATE TABLE IF NOT EXISTS article_reviews (id TEXT PRIMARY KEY,article_id TEXT,idem TEXT UNIQUE,fingerprint TEXT,document TEXT)')
+            db.execute('CREATE INDEX IF NOT EXISTS article_reviews_article ON article_reviews(article_id)')
 
     def listing(self,article_id):
         self.articles.get(article_id)

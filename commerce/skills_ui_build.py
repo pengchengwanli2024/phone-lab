@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 root=Path(__file__).resolve().parent;target=root/'web/app.js';original=target.read_text()
 start,end='/* COMMERCE_SKILLS_START */','/* COMMERCE_SKILLS_END */'
-block=start+'\n'+(root/'skills_ui.js').read_text().rstrip()+'\n'+end
+block=start+'\n'+(root/'ui/skill-input.js').read_text().rstrip()+'\n'+(root/'web/extensions-ui.js').read_text().rstrip()+'\n'+(root/'skills_ui.js').read_text().rstrip()+'\n'+end
 if start in original:
     before,tail=original.split(start,1);_,after=tail.split(end,1);result=before+block+after
 else:result=block+'\n'+original

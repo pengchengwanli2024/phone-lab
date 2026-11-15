@@ -3,10 +3,11 @@ import { SurfaceView, useGenerativeUIActivitySurface, useGenerativeUIRuntime } f
 import type { A2UIOperation } from '@copilotkit/shared';
 import { api, errorText, newKey } from './api';
 import { CalculationContext, CalculationResult, UnitEconomicsForm, catalogId, fromInput, toInput, type Values } from './calculation';
-import { Badge, Button, Empty, ErrorNotice } from './ui';
+import { Badge, Button, Empty, ErrorNotice, FieldDiff } from './ui';
 import { SurfaceProvider } from './surface-provider';
 import type { Calculation, Product, Surface } from './types';
 import { differences, labels, validateInput, type FieldErrors } from './cost-input';
+import { costComponentNames } from './cost-contract';
 const draftScope = { module: 'operations', form: 'cost', case_id: '' };
 type CostDraft = { revision: number; payload: { values?: Values; origin?: string } | null };
 
@@ -20,13 +21,13 @@ function DynamicCost({ surface }: { surface: Surface }) {
     }
     return { surfaceId: surface.surface_id, target: 'cost-workspace', catalogId, operations: history.current, status: 'ready' as const, rejected: [] };
   }, [surface]);
-  useEffect(() => runtime?.manager.registerTarget('cost-workspace', { components: ['Column', 'Text', 'NumberField', 'CurrencyField', 'Button'] }), [runtime]);
+  useEffect(() => runtime?.manager.registerTarget('cost-workspace', { components: [...costComponentNames] }), [runtime]);
   const result = useGenerativeUIActivitySurface({ runtime, threadId: 'cost-' + surface.surface_id, agentId: undefined, content, target: 'cost-workspace' });
   if (result.error || result.rejected.length) return <ErrorNotice>动态表单未通过目录校验，请使用标准表单。当前输入已保留。</ErrorNotice>;
   return result.surface ? <SurfaceView surface={result.surface} /> : <Empty>正在读取动态测算表单…</Empty>;
 }
 
-export function CostPage({ caseId = '', onReturn }: { caseId?: string; onReturn?: () => void }) {
+export function CostPage({ caseId = '', requestedSurface = '', onReturn }: { caseId?: string; requestedSurface?: string; onReturn?: () => void }) {
   const [surface, setSurface] = useState<Surface | null>(null), [values, setValues] = useState<Values>({}), [dirty, setDirty] = useState(false);
   const [dynamic, setDynamic] = useState(true), [error, setError] = useState(''), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [loaded, setLoaded] = useState(false);
   const [standardResult, setStandardResult] = useState<Calculation | null>(null), [draftRevision, setDraftRevision] = useState(0), [restoreEpoch, setRestoreEpoch] = useState(0);
@@ -36,6 +37,7 @@ export function CostPage({ caseId = '', onReturn }: { caseId?: string; onReturn?
   const [standardReview, setStandardReview] = useState<CostDraft | null>(null);
   const [blocked, setBlocked] = useState(false), [unknown, setUnknown] = useState(false);
   const [loadErrorCode, setLoadErrorCode] = useState('');
+  const targetPending = !!requestedSurface && requestedSurface !== surface?.surface_id;
   const page = useRef<HTMLDivElement>(null);
   const operation = useRef(false), version = useRef(0), pending = useRef<{ key: string; fingerprint: string; event?: object } | null>(null);
   async function standardLoad() {
@@ -64,7 +66,11 @@ export function CostPage({ caseId = '', onReturn }: { caseId?: string; onReturn?
       const item = caseId ? await api<Product>('commerce_workspace_get', { case_id: caseId }) : null;
       if (generation !== version.current) return;
       setProduct(item);
-      const id = new URL(location.href).searchParams.get('surface');
+      const id = requestedSurface;
+      if (id && id !== surface?.surface_id) {
+        setBlocked(true);
+        setMessage('正在恢复所选测算任务，原输入保留。');
+      }
       if (!item && !surface && !id) {
         const saved = await standardLoad();
         if (generation !== version.current) return;
@@ -74,7 +80,7 @@ export function CostPage({ caseId = '', onReturn }: { caseId?: string; onReturn?
       }
       const status = await api<{ enabled: boolean }>('commerce_a2ui_status');
       if (!status.enabled) throw Error('a2ui_disabled');
-      const current = item ? await api<Surface>('commerce_a2ui_create', { case_id: caseId, expected_source_sha256: item.source_sha256, idempotency_key: 'react-cost-case:' + caseId + ':' + item.source_sha256 }) : await api<Surface>('commerce_a2ui_get', { surface_id: surface?.surface_id || id! });
+      const current = item ? await api<Surface>('commerce_a2ui_create', { case_id: caseId, expected_source_sha256: item.source_sha256, idempotency_key: 'react-cost-case:' + caseId + ':' + item.source_sha256 }) : await api<Surface>('commerce_a2ui_get', { surface_id: id || surface!.surface_id });
       if ((caseId && current.binding?.case_id !== caseId) || (!caseId && current.binding)) throw Error('workspace_source_changed');
       if (generation !== version.current) return;
       if (inspect && (dirty || blocked || unknown)) { setReview(current); setMessage('已读取当前保存版本。请核对保存版本与本地输入，再选择如何继续。'); }
@@ -84,7 +90,8 @@ export function CostPage({ caseId = '', onReturn }: { caseId?: string; onReturn?
       if (generation !== version.current) return;
       setError(errorText(e));
       setLoadErrorCode(e instanceof Error ? e.message : 'request_failed');
-      if (!surface && !caseId) {
+      if (requestedSurface) setMessage('所选测算任务尚未恢复，当前输入已保留。请读取当前保存版本后再继续。');
+      if (!surface && !caseId && !requestedSurface) {
         setDynamic(false);
         try { const saved = await standardLoad(); if (generation !== version.current) return; setDraftRevision(saved.revision); if (!dirty) { setValues(saved.payload?.values || {}); setDirty(false); } setLoaded(true); }
         catch (failure) { if (generation === version.current) setError(errorText(failure)); }
@@ -104,10 +111,17 @@ export function CostPage({ caseId = '', onReturn }: { caseId?: string; onReturn?
     } catch (failure) { if (generation === version.current) setError(errorText(failure)); }
     finally { operation.current = false; if (generation === version.current) setBusy(false); }
   }
+  const resumedSurface = useRef(requestedSurface);
   useEffect(() => { void load(); return () => { version.current++; }; }, []);
+  useEffect(() => {
+    if (requestedSurface === resumedSurface.current || busy || operation.current) return;
+    resumedSurface.current = requestedSurface;
+    // Finish an in-flight save first, then compare a different task with local input.
+    if (requestedSurface && requestedSurface !== surface?.surface_id) void load(true);
+  }, [requestedSurface, busy]);
   function edit(next: Values) { setValues(next); setDirty(true); setMessage(''); setError(''); setFieldErrors(previous => Object.fromEntries(Object.entries(previous).filter(([key]) => next[key] === values[key]))); }
   async function submit(action: 'update' | 'calculate') {
-    if (!loaded || operation.current || blocked || unknown || review || standardReview) return;
+    if (!loaded || operation.current || blocked || targetPending || unknown || review || standardReview) return;
     if (surface?.binding?.stale && !sourceReviewed) { setError('请先核对当前商品依据，再明确保存或重新测算。'); return; }
     const errors = validateInput(values); setFieldErrors(errors);
     if (Object.keys(errors).length) { setError('请修正标记字段。'); focusError(errors); return; }
@@ -149,9 +163,9 @@ export function CostPage({ caseId = '', onReturn }: { caseId?: string; onReturn?
     <div className="r-scope-line"><Badge tone="blue">{product?.case.scope.synthetic === true ? '合成示例 · ' : ''}{surface?.binding?.stale ? '依据待核对' : product ? '当前商品 · 同币种' : '本次填写 · 同币种'}</Badge><span>{dynamic ? '动态表单' : '标准表单'}</span>{surface && <details><summary>版本与来源</summary><p>修订 {surface.revision}{surface.binding ? ` · 来源 ${surface.binding.source_sha256.slice(0, 12)}` : ' · 手动填写'}</p></details>}</div>
     <ErrorNotice>{error || (surface?.binding?.stale ? '商品依据已变化，请核对后重新保存。' : '')}</ErrorNotice>
     {unknown && <p role="status">提交结果尚未确认。已暂停保存与测算，请先读取当前保存版本核对。</p>}
-    {(review || standardReview) && <section className="r-source-recovery" aria-label="核对保存版本"><p>当前保存修订 {review?.revision ?? standardReview?.revision}；本地输入已保留。</p>{changed.length ? <div className="r-table-wrap"><table><thead><tr><th>字段</th><th>本地输入</th><th>保存版本</th></tr></thead><tbody>{changed.map(key => <tr key={key}><th>{labels[key]}{key.endsWith('_rate') ? '（%）' : ''}</th><td>{values[key] || '未知'}</td><td>{savedValues[key] || '未知'}</td></tr>)}</tbody></table></div> : <p>保存版本与本地输入一致。</p>}{review && <CalculationResult result={review.result} />}<div className="r-actions"><Button onClick={() => review ? adopt(review) : standardReview && adoptStandard(standardReview)}>采用保存版本</Button><Button onClick={() => review ? adopt(review, true) : standardReview && adoptStandard(standardReview, true)}>核对后保留本地输入</Button></div></section>}
+    {(review || standardReview) && <section className="r-source-recovery" aria-label="核对保存版本"><p>当前保存修订 {review?.revision ?? standardReview?.revision}；本地输入已保留。</p><FieldDiff rows={changed.map(key => ({ key, label: labels[key] + (key.endsWith('_rate') ? '（%）' : ''), before: values[key], after: savedValues[key] }))} beforeLabel="本地输入" afterLabel="保存版本" />{review && <CalculationResult result={review.result} />}<div className="r-actions"><Button onClick={() => review ? adopt(review) : standardReview && adoptStandard(standardReview)}>采用保存版本</Button><Button onClick={() => review ? adopt(review, true) : standardReview && adoptStandard(standardReview, true)}>核对后保留本地输入</Button></div></section>}
     {surface?.binding?.stale && !review && <div className="r-source-recovery"><label><input type="checkbox" checked={sourceReviewed} onChange={e => setSourceReviewed(e.target.checked)} />已核对当前商品依据，继续使用本次填写的参数</label><Button disabled={!sourceReviewed || busy || blocked} onClick={() => void submit('update')}>确认并保存当前依据</Button></div>}
     {message && <p role="status" className="r-feedback">{message}</p>}
-    {!loaded ? <Empty>{caseId && ['a2ui_disabled','a2ui_dependency_missing'].includes(loadErrorCode) ? '动态成本表单暂不可用。请返回同一商品的成本阶段使用标准表单。' : error ? caseId ? '未读到当前商品成本，请返回原商品核对连接与成本币种。' : '未读到测算记录，可重读后继续。' : '正在读取保存的输入…'}</Empty> : <CalculationContext.Provider value={{ values, onChange: edit, busy: busy || blocked || !!review || !!standardReview, dirty, bound: !!surface?.binding, errors: fieldErrors, calculate: () => void submit('calculate'), save: () => void submit('update') }}>{dynamic && surface ? <SurfaceProvider key={surface.surface_id + ':' + restoreEpoch}><DynamicCost surface={surface} /></SurfaceProvider> : <div className="r-calculation-grid"><UnitEconomicsForm /><CalculationResult result={dirty ? null : result} /></div>}</CalculationContext.Provider>}
+    {!loaded ? <Empty>{caseId && ['a2ui_disabled','a2ui_dependency_missing'].includes(loadErrorCode) ? '动态成本表单暂不可用。请返回同一商品的成本阶段使用标准表单。' : error ? caseId ? '未读到当前商品成本，请返回原商品核对连接与成本币种。' : '未读到测算记录，可重读后继续。' : '正在读取保存的输入…'}</Empty> : <CalculationContext.Provider value={{ values, onChange: edit, busy: busy || blocked || targetPending || !!review || !!standardReview, dirty: dirty || targetPending, bound: !!surface?.binding, errors: fieldErrors, calculate: () => void submit('calculate'), save: () => void submit('update') }}>{dynamic && surface ? <SurfaceProvider key={surface.surface_id + ':' + restoreEpoch}><DynamicCost surface={surface} /></SurfaceProvider> : <div className="r-calculation-grid"><UnitEconomicsForm /><CalculationResult result={dirty || targetPending ? null : result} /></div>}</CalculationContext.Provider>}
   </div>;
 }

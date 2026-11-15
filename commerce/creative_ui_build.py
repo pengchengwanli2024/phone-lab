@@ -5,7 +5,7 @@ import sys
 root=Path(__file__).resolve().parent
 target=root/'web/app.js';current=target.read_text()
 start,end='/* COMMERCE_CREATIVE_START */','/* COMMERCE_CREATIVE_END */'
-block=start+'\n'+(root/'creative_ui.js').read_text().rstrip()+'\n'+end
+block=start+'\n'+'\n'.join((root/name).read_text().rstrip() for name in ('web/catalog-ui.js','web/media-video-review-ui.js','web/media-plugin-execution-ui.js','web/media-plugin-ui.js','web/media-provider-ui.js','web/creative-readiness-ui.js','web/media-workflow-ui.js','creative_ui.js'))+'\n'+end
 if start in current:
     before,tail=current.split(start,1);_,after=tail.split(end,1);result=before+block+after
 else:result=block+'\n'+current

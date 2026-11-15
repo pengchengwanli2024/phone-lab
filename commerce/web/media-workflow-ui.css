@@ -1,0 +1,13 @@
+.media-flow{min-width:0}.media-tabs{display:flex;gap:var(--ui-space-2);flex-wrap:wrap;margin-bottom:var(--ui-space-5)}
+.media-tabs [aria-pressed=true]{border-color:var(--ui-color-brand);color:var(--ui-color-brand);background:var(--ui-color-brand-soft)}
+.media-reference-list{display:flex;gap:var(--ui-space-3);flex-wrap:wrap;margin:var(--ui-space-4) 0}.media-check{display:flex;align-items:center;gap:var(--ui-space-2);min-height:var(--ui-control-height)}
+.media-reference-list small{color:var(--ui-color-muted)}.media-direction-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ui-space-4);margin:var(--ui-space-4) 0}
+.media-flow textarea{width:100%;resize:vertical;line-height:1.6}.media-create-row,.media-version-select,.media-policy,.media-output-assets{display:flex;align-items:end;gap:var(--ui-space-3);flex-wrap:wrap;margin:var(--ui-space-4) 0}
+.media-version-select .ui-field{min-width:0;flex:1}.media-prompt{margin-top:var(--ui-space-3)}.media-shot-inputs,.media-metric-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ui-space-4);margin:var(--ui-space-4) 0}
+.media-flow h3{font-size:17px;margin-top:var(--ui-space-5)}.media-flow .ui-field{min-width:0}.media-flow .ui-control{max-width:100%}.media-review-report{padding:var(--ui-space-4) 0;border-top:1px solid var(--ui-color-border)}
+.media-policy .ui-field{max-width:160px}.media-flow .ui-table{margin:var(--ui-space-4) 0}.media-flow td{vertical-align:top}.media-flow details{margin:var(--ui-space-4) 0}.media-flow summary{cursor:pointer}
+@media(max-width:680px){.media-direction-fields,.media-shot-inputs,.media-metric-fields{grid-template-columns:1fr}.media-tabs{display:grid;grid-template-columns:1fr}.media-tabs .ui-button{justify-content:flex-start}.media-version-select{align-items:start;flex-direction:column}.media-version-select .ui-field{width:100%}}
+.media-readiness{margin:var(--ui-space-4) 0;padding:var(--ui-space-3) 0;border-block:1px solid var(--ui-color-border)}
+.media-readiness-heading,.media-readiness li{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-space-3);flex-wrap:wrap}
+.media-readiness ul{padding:0;list-style:none;display:grid;gap:var(--ui-space-3)}
+.media-readiness small{display:block;color:var(--ui-color-muted)}

@@ -4,12 +4,13 @@ from datetime import datetime, timezone
 import hashlib
 import ipaddress
 import json
+import re
 from pathlib import Path
 import socket
 import subprocess
 import sys
 import tempfile
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit,urlunsplit
 from urllib.request import Request, HTTPRedirectHandler, build_opener, HTTPSHandler
 import ssl
 
@@ -18,20 +19,21 @@ from setup import STATE, environment
 PUBLISHERS = {
     'fed': ('www.federalreserve.gov', '/newsevents/', ['#article', '#content']),
     'ecb': ('www.ecb.europa.eu', '/press/', ['main', '#main-wrapper']),
-    'eia': ('www.eia.gov', '/todayinenergy/', ['#content', 'main']),
-    'wto': ('www.wto.org', '/english/', ['#news', '#main-content', '#main']),
-    'hmrc': ('www.gov.uk', '/government/', ['.gem-c-govspeak', 'main']),
+    'eia': ('www.eia.gov', '/todayinenergy/', ['.tie-article', '#content', 'main']),
+    'wto': ('www.wto.org', '/english/', ['#mainContainer', '#news', '#main-content', '#main']),
+    'hmrc': ('www.gov.uk', ('/government/','/guidance/','/hmrc-internal-manuals/'), ['.gem-c-govspeak', 'main']),
     'transport': ('www.gov.uk', '/government/', ['.gem-c-govspeak', 'main']),
 }
 MAX_BYTES = 2_000_000
-MAX_TEXT = 30000
+MAX_TEXT = 60000
 
 
 def allowed(source, url, resolve=True):
     if source not in PUBLISHERS:raise ValueError('article_source_not_supported')
     host, prefix, _ = PUBLISHERS[source]
     p=urlsplit(url)
-    if p.scheme!='https' or p.netloc!=host or not p.path.startswith(prefix) or p.username or p.password or p.fragment:
+    path='/'+p.path.lstrip('/')if source=='ecb'and p.path.startswith('//press/')else p.path
+    if p.scheme!='https' or p.netloc!=host or not path.startswith(prefix) or p.username or p.password or p.fragment:
         raise ValueError('article_url_rejected')
     # Existing loopback HTTP proxy resolves remote names itself. Keep TLS hostname
     # verification and the fixed host/path redirect guard; never invent local DNS.
@@ -40,19 +42,24 @@ def allowed(source, url, resolve=True):
     if resolve and not proxy_dns:
         for entry in socket.getaddrinfo(host,443,type=socket.SOCK_STREAM):
             if not ipaddress.ip_address(entry[4][0]).is_global:raise ValueError('article_address_rejected')
-    return url
+    return urlunsplit((p.scheme,p.netloc,path,p.query,''))
 
 
 class PublisherRedirect(HTTPRedirectHandler):
     def __init__(self, source):self.source=source
     def redirect_request(self,req,fp,code,msg,headers,newurl):
-        allowed(self.source,newurl)
+        newurl=allowed(self.source,newurl)
         return super().redirect_request(req,fp,code,msg,headers,newurl)
 
 
 def body(source, payload):
     from parsel import Selector
-    selector=Selector(text=payload.decode('utf-8'))
+    declared=re.search(br'<meta\b[^>]{0,500}\bcharset\s*=\s*["\x27]?\s*([A-Za-z0-9_-]+)',payload[:8192],re.I)
+    encoding=declared[1].decode('ascii').lower()if declared else'utf-8'
+    if encoding not in ('utf-8','utf8','iso-8859-1','windows-1252'):raise ValueError('article_text_encoding_unsupported')
+    try:html=payload.decode(encoding)
+    except UnicodeError:raise ValueError('article_text_encoding_invalid')from None
+    selector=Selector(text=html)
     for css in PUBLISHERS[source][2]:
         nodes=selector.css(css)
         if not nodes:continue
@@ -70,7 +77,7 @@ def body(source, payload):
 
 
 def capture(source,url):
-    allowed(source,url)
+    source_url=url;url=allowed(source,url)
     from rate_limit import wait_for,outcome
     import time
     deadline=time.monotonic()+40
@@ -99,8 +106,9 @@ def capture(source,url):
     if texts[0][0]!=texts[1][0]:raise ValueError('article_route_conflict')
     stamp=datetime.now(timezone.utc).isoformat()
     return {'text':texts[0][0],'content_sha256':hashlib.sha256(texts[0][0].encode()).hexdigest(),
-            'source_url':url,'captured_at':stamp,'routes':['urllib','native-curl'],
-            'evidence':[{'route':route,'source_url':url,'captured_at':stamp,'locator':locator,
+            'source_url':source_url,'retrieved_url':url,'captured_at':stamp,'routes':['urllib','native-curl'],
+            'extractor_version':'publisher-body-v2',
+            'evidence':[{'route':route,'source_url':source_url,'retrieved_url':url,'captured_at':stamp,'locator':locator,
                          'payload_sha256':hashlib.sha256(payload).hexdigest()}
                         for route,payload,(_,locator) in zip(['urllib','native-curl'],[first,second],texts)],
             'coverage':'selected_publisher_body_no_attachments','publisher_claims_independently_verified':False}

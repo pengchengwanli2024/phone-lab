@@ -1,6 +1,22 @@
 /* Shared primitives also style legacy semantic markup during migration. */
+/* Wide data stays in its own keyboard-readable region on narrow work areas. */
+[data-ui-scrollable=true]{overscroll-behavior-inline:contain;scrollbar-width:thin;scrollbar-color:var(--ui-color-border) transparent;scroll-padding-inline:var(--ui-space-3)}
+[data-ui-scrollable=true]:focus-visible{outline:2px solid var(--ui-color-focus);outline-offset:-2px}
+input[type=file]{font:inherit;color:var(--ui-color-muted);max-width:100%}
+input[type=file]::file-selector-button{font:inherit;min-height:var(--ui-control-height);margin-inline-end:var(--ui-space-2);padding:var(--ui-space-2) var(--ui-space-3);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface);color:var(--ui-color-text);cursor:pointer}
+input[type=file]::file-selector-button:hover{background:var(--ui-color-surface-alt)}
+@media(max-width:767px){input[type=file]::file-selector-button{min-height:44px}}
 :root{--blue:var(--ui-color-brand);--muted:var(--ui-color-muted);--border:var(--ui-color-border);--soft:var(--ui-color-brand-soft);--text:var(--ui-color-text);font-family:var(--ui-font-family);font-size:var(--ui-font-size);color:var(--ui-color-text);background:var(--ui-color-canvas)}
 body{color:var(--ui-color-text);background:var(--ui-color-canvas)}
+:is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) a{color:var(--ui-color-brand);text-underline-offset:.18em}
+.ui-evidence,.ui-receipt{min-width:0;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);padding:var(--ui-space-3);margin-block:var(--ui-space-3);background:var(--ui-color-surface);font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.ui-evidence>header,.ui-receipt>header{display:flex;align-items:center;gap:var(--ui-space-2);flex-wrap:wrap}
+.ui-evidence blockquote{margin:var(--ui-space-3) 0;padding-left:var(--ui-space-3);border-left:2px solid var(--ui-color-border);white-space:pre-wrap}
+.ui-evidence dl,.ui-receipt dl{margin:var(--ui-space-2) 0}
+.ui-evidence dl>div,.ui-receipt dl>div{display:grid;grid-template-columns:minmax(72px,auto) minmax(0,1fr);gap:var(--ui-space-3)}
+.ui-evidence dt,.ui-receipt dt{color:var(--ui-color-muted)}
+.ui-evidence dd,.ui-receipt dd{margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.ui-field-diff{min-width:0}.ui-field-diff .ui-table{overflow:auto;max-width:100%}.ui-field-diff th,.ui-field-diff td{vertical-align:top;overflow-wrap:anywhere;white-space:pre-wrap}.ui-field-diff th:first-child{min-width:90px}.ui-field-diff td{min-width:90px;font-variant-numeric:tabular-nums}
 .ui-button>.icon{width:18px;height:18px;flex:none}
 .card,.ui-card,.kpi,.assistant,.intel-stats>div{background-color:var(--ui-color-surface);border-color:var(--ui-color-border);border-radius:var(--ui-radius-card)}
 button:where(:not(.tab):not(.pill):not(.link-btn):not(.side-link)){min-height:var(--ui-control-height);font-family:var(--ui-font-family);font-size:var(--ui-font-size);border-radius:var(--ui-radius-control);border-color:var(--ui-color-border);background-color:var(--ui-color-surface);color:var(--ui-color-text);padding:var(--ui-space-2) var(--ui-space-3)}
@@ -139,8 +155,9 @@ button.ui-module-result:hover,button.ui-module-result:focus-visible{background:v
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) button.ui-button:where(:not(.primary):not(.tab):not(.pill):not(.link-btn)):hover{background:var(--ui-color-surface-alt);border-color:var(--ui-color-muted)}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-button:disabled{cursor:default;opacity:.55}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-field{font-size:var(--ui-font-size-compact);line-height:1.5;gap:8px}
-:is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-control{font-size:var(--ui-font-size-compact);font-family:inherit;line-height:1.5;min-height:40px;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface);color:var(--ui-color-text);padding:8px 12px;width:100%;max-width:100%}
+:is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-control:not([type=checkbox]):not([type=radio]):not([type=file]){font-size:var(--ui-font-size-compact);font-family:inherit;line-height:1.5;min-height:40px;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface);color:var(--ui-color-text);padding:8px 12px;width:100%;max-width:100%}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) textarea.ui-control{resize:vertical;min-height:96px}
+@media(max-width:767px){:is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-control:not([type=checkbox]):not([type=radio]):not([type=file]){min-height:44px}}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-badge{font-size:var(--ui-font-size-compact);line-height:1.5;padding:2px 8px;border-radius:8px;white-space:normal;font-weight:500}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-alert{font-size:var(--ui-font-size-compact);padding:12px 16px;margin:0 0 16px;overflow-wrap:anywhere}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-table{border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);overflow:auto}

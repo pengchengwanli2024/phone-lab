@@ -7,6 +7,16 @@ import { tmpdir, homedir } from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fullUiChecks } from './full_ui_checks.mjs';
+import { listingWorkspaceChecks } from './listing_workspace_checks.mjs';
+import { intelFulltextChecks } from './intel_fulltext_checks.mjs';
+import { intelBatchesChecks } from './intel_batches_checks.mjs';
+import { listingReviewChecks } from './listing_review_checks.mjs';
+import { listingSchemaChecks } from './listing_schema_checks.mjs';
+import { listingReleaseChecks } from './listing_release_checks.mjs';
+import { costScenarioChecks } from './cost_scenario_checks.mjs';
+import { listingActionsChecks } from './listing_actions_checks.mjs';
+import { ownerReviewChecks } from './owner_review_checks.mjs';
 
 const commerce = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const output = path.resolve(process.env.QA_OUTPUT_DIR || path.join(commerce, '../.commerce-state/verification/react-regression'));
@@ -84,6 +94,12 @@ try {
   page.on('request', request => { const body = request.postData(); if (body?.includes('commerce_intel_')) intelTraffic.push(JSON.parse(body)); });
   await page.goto(origin + '/login?token=synthetic-workbench-preview');
   await page.goto(origin + `/workspace?host=harness&tab=workspace&case_id=${caseId}&demo=true`);
+  if (process.env.QA_OWNER_ONLY === '1') {await ownerReviewChecks({page,origin,output,invoke,checks});} else {
+  if (process.env.QA_LISTING === '1') await listingWorkspaceChecks({page,origin,caseId,output,invoke,checks});
+  if (process.env.QA_LISTING_REVIEW === '1') await listingReviewChecks({page,origin,caseId,output,invoke,checks});
+  if (process.env.COMMERCE_QA_LISTING_SCHEMA === '1') await listingSchemaChecks({page,origin,caseId,output,invoke,checks});
+  if (process.env.COMMERCE_QA_LISTING_RELEASE === '1') await listingReleaseChecks({page,origin,caseId,output,invoke,checks});
+  if (process.env.QA_FULL_UI === '1') await fullUiChecks({page,origin,caseId,output,checks});
   if (process.env.QA_INTEL_ONLY !== '1') {
   const product = page.frameLocator('iframe[title="完整商品内容编辑"]');
   await product.locator('#pw-main[aria-busy="false"]').waitFor();
@@ -258,7 +274,7 @@ try {
     const legacy = page.frameLocator('iframe[title="专业业务模块"]');
     await find('intelligence');
     const searchReady = async () => {
-      await legacy.locator('#intel-search button[type="submit"]:not(:disabled)').waitFor();
+      await legacy.locator('#intel-search button[type="submit"]:not(:disabled)').waitFor({state:'attached'});
       assert.equal(await legacy.locator('.intel-error').count(), 0);
     };
     await searchReady();
@@ -292,13 +308,12 @@ try {
     await legacy.locator('.intel-timeline [data-intel-id]').click();
     const selectedId = (await invoke('commerce_intel_search', {source:'transport',category:'logistics'})).items[0].id;
     await legacy.locator('.intel-record').waitFor();
-    await searchReady();
     assert.equal((await invoke('commerce_intel_item_get', { item_id: selectedId })).is_viewed, true);
     await legacy.locator('[data-intel-action="bookmark"]').click();
     await legacy.getByRole('button', { name: '取消收藏', exact: true }).waitFor();
     assert.equal((await invoke('commerce_intel_item_get', { item_id: selectedId })).is_bookmarked, true);
     await legacy.locator('[data-intel-task]').click();
-    await legacy.locator('.intel-review').getByText('核查已排队', { exact: false }).waitFor();
+    await legacy.locator('.intel-record').getByText('核查任务：已排队', { exact: false }).waitFor();
     assert.equal((await inventory()).tasks, before.tasks + 1);
     await page.screenshot({ path: path.join(output, 'isolated-intelligence.png') });
     checks.push('Opening, bookmarking and creating an explicit evidence-bound review persist real synthetic state');
@@ -307,10 +322,16 @@ try {
     assert.equal((await invoke('commerce_intel_item_get', { item_id: selectedId })).is_bookmarked, true);
     assert.equal((await inventory()).tasks, before.tasks + 1);
     checks.push('Intelligence records and saved searches survive reload without a duplicate review task');
+    if (process.env.QA_INTEL_FULLTEXT === '1') await intelFulltextChecks({page,output,invoke,checks});
+    if (process.env.COMMERCE_QA_ARTICLE_BATCHES === '1') await intelBatchesChecks({page,output,invoke,checks});
+  }
+  if (process.env.QA_COST_SCENARIOS === '1') await costScenarioChecks({page,origin,caseId,output,invoke,checks});
+  if (process.env.COMMERCE_QA_LISTING_ACTIONS === '1') await listingActionsChecks({page,origin,output,invoke,checks});
+  if (process.env.COMMERCE_QA_OWNER_REVIEW === '1') await ownerReviewChecks({page,origin,output,invoke,checks});
   }
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
   assert.equal(await manifestHash(), candidate, 'Candidate changed during regression');
-  const report = { status: 'Passed', synthetic: true, candidate_manifest_sha256: candidate, layout: 'Hosted layout over authenticated HTTP; native DSH verified separately', checks, before, after: await inventory(), page_errors: errors, external_requests: external };
+  const report = { status: 'Passed', synthetic: true, candidate_manifest_sha256: candidate, layout: 'Hosted layout over authenticated HTTP; this driver does not verify the native desktop host', checks, before, after: await inventory(), page_errors: errors, external_requests: external };
   await writeFile(path.join(output, 'react-workspace-regression.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify(report));
 } catch (error) {

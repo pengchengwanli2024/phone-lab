@@ -73,6 +73,20 @@ class Live(unittest.TestCase):
         self.assertEqual(self.app.inventory_rows()[0]['available'],9)
         self.assertNotIn('SYNTHETIC-CANARY',json.dumps(self.app.order_rows()))
 
+    def test_scope_review_requires_fresh_intact_snapshot_and_current_displayed_hash(self):
+        self.configure();self.publish('orders');self.publish('stock');config=self.app.config()
+        with self.app.core.db()as db:db.execute("UPDATE live_snapshots SET observed='2000-01-01T00:00:00+00:00'")
+        for values in ({'orders_scope_confirmed':True},{'stock_basis':'present_minus_reserved','basis_confirmed':True}):
+            with self.assertRaisesRegex(ValueError,'live_review_snapshot_stale'):self.app.configure(values)
+        self.publish('orders');self.publish('stock');s=self.app.status()
+        for values in ({'orders_scope_confirmed':True,'expected_orders_sha256':'f'*64},{'stock_basis':'present_minus_reserved','basis_confirmed':True,'expected_stock_sha256':'f'*64}):
+            with self.assertRaisesRegex(ValueError,'live_review_snapshot_changed'):self.app.configure(values)
+        self.app.configure({'orders_scope_confirmed':True,'expected_orders_sha256':s['orders']['sha256'],'stock_basis':'present_minus_reserved','basis_confirmed':True,'expected_stock_sha256':s['stock']['sha256']})
+        before=self.app.config();self.app.configure({'lookback_days':31})
+        after=self.app.config();self.assertFalse(after['orders_scope_confirmed']);self.assertFalse(after['sync_enabled']);self.assertFalse(after['notifications_enabled']);self.assertEqual(after['stock_basis'],before['stock_basis'])
+        with self.assertRaisesRegex(ValueError,'live_orders_window_changed_sync_first'):self.app.configure({'orders_scope_confirmed':True})
+        self.assertEqual(after['ozon_api_key'],config['ozon_api_key']);self.assertNotIn('expected_stock_sha256',after)
+
     def test_initial_sync_and_duplicate_orders_do_not_spam(self):
         self.enable()
         with self.app.core.db()as db:self.assertEqual(db.execute("SELECT count(*) FROM live_outbox WHERE event_key LIKE 'order:%'").fetchone()[0],0)

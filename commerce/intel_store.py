@@ -12,6 +12,7 @@ import re
 import time
 import unicodedata
 from crawler_feed_bridge import SOURCES as CRAWLER_SOURCES
+from intel_map import TIMES, PANEL_IDS, layer_for, validate_layers, validate_bounds, in_bounds, country_name
 
 ARCHIVE_DAYS = 90
 MAX_UNSAVED = 20000
@@ -28,6 +29,9 @@ ALIASES = {
     '俄罗斯': ['russia', 'rus'], '墨西哥': ['mexico', 'mex'], '巴西': ['brazil', 'bra'],
     '中国': ['china', 'chn'], '日本': ['japan', 'jpn'], '欧洲': ['europe'],
     'inundacion': ['flood'], 'terremoto': ['earthquake'],
+    '森林火灾': ['forest fire', 'wildfire'], '山火': ['forest fire', 'wildfire'], '火灾': ['fire'],
+    '气旋': ['cyclone'], '飓风': ['hurricane'], '美联储': ['federal reserve', 'fed'],
+    '宏观': ['macro'], '能源': ['energy', 'eia'], '物流': ['logistics', 'transport'],
 }
 
 
@@ -126,16 +130,21 @@ class IntelligenceStore:
         values = {'query': query, 'source': source, 'category': category, 'country': country, 'hours': hours, 'scope': scope, 'view': view}
         if not all(isinstance(v, str) for v in values.values()) or len(query) > 100 or len(country) > 80:
             raise ValueError('invalid_intel_filter')
-        if source not in FILTER_SOURCES or category not in FILTER_CATEGORIES or hours not in ('all', '24', '168') or scope not in ('latest', 'archive') or view not in ('all', 'unviewed', 'bookmarked'):
+        if source not in FILTER_SOURCES or category not in FILTER_CATEGORIES or hours not in TIMES or scope not in ('latest', 'archive') or view not in ('all', 'unviewed', 'bookmarked'):
             raise ValueError('invalid_intel_filter')
         values.update(query=query.strip(), country=country.strip())
         return values
 
     @staticmethod
-    def matches(rows, filters):
+    def matches(rows, filters, core=None, coverage=None):
         groups = query_groups(filters['query'])
+        # ISO aliases such as RUS/USA are words, not fragments of trust/usage.
+        # Chinese phrases remain substring matches because they have no spaces.
+        patterns = [[re.compile(re.escape(term) if re.search(r'[\u4e00-\u9fff]', term)
+                                else r'(?<!\w)' + re.escape(term) + r'(?!\w)')
+                     for term in group] for group in groups]
         cutoff = time.time() - int(filters['hours']) * 3600 if filters['hours'] != 'all' else None
-        hits, seen = [], set()
+        candidates = []
         for row in sorted(rows, key=lambda r: (r.get('published') or 0, r['id']), reverse=True):
             if filters['source'] != 'all' and row['source'] != filters['source'] or filters['category'] != 'all' and row['category'] != filters['category']:
                 continue
@@ -146,23 +155,43 @@ class IntelligenceStore:
                 if re.fullmatch('[a-z]{3}', country):
                     if country not in re.findall(r'\b[a-z]{3}\b', normalized(row.get('country_code') or '')):
                         continue
-                elif country not in normalized(row.get('country') or ''):
+                elif not row.get('country') or (country not in normalized(row['country']) and country not in normalized(country_name(row['country']))):
                     continue
             if cutoff is not None and (row.get('published') is None or row['published'] < cutoff):
                 continue
-            text = normalized(' '.join(str(row.get(k) or '') for k in ('title', 'country', 'country_code', 'category', 'source')))
-            if not all(any(word in text for word in group) for group in groups) or row['url'] in seen:
-                continue
-            seen.add(row['url']); hits.append(row)
+            candidates.append(row)
+        if groups and core is not None:
+            from intel_search import LocalEvidenceSearch
+            search = LocalEvidenceSearch(candidates, patterns, normalized)
+            if core is not None:
+                search.read(core)
+            candidates = search.result()
+            if coverage is not None:
+                coverage.update(search.coverage)
+        elif groups:
+            matched = []
+            for row in candidates:
+                text = normalized(' '.join(str(row.get(k) or '') for k in ('title', 'country', 'country_code', 'category', 'source')))
+                if all(any(pattern.search(text) for pattern in group) for group in patterns):
+                    matched.append(row)
+            candidates = matched
+        hits, seen = [], set()
+        for row in candidates:
+            if row['url'] not in seen:
+                seen.add(row['url']); hits.append(row)
         return hits
 
-    def search(self, query='', source='all', category='all', country='', hours='all', limit='100', scope='latest', view='all', cursor='', include_map=False):
+    def search(self, query='', source='all', category='all', country='', hours='all', limit='100', scope='latest', view='all', cursor='', include_map=False, map_layers=None, bounds=None, link_map=False, include_panels=False):
         filters = self.filters(query, source, category, country, hours, scope, view)
-        if limit not in ('20', '50', '100') or not isinstance(cursor, str) or len(cursor) > 400 or type(include_map) is not bool:
+        if limit not in ('20', '50', '100') or not isinstance(cursor, str) or len(cursor) > 400 or any(type(v) is not bool for v in (include_map, link_map, include_panels)):
             raise ValueError('invalid_intel_filter')
-        hits = self.matches(self.rows(scope), filters)
-        signature = digest(canonical({**filters, 'limit': limit}))
-        revision = digest('|'.join(r['id'] + r['record_sha256'] for r in hits))
+        layers, bounds = validate_layers(map_layers), validate_bounds(bounds)
+        coverage = {}
+        hits = self.matches(self.rows(scope), filters, self.core, coverage)
+        if link_map:
+            hits = [r for r in hits if r.get('location') and layer_for(r) in layers and in_bounds(r['location'], bounds)]
+        signature = digest(canonical({**filters, 'limit': limit, **({'map_layers': sorted(layers), 'bounds': bounds} if link_map else {})}))
+        revision = digest('|'.join(r['id'] + r['record_sha256'] + r.get('search_match', {}).get('material_sha256', '') for r in hits))
         offset = 0
         if cursor:
             try:
@@ -178,8 +207,14 @@ class IntelligenceStore:
         selected = hits[offset:offset + size]
         next_cursor = base64.urlsafe_b64encode(canonical({'o': offset + size, 'f': signature, 'r': revision}).encode()).decode().rstrip('=') if offset + size < len(hits) else None
         mapped = [r for r in hits if r.get('location')]
-        markers = [{k: r.get(k) for k in ('id', 'title', 'source', 'category', 'location', 'is_viewed', 'is_bookmarked')} for r in mapped[:250]] if include_map else []
-        return {'items': selected, 'total': len(hits), 'returned': len(selected), 'offset': offset, 'next_cursor': next_cursor, 'query': query, 'filters': filters, 'search_scope': scope, 'scope': 'latest_successful_source_snapshots_not_whole_web_or_history' if scope == 'latest' else 'locally_collected_archive_not_whole_web_or_precollection_history', 'deduplication': 'exact_source_identity_and_url_only', 'store_impact': 'not_assessed', 'stats': {'unviewed': sum(not r['is_viewed'] for r in hits), 'bookmarked': sum(r['is_bookmarked'] for r in hits), 'by_source': dict(Counter(r['source'] for r in hits)), 'geolocated': len(mapped)}, 'markers': markers, 'marker_limit': 250, 'archive': self.stats()}
+        visible = [r for r in mapped if layer_for(r) in layers]
+        markers = [{k: r.get(k) for k in ('id', 'record_sha256', 'title', 'source', 'category', 'country', 'country_code', 'publisher_alert', 'published', 'location', 'is_viewed', 'is_bookmarked')} for r in visible[:250]] if include_map else []
+        result = {'items': selected, 'total': len(hits), 'returned': len(selected), 'offset': offset, 'next_cursor': next_cursor, 'query': query, 'filters': filters, 'search_scope': scope, 'scope': 'latest_successful_source_snapshots_not_whole_web_or_history' if scope == 'latest' else 'locally_collected_archive_not_whole_web_or_precollection_history', 'deduplication': 'exact_source_identity_and_url_only', 'store_impact': 'not_assessed', 'stats': {'unviewed': sum(not r['is_viewed'] for r in hits), 'bookmarked': sum(r['is_bookmarked'] for r in hits), 'by_source': dict(Counter(r['source'] for r in hits)), 'geolocated': len(mapped)}, 'markers': markers, 'marker_limit': 250, 'archive': self.stats(), 'map_stats': {'by_layer': dict(Counter(layer_for(r) for r in mapped)), 'matched': len(visible), 'truncated': include_map and len(visible) > 250, 'linked': link_map}}
+        if include_panels:
+            result['panels'] = {key: {'items': [r for r in hits if r['category'] == key][:3], 'total': sum(r['category'] == key for r in hits)} for key in PANEL_IDS}
+        if coverage:
+            result['search_coverage'] = coverage
+        return result
 
     def item(self, item_id):
         if not isinstance(item_id, str) or not re.fullmatch('[a-f0-9]{24}', item_id):
@@ -229,7 +264,7 @@ class IntelligenceStore:
         rows = {scope: self.rows(scope) for scope in ('latest', 'archive')}
         watches = []
         for ident, name, raw, created in saved:
-            filters = json.loads(raw); matched = self.matches(rows[filters['scope']], filters)
+            filters = json.loads(raw); matched = self.matches(rows[filters['scope']], filters, self.core)
             watches.append({'id': ident, 'name': name, 'filters': filters, 'created_at': iso(created), 'matches': len(matched), 'unviewed': sum(not r['is_viewed'] for r in matched), 'notification_enabled': False})
         return {'watches': watches, 'limit': MAX_WATCHES, 'notification_enabled': False}
 

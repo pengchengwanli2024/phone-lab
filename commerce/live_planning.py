@@ -29,7 +29,8 @@ class LivePlanning:
     @staticmethod
     def clock():return datetime.now(timezone.utc)
 
-    def readiness(self):
+    def readiness(self,scope='all'):
+        if scope not in ('all','desktop'):raise ValueError('invalid_readiness_scope')
         status=self.live.status();credentials=status['credentials_present'];checks=[]
         def add(key,label,ok,detail,action):checks.append(dict(key=key,label=label,status='ready' if ok else 'needs_action',detail=detail,action=None if ok else action))
         add('credentials','Ozon 只读凭据',status['configured'],'已在本机保存' if status['configured'] else '先在私有向导保存凭据','setup')
@@ -50,7 +51,11 @@ class LivePlanning:
             for row in db.execute('SELECT id,status,created,updated,receipt FROM live_outbox WHERE connection=? ORDER BY created DESC LIMIT 30',(connection,)):
                 receipt=json.loads(row[4]) if row[4] else {}
                 deliveries.append(dict(id=row[0],status=row[1],created_at=row[2],updated_at=row[3],code=receipt.get('code'),message_sha256=receipt.get('message_sha256'),source_snapshot_sha256=receipt.get('source_snapshot_sha256')))
-        return dict(checks=checks,complete=sum(c['status']=='ready' for c in checks),total=len(checks),deliveries=deliveries,notice='发送结果不明先核对目标群，不自动重发。已发送表示接口回执确认，不保证手机已弹通知。')
+        deferred=[]
+        if scope=='desktop':
+            deferred=[c for c in checks if c['key']in ('feishu','test','receipt','notifications')]
+            checks=[c for c in checks if c not in deferred]
+        return dict(scope=scope,checks=checks,complete=sum(c['status']=='ready' for c in checks),total=len(checks),deferred=deferred,deliveries=deliveries,notice='桌面经营核验；手机通知后置，未启用通知不阻塞此范围。'if scope=='desktop'else'发送结果不明先核对目标群，不自动重发。已发送表示接口回执确认，不保证手机已弹通知。')
 
     def candidates(self):
         config=self.live.config();snapshot=self.live.snapshot(config.get('connection_id',''),'stock')

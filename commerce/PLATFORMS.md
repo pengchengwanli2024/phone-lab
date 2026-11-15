@@ -1,6 +1,38 @@
 # 多平台只读连接
 
+## 上架准备与日常运营（2026-11-14）
+
+商品工作区的“上架准备”和店铺管理的“日常运营”沿用同一后台。`commerce_listing_get/save/export`以商品、目标平台、店铺标识和市场共同定位方案，保存于原私有表单账本；商品来源与保存修订均须匹配。切换模块保留本地编辑，并发冲突或来源变化后可读取当前版本、核对后采用或保留本地修改。平台方案不覆盖原商品事实。
+
+Ozon、TikTok Shop、Amazon、Mercado Libre、Temu、Shopify与WooCommerce分别保留准备方案。这里的目标目录不表示平台连接器全部接通；独立站两种方向均保留，后续先完善桌面业务，再按用户提供的服务器和域名接续移动远程入口。当前检查是通用资料准备和原交付审阅，不冒充各平台实时类目Schema、资质核验或发布权限。私有JSON导出保留缺项及准确预览哈希，不是平台导入文件或提交回执。
+
+`commerce_store_workbench`聚合原商品工作项、导入/店铺提醒、模型/研究待办及渠道接入状态，支持从桌面或窄屏返回原工作；单一来源读取失败显示不完整。提醒“已阅”调用原接口，不改变发货、采购或平台状态。消息送达、远程访问和平台写入分别展示，当前远程网络与身份入口未启用。
+
+相关源码为`listing_workspace.py`、`workbench/src/listing-page.tsx`及`store-workbench.tsx`；不增加平台写入、消息发送、独立任务队列或新的业务真相来源。
+
 「多平台接入」为 TikTok Shop、Amazon、Mercado Libre 与 Temu 提供独立的多店铺配置、明确请求的读取作业和私有证据快照。原有 Ozon 连接继续使用「Ozon与飞书」，其配置和通知开关不迁入本模块。
+
+### Ozon 类目与属性准备
+
+上架页复用原 Ozon 私有只读连接，明确点击后读取类目与商品类型、属性及单页字典值；不自动读取上游。`commerce_listing_schema_get`仅查询本机快照并检查当前输入，`commerce_listing_schema_refresh`显式发起元数据读取。原草稿可增加可选的`ozon`对象，包含准确`type_id`及带属性ID、字典ID/标签和产品资料依据的属性值，旧方案保持兼容。其它平台与两种独立站准备方向继续保留。
+
+类目、属性和字典页保存在原`live_snapshots`，请求摘要复用`live_http`；元数据有效期六小时，字典页绑定准确的父属性版本。配置变化、停用类型、字典标签不符、缺少必填项、数量/类型错误及过期资料均不能通过结构检查。复杂属性与未知字段类型明确保留待核对；结构检查不覆盖尺寸、图片、资质或经营规则，不清除原专业核查与发布门禁，也不调用商品导入、价格或库存写入接口。
+
+接口依据：[Ozon 类目与类型流程](https://dev.ozon.ru/news/270-Vazhnye-izmeneniia-v-Seller-API/)、[官方 Seller API 文档](https://docs.ozon.ru/api/seller/)。实际响应结构仍由适配器校验，合成测试不代表所有类目或账号均已验证。
+
+### 本地发布申请与外部回执
+
+`commerce_listing_release_get/create/review/export`复用原`org_artifacts`，将准确保存版本固定为本地申请，记录已阅、退回或本地撤回，支持版本冲突、幂等及私有审阅包。`get`通过`export_formats`声明可用格式；旧服务未声明时，界面只保留原JSON导出参数。导出默认保持原JSON，可选`format=html`生成无脚本、无远程资源的可读/打印私有审阅包，沿用共享tokens与primitives。可读包首先展示产品信息、描述/参数与固定申请图片，随后分开展示未关闭检查、旧版/连接变化、原始平台状态、差异与哈希；保留CAS校验和未知/缺值，不替代最新方案或独立核查。申请记录不排队提交平台，普通申请审阅不代替S6负责人逐项核查。原方案变化后申请保留并标记旧版；日常方案目录显示对应申请与回读状态。
+
+Ozon 俄罗斯的`commerce_listing_release_bind/refresh`接收用户另行提交的外部任务编号，明确读取`/v1/product/import/info`，必要时再按任务返回的商品ID读取`/v3/product/info/list`。店铺连接、任务、SKU和商品ID必须准确对应；`imported`但ID为0、缺字段、重复/不匹配或未知状态均不冒充成功。原`live_snapshots/live_http`保存读取证据与请求摘要；失败保留旧证据并分别显示本次失败，重启不自动重放读取。撤回本地申请不会取消外部任务，已绑定任务仍可只读核对。
+
+回读范围仅为任务/商品身份及接口实际返回的字段，不能证明外部提交内容与固定申请完全相同。商品存在、导入受理、审核及可售状态分别展示；本模块不调用平台商品导入、价格、库存写入，也不提供发布成功批准。实际导入任务仍须有真实编号才能验收，合成契约测试不代表已在真实店铺提交。
+
+### 原有方案目录与快照核对
+
+`commerce_listing_directory`按当前数据模式分页读取原保存方案，日常运营可回到准确的商品/平台/店铺/市场，刷新后保留目标。`commerce_listing_reconcile`仅核对现有快照：店铺标识须绑定原接入、市场与配置版本一致、SKU精确且唯一、快照完整并在有效期内。Ozon沿用原库存读取；其它接入复用已有商品或库存投影。缺少、重复、陈旧或未支持的资源分别返回状态，不自动同步或推断发布成功。标题、同币种价格和币种列出差异；数量保留来源范围，不直接等同可售库存。示例商品不读取真实店铺经营快照。
+
+`commerce_listing_review`以准确方案、来源、配置与快照版本保存本地核对声明，复用原`org_artifacts`，并发冲突需刷新后确认。记录可表示已逐项核对或仍需补充；新方案、快照或失效条件会使旧声明过期。声明不批准平台规则、资质或提交，也不替代发布回读。Shopify与WooCommerce均保留准备方向，当前核对不为未接入平台伪造快照。
 
 ## 使用
 
@@ -39,3 +71,31 @@
 - Amazon：[连接授权](https://developer-docs.amazon/sp-api/docs/connecting-to-the-selling-partner-api)、[当前订单搜索](https://developer-docs.amazon/sp-api/lang-en_us/reference/searchorders)、[FBA 库存摘要](https://developer-docs.amazon/sp-api/lang-de_DE/reference/getinventorysummaries)。
 - Mercado Libre：[卖家商品与数量限制](https://developers.mercadolibre.com.ar/en_us/items-and-searches)、[订单搜索](https://developers.mercadolibre.com.ar/es_ar/gestiona-ventas)。
 - Temu：[区域端点](https://partner.temu.com/documentation?menu_code=38e79b35d2cb463d85619c1c786dd303&sub_menu_code=8311de2b2d434e4d805e88413ab815d8)、[签名规则](https://partner.temu.com/documentation?menu_code=38e79b35d2cb463d85619c1c786dd303&sub_menu_code=4a821c90d06442a09e061b0d4316fbf3)、[订单列表](https://partner.temu.com/documentation?sub_menu_code=554fd46b45ee49269cbdd6d4008a5dc1)。
+
+## Ozon 商品资料接入与运行资产恢复
+
+`commerce_catalog_store_status/refresh`在当前库存版本上有界读取至多100个准确商品，调用`/v3/product/info/list`、`/v4/product/info/attributes`，指定工作项时补读`/v1/product/info/description`。平台响应经ID/SKU校验后留在原快照/HTTP证据与商品事实来源表；平台描述不自动进入已核对卖点，图片按明确用途导入原创意项目。人工来源、草稿与原专业门禁保持；失败/部分结果、旧来源有效期和凭据/库存变化分别处理，不含商品导入、改价或库存写入。上架快照按商品和履约范围精确核对，标题/售价/币种只取新鲜API详情证据，不取操作者导入字段冒充平台回读。
+
+本机代理返回RFC2544假地址时，仅Ozon静态图片域名允许通过固定HTTPS公共解析器取得全球地址，再固定目标IP并验证原域名证书；其他私网、混合地址及重定向仍拒绝。无系统代理/凭据变更，图片和DNS读取不携带店铺授权。
+
+`python3 commerce/state_recovery.py`只在私有隔离副本演练数据库、登记媒体、运行文件与连接配置恢复，逐文件校验哈希、私有权限和必要执行位，不覆盖日常文件或启动执行器。历史验收、重复备份及生成的宿主SDK预览目录不属于该备份范围；安装的宿主/依赖需独立保留。源文件在复制期间变化则失败，报告及含私有配置的副本只保存在私有状态目录。
+
+## 现有商品的标准图库动作
+
+`commerce_listing_action_directory/get/refresh/prepare/review/submit/readback/image/finish/cancel`复用原商品、org_artifacts、live_snapshots及live_http，首期只支持当前Ozon店铺现有商品的1–20张标准图库替换，不支持带360图/色卡图的变更，不创建商品或更改价格、库存。准备和执行前均以新鲜库存精确校验商品ID、SKU及履约范围；准备包固定原/新图片数组、商品来源、API图库证据和当前账号绑定，无差异时不建经营动作。
+
+四项人工依据、操作者声明、准确动作哈希及单次执行确认分别记录。`owner_manual`只表示本人基于资料核对本次图片，不是独立专业身份或资质认证，不清除原S6或整卡发布门禁；需要独立审核的商品保持未批准。批准有效30分钟，执行前再次读取平台图库，原图序或来源变化则停止。HTTP正文只发送一次；TLS连接选择可以在发送正文前进行，发送后超时、网络错误或回复不完整均不自动重发。未知动作跨凭据轮换仍阻止同店铺商品重复执行；同账号新凭据可用于只读回读。
+
+`/v1/product/pictures/import`的返回只记为接口已返回，实际图库以`/v2/product/pictures/info`再读。URL及顺序精确匹配时记录精确观测；平台转存导致地址不同则保留未知，提供绑定观测哈希的实际PNG/JPEG私有预览，允许操作者在新鲜、无错误且张数匹配的变更图库上另行逐图声明完成。该声明与平台地址精确匹配分别标记，不冒充整卡发布或远端取消。已完成历史不被后续读取覆盖，查看当前图库用新的只读刷新。原动作、HTTP哈希与观测保留，不把普通草稿审阅或采集成功当作发布授权。
+
+日常运营的图片动作目录只读取当前店铺与可访问商品，分页保留待核对、未知及完成历史；示例模式不查询真实动作。`get`可指定同范围的准确历史动作编号，最近10条之外的动作也可继续回读，不以最新草稿替代旧提交；目录跳转与浏览器刷新保持准确动作。目录读取失败显示不完整，既不显示空白成功也不进行自动重试提交。
+
+`commerce_listing_release_image`以申请ID、准确申请SHA和图片索引读取冻结链接，复用原固定TLS/公开地址校验，不接受任意URL或携带店铺凭据；示例未登记文件时不联网。页面按申请展示产品信息及图片并支持切图/失败重读。HTML导出仅嵌入已读取的私有预览（PNG/JPEG data URI），不在打开文件时访问远端；未读取、文件变化与空图片分别标记。图片读取时间、来源字节SHA与预览SHA分别记录，预览缩放不改变原文件。预览至多192KiB/张，缓存保留在私有目录。原JSON默认内容、业务申请及发布权限保持原语义。
+
+## Ozon 首发的经营负责人核查
+
+`commerce_owner_review_get/record/image`复用原商品与`org_artifacts`，首发范围为当前 Ozon 店铺（`ozon-live`）与 RU 市场。经营负责人对产品身份/实物、文案主张、素材与品牌权利、店铺类目规则、资质证明逐项记录依据；仅资质项允许带依据与理由的不适用声明。待核草稿可保存；签收还须姓名或标识、明确本人声明、当前本地交付审阅及 S2/S4/S5 和平台类目属性检查通过。身份为负责人自述，政策固定为 `owner_attested_not_independently_verified`，不属于独立认证，也不授予平台写入。
+
+记录校验准确商品/店铺/市场、核查包 SHA 与历史头 SHA，支持幂等、退回和撤销。商品来源、成本/内容检查点、保存方案、交付/回执、当前凭据或平台结构证据变化后旧签收失效；回执过期及上游失败也阻塞继续采用。S6 及店铺方案分别验证范围，不跨店铺沿用。新本地申请冻结核查人、逐项依据与记录哈希，旧申请保留原版本；HTML 可读包明确标为非独立认证。
+
+`commerce_live_readiness(scope='desktop')`只统计桌面经营六项检查，四项通知检查保留在 `deferred`；省略 scope 仍返回原十项。接入向导的订单/库存确认绑定当前新鲜快照（新服务提供 `scope_review_version`），统计窗口改变后订单确认及自动同步/通知失效，先重新只读同步再核对；不自动启用任何真实连接或通知。

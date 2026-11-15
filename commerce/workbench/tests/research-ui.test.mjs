@@ -72,6 +72,18 @@ test('one research task appears once across follow-up turns', async () => {
   assert.equal(s.controller.view().split('data-research-task=').length - 1, 1); s.controller.dispose();
 });
 
+test('supplement analysis shows its new candidates and keeps collected and imported counts distinct', async () => {
+  const s = setup('partial'); s.job.run_id = 'new-run'; s.job.supplemental_source_count = 8;
+  s.job.candidates = [
+    ...Array.from({length: 3}, (_, i) => ({ case_id: 'old-' + i, name: '此前目录候选 ' + i, source_ids: ['S1'], research_run_id: 'old-run' })),
+    { case_id: 'ozon-a', name: '本轮 Ozon 候选', source_ids: ['S4'], research_run_id: 'new-run' },
+  ]; s.job.candidate_count = 4; await ready(s);
+  const html = s.controller.view(); assert.match(html, /采集来源 1/); assert.match(html, /补充资料 8/); assert.match(html, /已保存候选 4/);
+  assert.match(html, /本轮 Ozon 候选/); assert.ok(!html.includes('此前目录候选 0'));
+  s.click('research-candidate', { task: 'task-a', case: 'ozon-a' }); await flush(); assert.deepEqual(s.opened, [['case', 'ozon-a', 'task-a']]);
+  assert.equal(s.job.candidates.length, 4); assert.ok(!s.calls.some(([name]) => /send|start|resume|supplement/.test(name))); s.controller.dispose();
+});
+
 test('clarification watches cross-client continuation using reads and preserves one reply control', async () => {
   const s = setup('awaiting_input'); s.job.questions = ['选择哪个品类？']; s.run.result.questions = ['选择哪个品类？']; await ready(s);
   const html = s.controller.view(); assert.equal(html.split('选择哪个品类？').length - 1, 1); assert.equal(html.split('data-copilot-action="reply"').length - 1, 1);

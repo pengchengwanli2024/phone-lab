@@ -8,6 +8,7 @@ import time
 import uuid
 from urllib.parse import urlsplit
 from .evidence import freeze, recheck, _json
+from .review_analysis import summarize, TOPICS
 
 SPECS = {
     'listing':{'sku':'text','title':'text','description':'text','category_id':'text','price':'money','currency':'currency','quantity':'quantity','image_refs':'images'},
@@ -17,13 +18,6 @@ SPECS = {
     'purchase':{'sku':'text','quantity':'positive_quantity','unit_cost':'money','currency':'currency','supplier_ref':'text'},
     'advertising':{'sku':'text','campaign_ref':'text','budget':'money','currency':'currency','market':'text','start_at':'time','end_at':'time'},
     'support':{'conversation_ref':'text','reply':'reply','policy_ref':'text'},
-}
-TOPICS = {
-    '物流与包装':('物流','包装','快递','shipping','delivery','package','достав','упаков'),
-    '尺寸与适配':('尺寸','大小','规格','size','fit','dimension','размер'),
-    '耐用与质量':('耐用','质量','破损','坏','durable','quality','broken','качеств','сломан'),
-    '价格与价值':('价格','贵','便宜','price','value','expensive','цен','дорог'),
-    '使用体验':('使用','方便','便携','use','portable','convenient','удоб'),
 }
 
 def encoded(value):
@@ -111,11 +105,11 @@ class BusinessWorkflows:
         if not row:raise ValueError('business_source_not_found')
         return {'id':source_id,'version':row[0],'sha256':row[1],'document':json.loads(row[2]),'imported_at':row[3],'current':row[0]==head[0],'provenance':'operator_import_unverified','fresh':stamp(json.loads(row[2])['valid_until'])>time.time()}
 
-    def import_source(self,document,idempotency_key,source_id=None,expected_version=None):
+    def import_source(self,document,idempotency_key,source_id=None,expected_version=None,*,_reuse=False):
         doc=validate_document(document)
         if (source_id is None)!=(expected_version is None):raise ValueError('business_version_required')
         if expected_version is not None and (type(expected_version) is not int or expected_version<1):raise ValueError('business_invalid_version')
-        with self.core.atomic() as db:
+        with self.core.atomic(reuse=_reuse) as db:
             def make():
                 ident=source_id or uuid.uuid4().hex
                 if source_id:
@@ -153,21 +147,7 @@ class BusinessWorkflows:
             def make():
                 sources=self._selected(source_ids)
                 if any(s['document']['kind']!='reviews' for s in sources):raise ValueError('business_reviews_required')
-                buckets={name:[] for name in TOPICS};ratings={str(n):0 for n in range(1,6)};missing=0;total=0;unmatched=0
-                for s in sources:
-                    for row in s['document']['records']:
-                        total+=1;rating=row['rating']
-                        if rating is None:missing+=1
-                        else:ratings[str(rating)]+=1
-                        matched=False
-                        for name,words in TOPICS.items():
-                            if any(w in row['text'].casefold() for w in words):
-                                matched=True;buckets[name].append({'source_id':s['id'],'version':s['version'],'record_id':row['id'],'quote':row['text'][:320]})
-                        if not matched:unmatched+=1
-                content={'method':'keyword_topics_v1','notice':'规则命中，可重复计数；不代表情感、真实用户比例或选品结论。导入资料未独立核实。',
-                         'total_records':total,'rating_counts':ratings,'missing_rating':missing,'unmatched':unmatched,
-                         'topics':[{'label':name,'count':len(rows),'evidence':rows[:20],'evidence_truncated':len(rows)>20} for name,rows in buckets.items()]}
-                return self._save(db,'review',sources,content)
+                return self._save(db,'review',sources,summarize(sources))
             result=self._once(db,idempotency_key,{'action':'analyze','source_ids':source_ids},make)
         return self.get(result['draft_id'])
 
@@ -239,10 +219,10 @@ class BusinessWorkflows:
             state='rejected' if latest['decision']=='rejected' else 'review_expired' if latest['expires_at']<time.time() else 'local_review_recorded'
         return {'id':draft_id,'draft':env,'parent_id':row[1],'created_at':row[2],'status':state,'preflight':check,'receipts':receipts,'external_execution_allowed':False}
 
-    def review(self,draft_id,expected_sha256,decision,confirmed,idempotency_key,note=''):
+    def review(self,draft_id,expected_sha256,decision,confirmed,idempotency_key,note='',*,_reuse=False):
         if decision not in ('reviewed','rejected') or confirmed is not True:raise ValueError('business_explicit_local_review_required')
         if type(note) is not str or len(note)>1000:raise ValueError('business_invalid_note')
-        with self.core.atomic() as db:
+        with self.core.atomic(reuse=_reuse) as db:
             def make():
                 d=self.get(draft_id)
                 if expected_sha256!=d['draft']['draft_sha256']:raise ValueError('business_draft_changed')

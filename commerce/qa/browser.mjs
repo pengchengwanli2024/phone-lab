@@ -28,7 +28,7 @@ try{
   ws=new WebSocket(page.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});
   ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=waiting.get(m.id);if(p){waiting.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result)}}else if(m.method==='Runtime.exceptionThrown')exceptions.push(m.params.exceptionDetails.text)};
   await cdp('Runtime.enable');await cdp('Page.enable');await cdp('Emulation.setDeviceMetricsOverride',{width:1920,height:1080,deviceScaleFactor:1,mobile:false});
-  await cdp('Page.navigate',{url:`http://127.0.0.1:${port}/login?token=synthetic-browser-test-only`});
+  await cdp('Page.navigate',{url:`http://127.0.0.1:${port}/login?token=synthetic-browser-test-only`});await until(`!!document.querySelector('.r-app')`);await cdp('Page.navigate',{url:`http://127.0.0.1:${port}/legacy`});
   await until(`document.querySelector('.kpi-value')?.textContent.includes('128,640')`);
   assert.equal(await evaluate(`document.querySelectorAll('.platform-bar').length`),5);
   await evaluate(`document.querySelector('#market').value='US';document.querySelector('#market').dispatchEvent(new Event('change',{bubbles:true}))`);await until(`document.querySelector('.kpi-value')?.textContent.includes('63,440')`);

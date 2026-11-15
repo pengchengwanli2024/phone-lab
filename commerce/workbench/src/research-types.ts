@@ -1,14 +1,18 @@
 export interface ResearchSource {
-  id: string; url: string; title: string; captured_at: string; sha256: string;
-  status: 'collected' | 'failed'; error: string | null; evidence_kind: string; excerpt: string;
+  id: string; url: string; title: string; captured_at: string; sha256: string | null;
+  status: 'collected' | 'failed' | 'imported' | 'superseded'; error: string | null; evidence_kind: string; excerpt: string;
+  imported_at?: string | number; snapshot_age?: string; provenance?: string;
+  source_ref?: { id: string; version: number; sha256: string };
 }
-export interface ResearchCandidate { case_id: string; name: string; source_url: string; source_ids: string[]; workspace_url: string; }
+export interface ResearchCandidate { case_id: string; name: string; source_url: string; source_ids: string[]; workspace_url: string; research_run_id?: string; }
+export interface ResearchReport { summary: string; findings: string[]; limitations: string[]; evidence_refs: string[]; }
 export interface ResearchJob {
   schema: 'commerce-market-research-v1'; task_id: string; run_id: string; thread_id: string;
   status: string; phase: string; revision: string | number; query: string; market: string;
-  source_count: number; candidate_count: number; error: null | { code: string; message: string };
+  source_count: number; supplemental_source_count?: number; candidate_count: number; error: null | { code: string; message: string };
   questions: string[]; candidates: ResearchCandidate[]; sources: ResearchSource[];
-  report: null | { summary: string; findings: string[]; limitations: string[]; evidence_refs: string[] };
+  report: null | ResearchReport;
+  report_history?: { revision: string | number; run_id: string; report: ResearchReport | null; source_ids: string[]; candidate_artifact_ids: string[] }[];
   updated_at: string | number;
 }
 export const researchStatus: Record<string, string> = {

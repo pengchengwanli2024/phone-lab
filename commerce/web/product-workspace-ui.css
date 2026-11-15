@@ -210,3 +210,17 @@ body{font-family:var(--ui-font-family);font-size:var(--ui-font-size-compact);lin
 .pw-cost-breakdown .pw-negative,.pw-cost-breakdown .pw-negative dt{color:var(--ui-color-danger)}
 .pw-summary-band dd,.pw-cost-breakdown dd{min-width:0;white-space:normal;overflow-wrap:anywhere}
 
+.pw-quote-compare-form{align-items:end;margin-block:var(--ui-space-4)}
+.pw-quote-compare-form>.ui-button{margin:0}
+#modal-root .pw-quote-dialog{width:min(1080px,100%);max-width:min(1080px,calc(100vw - 32px))}
+.pw-quote-comparison .data-table{min-width:920px}
+.pw-quote-comparison th,.pw-quote-comparison td{min-width:120px;vertical-align:top}
+.pw-quote-comparison td:first-child{min-width:180px}
+.pw-quote-comparison td:last-child{min-width:180px}
+.pw-quote-comparison td:nth-child(2),.pw-quote-comparison td:nth-child(5){white-space:nowrap;font-variant-numeric:tabular-nums}
+.pw-quote-comparison small{display:block;margin-top:var(--ui-space-1);white-space:normal}
+.pw-quote-comparison .ui-button{margin-top:var(--ui-space-2);white-space:nowrap}
+
+.pw-scenario-comparison {overflow-x:auto;max-width:100%}
+.pw-scenario-comparison table {min-width:620px}
+.pw-scenario-comparison td:not(:first-child) {white-space:nowrap}

@@ -97,6 +97,43 @@ class OrganizationTests(unittest.TestCase):
         path,_,_=self.app.creative.asset(p['id'],a['id']);path.write_bytes(b'changed')
         with self.assertRaisesRegex(ValueError,'source_image_hash_mismatch'):self.org.deliver(self.cid,p['id'],[a['id']],'new')
 
+    def test_delivering_images_can_refresh_its_own_source_binding_without_invalidating_the_images(self):
+        from creative_direction import DIRECTION_FIELDS
+        self.prepare_research();p,a=self.creative()
+        brief=p['brief'];brief['product_binding']={'case_id':self.cid,'source_sha256':self.app.product_workspace.sources(self.cid)[3]}
+        p=self.app.creative.save(p['id'],brief,p['revision'])
+        source,_,_=self.app.creative.asset(p['id'],a['id'])
+        reference=Path(self.tmp.name)/'reference.png';reference.write_bytes(source.read_bytes())
+        ref=self.app.creative.register(p['id'],'reference_image',reference,{'source_ref':'synthetic:reference'})
+        analysis={key:'Synthetic design '+key for key in DIRECTION_FIELDS}
+        p=self.app.media.direction_save(p['id'],p['revision'],analysis,[ref['id']])
+        before=p['brief']['product_binding']['source_sha256']
+        self.org.deliver(self.cid,p['id'],[a['id']],'bound-delivery')
+        self.assertEqual(self.stage('S4')['status'],'PASS')
+        after=self.app.product_workspace.sources(self.cid)[3]
+        self.assertNotEqual(before,after)
+        brief=p['brief'];brief['product_binding']['source_sha256']=after
+        p=self.app.creative.save(p['id'],brief,p['revision'])
+        p=self.app.media.direction_save(p['id'],p['revision'],analysis,[ref['id']])
+        self.assertEqual(self.app.media.project(p['id'],guard=True)['revision'],p['revision'])
+        self.assertEqual(self.stage('S4')['status'],'PASS')
+        self.assertEqual(self.app.product_workspace.sources(self.cid)[3],after)
+        brief=p['brief'];brief['product']['name']='A different product'
+        self.app.creative.save(p['id'],brief,p['revision'])
+        self.assertEqual(self.stage('S4')['status'],'FAIL')
+
+    def test_legacy_delivery_keeps_its_exact_revision_guard(self):
+        self.prepare_research();p,a=self.creative()
+        self.org.deliver(self.cid,p['id'],[a['id']],'new-delivery')
+        payload=self.org.artifact(self.cid,'images')['payload']
+        payload.pop('creative_input_sha256',None);payload.pop('creative_binding_source_sha256',None)
+        self.org._store(self.cid,'images',payload,'legacy-delivery')
+        manifest=self.org.state/Path(payload['files'][0]['relative_path']).parent/'manifest.json'
+        manifest.write_text(json.dumps(payload))
+        self.assertEqual(self.stage('S4')['status'],'PASS')
+        self.app.creative.save(p['id'],p['brief'],p['revision'])
+        self.assertEqual(self.stage('S4')['status'],'FAIL')
+
     def test_delivered_manifest_and_current_source_are_both_verified(self):
         self.prepare_research();p,a=self.creative();self.org.deliver(self.cid,p['id'],[a['id']],'deliver')
         payload=self.org.artifact(self.cid,'images')['payload'];manifest=(self.org.state/payload['files'][0]['relative_path']).parent/'manifest.json';original=manifest.read_bytes()

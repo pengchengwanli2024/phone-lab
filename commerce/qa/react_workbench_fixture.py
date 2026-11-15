@@ -53,10 +53,28 @@ def invoke_with_explicit_fault(tool, args=None, client='local'):
 
 
 app.invoke = invoke_with_explicit_fault
+if os.environ.get('COMMERCE_QA_LISTING_SCHEMA')=='1':
+    from fixture_listing_schema import seed as seed_listing_schema
+    seed_listing_schema(app)
 marker = server.STATE / 'fixture.json'
 case_id = json.loads(marker.read_text())['case_id'] if marker.exists() else seed(app)
+if os.environ.get('COMMERCE_QA_LISTING_RELEASE')=='1':
+    from fixture_listing_release import install as install_listing_release
+    install_listing_release(app)
 marker.write_text(json.dumps({'case_id': case_id}))
+if os.environ.get('COMMERCE_QA_OWNER_REVIEW')=='1':
+    from fixture_owner_review import install as install_owner_review
+    install_owner_review(app)
+if os.environ.get('COMMERCE_QA_LISTING_ACTIONS')=='1':
+    from fixture_listing_actions import install as install_listing_actions
+    install_listing_actions(app)
 if os.environ.get('COMMERCE_QA_INTEL') == '1':
+    # This UI fixture uses persisted synthetic evidence. Automatic quote refresh
+    # must not turn a browser regression into a real upstream network run.
+    import intel_live
+    def no_live_network(*args, **kwargs):
+        raise ValueError('upstream_connection_or_format_error')
+    intel_live.fetch_json = no_live_network
     from seed_intel_workspace import seed as seed_intelligence
     seed_intelligence(server.STATE)
     from crawler_feed_bridge import SOURCES
@@ -69,6 +87,17 @@ if os.environ.get('COMMERCE_QA_INTEL') == '1':
             app.intelligence.store.archive(db, row, time.time())
             db.execute('INSERT INTO intel_items VALUES (?,?,?)', (row['id'], source, json.dumps(row)))
 # Deliberately public test-only credential; this fixture never contains real data.
+if os.environ.get('COMMERCE_QA_ARTICLE_BATCHES')=='1':
+    from article_binding import text_hash
+    row=dict(id='f'*24,source='fed',source_key='synthetic-body-batch',title='Synthetic batch bulletin',
+        url='https://www.federalreserve.gov/newsevents/pressreleases/synthetic-batch.htm',published=1700001300,
+        category='macro',country=None,country_code=None,location=None,publisher_alert=None,collected_at='2026-01-01T00:00:00Z')
+    with app.core.db()as db:
+        app.intelligence.store.archive(db,row,time.time());db.execute('INSERT OR REPLACE INTO intel_items VALUES (?,?,?)',(row['id'],row['source'],json.dumps(row)))
+    def synthetic_article(doc):
+        text='Synthetic batch customs evidence. 25 USD. '*8
+        return dict(text=text,content_sha256=text_hash(text),source_url=doc['url'],captured_at='2026-01-01T00:00:00Z',routes=['synthetic-a','synthetic-b'])
+    app.articles.fetcher=synthetic_article
 server.Handler.secret = 'synthetic-workbench-preview'
 (server.STATE / 'auth.token').write_text(server.Handler.secret)
 server.Handler.service = app
@@ -91,4 +120,6 @@ print('Synthetic React acceptance server ready on loopback', flush=True)
 try:
     server.CommerceHTTPServer(('127.0.0.1', server.PORT), server.Handler).serve_forever()
 finally:
+    app.listing_releases.stop()
+    app.listing_schema.stop()
     app.agent_runtime.stop()

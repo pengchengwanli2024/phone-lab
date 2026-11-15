@@ -137,6 +137,9 @@ class Autonomy:
             db.execute("UPDATE task_runs SET finished=?,error='worker_interrupted' WHERE expires<? AND finished IS NULL AND started IS NOT NULL", (at, at))
             enabled, interval = db.execute('SELECT enabled,interval FROM runtime_settings WHERE id=1').fetchone()
         # Local work is processed first; a slow feed must not starve results.
+        self.service.followups.tick(at=at)
+        self.service.media.tick(at=at)
+        self.service.capability_lifecycle.tick(at=at)
         for _ in range(8):
             if not self.work(at):
                 break
@@ -186,6 +189,7 @@ class Autonomy:
         if self.thread and self.thread.is_alive():
             return
         if recover:
+            self.service.capability_lifecycle.recover()
             # Caller holds the per-state server lock. Previous server work can
             # no longer be live, so recovery need not wait for its lease.
             with self.core.db() as db:
@@ -205,6 +209,7 @@ class Autonomy:
 
     def stop(self):
         self.stop_event.set()
+        self.service.capability_lifecycle.stop()
         if self.thread:
             self.thread.join(timeout=10)
         if not self.thread or not self.thread.is_alive():

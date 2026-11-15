@@ -8,11 +8,19 @@ import sqlite3
 import hashlib
 from commerce_core import Core, PLATFORMS
 from operations_analysis import unit_economics, restock_plan, input_schema, UNIT_FIELDS, STOCK_FIELDS
+from packing_estimate import estimate as packing_estimate, definitions as packing_definitions
+from order_imports import OrderImports, definitions as order_import_definitions
+from workflow_plan import WorkflowPlans, definitions as workflow_plan_definitions
+from layered_memory import LayeredMemory, definitions as memory_definitions
 from knowledge_ranking import ranked_notes
 from research import template as collection_template, validate as collection_check, export as collection_export, digest, canonical
 from translation import TranslationJobs
 from intelligence import Intelligence
 from intel_articles import Articles
+from intel_article_batches import ArticleBatches, definitions as article_batch_definitions
+from intel_reading import IntelReading, definitions as intel_reading_definitions
+from intel_dashboard import IntelDashboard, definitions as intel_dashboard_definitions
+from intel_live import IntelLive, definitions as intel_live_definitions
 from article_review import ArticleReviews
 from collection_jobs import CollectionJobs
 from collection_registry import REGISTRY as CRAWLER_REGISTRY
@@ -23,6 +31,24 @@ from channel_connections import ChannelConnections, definitions as channel_defin
 from model_providers import ModelRegistry, definitions as model_definitions
 from live_planning import LivePlanning
 from creative_studio import CreativeStudio, tool_definitions as creative_tools
+from creative_workflow import CreativeWorkflow, definitions as media_definitions
+from media_providers import MediaProviders, definitions as media_provider_definitions
+from media_plugin_connections import MediaPluginConnections, definitions as media_plugin_definitions
+from media_plugin_execution import MediaPluginExecution, definitions as media_plugin_execution_definitions
+from extension_runtime import ExtensionRuntime
+from extension_runtime.contracts import definitions as extension_definitions
+from capability_lifecycle import CapabilityLifecycle
+from capability_tasks import CapabilityTasks
+from capability_setup import open_setup as capability_open_setup
+from product_catalog import ProductCatalog, definitions as catalog_definitions
+from catalog_sync import CatalogSync, definitions as catalog_sync_definitions
+from listing_actions import ListingActions, definitions as listing_actions_definitions
+from owner_review import OwnerReviews, definitions as owner_review_definitions
+from cost_scenarios import CostScenarios, definitions as cost_scenarios_definitions
+from listing_workspace import ListingWorkspace, definitions as listing_definitions
+from listing_reconciliation import ListingReconciliation, definitions as listing_reconciliation_definitions
+from listing_schema import ListingSchema, definitions as listing_schema_definitions
+from listing_release import ListingReleases, definitions as listing_release_definitions
 from sealeap_library import SkillLibrary, definitions as skill_tools
 from autonomy import Autonomy
 from organization import Organization
@@ -41,6 +67,10 @@ from product_workspace import ProductWorkspace, definitions as workspace_definit
 from a2ui.cost import CostSurfaces, definitions as a2ui_definitions, dispatch as a2ui_dispatch
 from market_research import MarketResearch, definitions as market_research_definitions
 from host_execution import HostExecution, definitions as host_execution_definitions
+from attention import Attention, definitions as attention_definitions
+from followups import Followups, definitions as followup_definitions
+from chain_budget import ChainBudget, definitions as chain_budget_definitions
+from task_timeline import TaskTimeline, definitions as timeline_definitions
 
 LABELS=dict(zip(PLATFORMS,['Ozon','TikTok Shop','Amazon','Mercado Libre','Temu']))
 SALES=[39200,34800,28640,18000,8000]
@@ -56,7 +86,7 @@ def schema(properties=None,required=None):
 
 S={'type':'string','minLength':1,'maxLength':160}
 FILTERS={'demo':{'type':'boolean'},'platform':{'type':'string','enum':['all',*PLATFORMS]},'store_id':{'type':'string','enum':['all','ozon-live',*(p+'-demo'for p in PLATFORMS)]},'market':{'type':'string','enum':['all','RU','US','MX']}}
-INTEL_QUERY={'query':{'type':'string','maxLength':100},'source':{'type':'string','enum':['all','usgs','gdacs','wto','fed','ecb','eia','hmrc','transport']},'category':{'type':'string','enum':['all','earthquake','disaster','trade','macro','energy','logistics']},'country':{'type':'string','maxLength':80},'hours':{'type':'string','enum':['all','24','168']},'scope':{'type':'string','enum':['latest','archive']},'view':{'type':'string','enum':['all','unviewed','bookmarked']}}
+INTEL_QUERY={'query':{'type':'string','maxLength':100},'source':{'type':'string','enum':['all','usgs','gdacs','wto','fed','ecb','eia','hmrc','transport']},'category':{'type':'string','enum':['all','earthquake','disaster','trade','macro','energy','logistics']},'country':{'type':'string','maxLength':80},'hours':{'type':'string','enum':['all','1','6','24','48','168']},'scope':{'type':'string','enum':['latest','archive']},'view':{'type':'string','enum':['all','unviewed','bookmarked']}}
 TOOLS=[
  ('commerce_runtime_status','读取独立运行时、公共采集计划与本地执行器状态；不等于平台已授权',schema()),
  ('commerce_runtime_configure','启停固定公开源定时采集；不会启用飞书或店铺写操作',schema({'enabled':{'type':'boolean'},'interval_seconds':{'type':'string','enum':['300','900','1800','3600']}},['enabled'])),
@@ -73,7 +103,7 @@ TOOLS=[
  ('commerce_organization_capture','保存当前本机体检快照及 JSON/Markdown/HTML，供后续复查',schema({'case_id':S})),
  ('commerce_status','查看共享后台、五平台与连接状态',schema()),
  ('commerce_dashboard','读取经营指标；demo=true 仅返回明确标注的模拟数据',schema(FILTERS)),
- ('commerce_orders_list','查询订单；未授权时真实订单为空',schema({**FILTERS,'query':{'type':'string','maxLength':100},'status':{'type':'string','maxLength':40}})),
+ ('commerce_orders_list','查询订单；未授权时真实订单为空。指定import_batch_id只读取已确认本机导入行，不表示平台同步。',schema({**FILTERS,'query':{'type':'string','maxLength':100},'status':{'type':'string','maxLength':40},'import_batch_id':S})),
  ('commerce_products_list','查询商品与库存；原币与 SKU 保留来源',schema(FILTERS)),
  ('commerce_task_create','创建可跨工具查询的任务；不会自动执行平台写操作',schema({'idempotency_key':S,'kind':{'type':'string','enum':['report','analysis','draft']},'input':{'type':'object'}},['idempotency_key','kind'])),
  ('commerce_task_list','读取所有客户端共用的任务队列',schema()),
@@ -109,7 +139,7 @@ TOOLS=[
  ('commerce_intel_article_list','读取所选记录已留存的正文版本',schema({'item_id':S},['item_id'])),
  ('commerce_intel_article_translate','通过已配置 Hermes 翻译所选正文；分段保留来源绑定，机器译文待校对',schema({'article_id':S},['article_id'])),
  ('commerce_intel_sources','查看全球公开信息源的覆盖、采集时间、失败和陈旧状态',schema()),
- ('commerce_intel_search','分页检索当前快照或本机积累；支持收藏和未查看，不是全网历史搜索',schema({**INTEL_QUERY,'limit':{'type':'string','enum':['20','50','100']},'cursor':{'type':'string','maxLength':400},'include_map':{'type':'boolean'}})),
+ ('commerce_intel_search','分页检索当前快照或本机积累；支持收藏和未查看，不是全网历史搜索',schema({**INTEL_QUERY,'limit':{'type':'string','enum':['20','50','100']},'cursor':{'type':'string','maxLength':400},'include_map':{'type':'boolean'},'include_panels':{'type':'boolean'},'map_layers':{'type':'array','items':{'type':'string'},'maxItems':10},'bounds':{'type':'object'},'link_map':{'type':'boolean'}})),
  ('commerce_intel_item_get','读取公开来源记录、采集凭据与本地版本摘要；不标记为已查看',schema({'item_id':S},['item_id'])),
  ('commerce_intel_item_update','收藏或按明确版本标记已查看；不表示事实已核实',schema({'item_id':S,'action':{'type':'string','enum':['viewed','unviewed','bookmark','unbookmark']},'record_sha256':S},['item_id','action'])),
  ('commerce_intel_review_create','按已展示的来源版本创建共享核查任务，同版本重复调用复用任务；不会执行店铺操作',schema({'item_id':S,'record_sha256':S},['item_id','record_sha256'])),
@@ -131,7 +161,7 @@ TOOLS=[
  ('commerce_live_sync','启动一次已配置 Ozon 的只读同步；不修改店铺',schema()),
  ('commerce_live_alerts','读取 Ozon 真实快照的待处理订单与低库存提醒',schema()),
  ('commerce_live_ack','将真实数据提醒标为已阅，不改变平台状态',schema({'alert_id':S},['alert_id'])),
- ('commerce_live_readiness','查看接入缺项、快照有效性与最近通知回执，不发送消息',schema()),
+ ('commerce_live_readiness','查看接入缺项、快照有效性与最近通知回执；desktop范围将手机通知列为后置，不发送消息',schema({'scope':{'type':'string','enum':['all','desktop']}})),
  ('commerce_live_restock_list','查看精确商品和履约范围的库存候选与已保存补货草稿',schema()),
  ('commerce_live_restock_save','按当前库存快照和手工销量资料保存本地补货草稿，不采购或修改库存',schema({'row_key':{'type':'string','minLength':1,'maxLength':240},'source_sha256':S,'input':{'type':'object'},'idempotency_key':S},['row_key','source_sha256','input','idempotency_key'])),
  ('commerce_live_restock_export','导出补货草稿、中文字段说明与来源证据，标明当前是否已失效',schema({'plan_id':S},['plan_id'])),
@@ -140,9 +170,28 @@ TOOLS=[
 
 
 TOOLS.extend(creative_tools(schema, S))
+TOOLS.extend(media_definitions(schema,S))
+TOOLS.extend(media_provider_definitions(schema,S))
+TOOLS.extend(media_plugin_definitions(schema,S))
+TOOLS.extend(media_plugin_execution_definitions(schema,S))
+TOOLS.extend(extension_definitions(schema,S))
+TOOLS.append(('commerce_capability_open_setup','在本机浏览器打开媒体模型服务与插件的私有接入设置',schema()))
+TOOLS.extend(catalog_definitions(schema,S))
+TOOLS.extend(catalog_sync_definitions(schema,S))
+TOOLS.extend(listing_actions_definitions(schema,S))
+TOOLS.extend(owner_review_definitions(schema,S))
+TOOLS.extend(cost_scenarios_definitions(schema,S))
+TOOLS.extend(listing_definitions(schema,S))
+TOOLS.extend(listing_reconciliation_definitions(schema,S))
+TOOLS.extend(listing_schema_definitions(schema,S))
+TOOLS.extend(listing_release_definitions(schema,S))
 TOOLS.extend(skill_tools(schema, S))
 TOOLS.extend(agent_definitions(schema, S))
 TOOLS.extend(exposure_definitions(schema, S))
+TOOLS.extend(intel_reading_definitions(schema, S))
+TOOLS.extend(article_batch_definitions(schema,S))
+TOOLS.extend(intel_dashboard_definitions(schema, S))
+TOOLS.extend(intel_live_definitions(schema, S))
 TOOLS.extend(platform_definitions(schema, S))
 TOOLS.extend(pilot_definitions(schema, S))
 TOOLS.extend(social_definitions(schema, S))
@@ -156,7 +205,15 @@ TOOLS.extend(a2ui_definitions(schema))
 TOOLS.extend(channel_definitions(schema,S))
 TOOLS.extend(market_research_definitions(schema,S))
 TOOLS.extend(host_execution_definitions(schema,S))
+TOOLS.extend(attention_definitions(schema,S))
+TOOLS.extend(followup_definitions(schema,S))
+TOOLS.extend(chain_budget_definitions(schema,S))
+TOOLS.extend(timeline_definitions(schema,S))
 TOOLS.extend(model_definitions(schema,S))
+TOOLS.extend(packing_definitions(schema))
+TOOLS.extend(order_import_definitions(schema))
+TOOLS.extend(workflow_plan_definitions(schema))
+TOOLS.extend(memory_definitions(schema))
 
 
 class Commerce:
@@ -168,9 +225,13 @@ class Commerce:
             c.execute('CREATE TABLE IF NOT EXISTS clients (name TEXT PRIMARY KEY, seen_at TEXT)')
         self.translations=TranslationJobs(self.core)
         self.intelligence=Intelligence(self.core)
+        self.intel_reading=IntelReading(self.core,self.intelligence,self.translations)
+        self.intel_dashboard=IntelDashboard(self.core)
+        self.intel_live=IntelLive(self.core,self.state)
         self.collections=CollectionJobs(self.core,self.state,importer=self.intelligence.import_collection)
         self.articles=Articles(self.core,self.state,self.intelligence,self.translations)
         self.article_reviews=ArticleReviews(self.core,self.articles)
+        self.article_batches=ArticleBatches(self)
         with self.core.db() as db:db.execute('CREATE TABLE IF NOT EXISTS ui_preferences (id TEXT PRIMARY KEY, theme TEXT NOT NULL)')
         self.operations=OperationsAlerts(self.core)
         self.live=LiveConnections(self.core,self.state)
@@ -191,8 +252,31 @@ class Commerce:
         self.copilot=Copilot(self)
         self.market_research=MarketResearch(self)
         self.host_execution=HostExecution(self)
+        self.attention=Attention(self)
+        self.followups=Followups(self)
+        self.chain_budget=ChainBudget(self)
+        self.task_timeline=TaskTimeline(self)
         self.form_drafts=FormDrafts(self.core)
         self.product_workspace=ProductWorkspace(self)
+        self.catalog=ProductCatalog(self)
+        self.catalog_sync=CatalogSync(self)
+        self.listing_actions=ListingActions(self)
+        self.cost_scenarios=CostScenarios(self)
+        self.media=CreativeWorkflow(self)
+        self.media_providers=MediaProviders(self)
+        self.media_plugins=MediaPluginConnections(self)
+        self.media_plugin_execution=MediaPluginExecution(self)
+        self.extensions=ExtensionRuntime(self)
+        self.capability_lifecycle=CapabilityLifecycle(self)
+        self.capability_tasks=CapabilityTasks(self)
+        self.listings=ListingWorkspace(self)
+        self.listing_reconciliation=ListingReconciliation(self)
+        self.listing_schema=ListingSchema(self)
+        self.listing_releases=ListingReleases(self)
+        self.owner_reviews=OwnerReviews(self)
+        self.order_imports=OrderImports(self)
+        self.workflow_plans=WorkflowPlans(self)
+        self.memory=LayeredMemory(self)
         self.a2ui=CostSurfaces(self.core, unit_economics, workspace=self.product_workspace)
 
     def validate(self,name,args):
@@ -242,9 +326,20 @@ class Commerce:
         self.validate(name,args)
         if client not in ['codex','hermes','harness','browser','local','test']:raise ValueError('invalid_client')
         with self.core.db() as c:c.execute('INSERT OR REPLACE INTO clients VALUES (?,?)',(client,now()))
+        if name=='commerce_packing_estimate':return packing_estimate(args['input'])
+        if name.startswith('commerce_order_import_'):return self.order_imports.invoke(name,args)
+        if name.startswith('commerce_workflow_plan_'):return self.workflow_plans.invoke(name,args)
+        if name.startswith('commerce_memory_'):return self.memory.invoke(name,args)
+        if name=='commerce_orders_list' and args.get('import_batch_id'):return self.order_imports.orders(args['import_batch_id'],args)
         if name=='commerce_model_list':return self.models.catalog()
         if name=='commerce_execution_hosts':return self.host_execution.listing()
+        if name.startswith('commerce_attention_'):return self.attention.invoke(name,args)
+        if name.startswith('commerce_followup_'):return self.followups.invoke(name,args)
+        if name=='commerce_chain_budget_get':return self.chain_budget.summary(**args)
+        if name=='commerce_task_timeline_get':return self.task_timeline.get(**args)
         if name=='commerce_model_open_setup':return self.models.open_setup()
+        if name=='commerce_capability_open_setup':return capability_open_setup(self)
+        if name.startswith('commerce_extension_'):return self.extensions.invoke(name,args)
         if name.startswith('commerce_copilot_'):return self.copilot.invoke(name,args)
         if name.startswith('commerce_market_research_'):return self.market_research.invoke(name,args)
         if name.startswith('commerce_form_draft_'):return self.form_drafts.invoke(name,args)
@@ -252,7 +347,10 @@ class Commerce:
         if name.startswith('commerce_a2ui_'):return a2ui_dispatch(self.a2ui,name,args)
         if name=='commerce_report_create':return self.workflow.report(args)
         if name=='commerce_workflow_task_create':return self.workflow.source_task(args)
-        if name=='commerce_task_continue':return self.workflow.continue_task(args)
+        if name=='commerce_task_continue':
+            extension_run=self.capability_tasks.find(args['task_id'])
+            if extension_run:raise ValueError('media_plugin_task_use_execution_controls' if extension_run.get('_task_owner')=='media_plugin' else 'extension_task_use_capability_runtime')
+            return self.workflow.continue_task(args)
         if name.startswith('commerce_business_'):return self.business.invoke(name,args)
         if name.startswith('commerce_agent_'):return self.agent_runtime.invoke(name,args)
         if name.startswith('commerce_exposure_'):return self.exposure.invoke(name,args)
@@ -268,8 +366,11 @@ class Commerce:
         if name=='commerce_organization_brief':return self.organization.brief(**args)
         if name=='commerce_organization_handoff':return self.organization.handoff(**args)
         if name=='commerce_organization_capture':return self.organization.capture(args.get('case_id'))
-        if name=='commerce_runtime_status':return self.autonomy.status()
+        if name=='commerce_runtime_status':return {**self.autonomy.status(),'capability_runtime':self.capability_lifecycle.status()}
         if name=='commerce_runtime_configure':return self.autonomy.configure(**args)
+        if name in ('commerce_task_result','commerce_task_cancel','commerce_task_retry','commerce_task_execute','commerce_task_continue'):
+            extension_run=self.capability_tasks.find(args['task_id'])
+            if extension_run:return self.capability_tasks.invoke(name,extension_run,args)
         if name in ('commerce_task_execute','commerce_task_retry') and self.market_research.owns(args['task_id']):raise ValueError('market_research_resume_required')
         if name=='commerce_task_cancel' and self.market_research.owns(args['task_id']):
             self.market_research.cancel(args['task_id'])
@@ -277,9 +378,22 @@ class Commerce:
         if name=='commerce_task_execute':return self.autonomy.request(**args)
         if name=='commerce_task_result':return self.market_research.result(**args) if self.market_research.owns(args['task_id']) else self.autonomy.result(**args)
         if name=='commerce_task_retry':return self.autonomy.retry(**args)
+        if name.startswith('commerce_listing_schema_'):return self.listing_schema.invoke(name,args)
+        if name.startswith('commerce_owner_review_'):return self.owner_reviews.invoke(name,args)
+        if name.startswith('commerce_listing_release_'):return self.listing_releases.invoke(name,args)
+        if name.startswith('commerce_listing_action_'):return self.listing_actions.invoke(name,args)
+        if name in {d[0]for d in listing_reconciliation_definitions(schema,S)}:return self.listing_reconciliation.invoke(name,args)
+        if name.startswith('commerce_listing_') or name=='commerce_store_workbench':return self.listings.invoke(name,args)
+        if name.startswith('commerce_catalog_store_'):return self.catalog_sync.invoke(name,args)
+        if name.startswith('commerce_cost_scenarios_'):return self.cost_scenarios.invoke(name,args)
+        if name.startswith('commerce_catalog_'):return self.catalog.invoke(name,args)
+        if name.startswith('commerce_media_plugin_execution_'):return self.media_plugin_execution.invoke(name,args)
+        if name.startswith('commerce_media_plugin_'):return self.media_plugins.invoke(name,args)
+        if name.startswith('commerce_media_provider_'):return self.media_providers.invoke(name,args)
+        if name.startswith('commerce_media_'):return self.media.invoke(name,args)
         if name.startswith('commerce_creative_'):return self.creative.invoke(name,args)
         if name.startswith('commerce_skills_'):return self.skills.invoke(name,args)
-        if name=='commerce_live_readiness':return self.live_plans.readiness()
+        if name=='commerce_live_readiness':return self.live_plans.readiness(**args)
         if name=='commerce_live_restock_list':return self.live_plans.list()
         if name=='commerce_live_restock_save':return self.live_plans.save(**args)
         if name=='commerce_live_restock_export':return self.live_plans.export(args['plan_id'])
@@ -303,8 +417,14 @@ class Commerce:
         if name=='commerce_ops_rules':return self.operations.rules(args.get('demo',False),args.get('rules'))
         if name=='commerce_ops_export':return self.operations.export(args.get('demo',False))
         if name=='commerce_campaign_compare':return campaign_compare(args['input'])
-        if name=='commerce_intel_item_get':return self.intelligence.store.item(**args)
-        if name=='commerce_intel_item_update':return self.intelligence.store.update_item(**args)
+        if name=='commerce_intel_reading_start':return self.intel_reading.start(**args)
+        if name=='commerce_intel_reading_get':return self.intel_reading.get(**args)
+        if name=='commerce_intel_dashboard_get':return self.intel_dashboard.get()
+        if name=='commerce_intel_dashboard_update':return self.intel_dashboard.update(**args)
+        if name=='commerce_intel_live_get':return self.intel_live.get(**args)
+        if name=='commerce_intel_live_refresh':return self.intel_live.refresh(**args)
+        if name=='commerce_intel_item_get':return self.intel_reading.decorate({'items':[self.intelligence.store.item(**args)]})['items'][0]
+        if name=='commerce_intel_item_update':return self.intel_reading.decorate({'items':[self.intelligence.store.update_item(**args)]})['items'][0]
         if name=='commerce_intel_review_create':return self.intelligence.store.create_review(**args)
         if name=='commerce_intel_watch_save':return self.intelligence.store.save_watch(**args)
         if name=='commerce_intel_watch_list':return self.intelligence.store.watches()
@@ -319,6 +439,7 @@ class Commerce:
         if name=='commerce_crawler_get':return self.collections.get(args['job_id'])
         if name=='commerce_crawler_cancel':return self.collections.cancel(args['job_id'])
         if name=='commerce_crawler_retry':return self.collections.retry(args['job_id'])
+        if name in {d[0] for d in article_batch_definitions(schema,S)}:return self.article_batches.invoke(name,args)
         if name=='commerce_intel_article_reviews':return self.article_reviews.listing(**args)
         if name=='commerce_intel_article_record':return self.article_reviews.record(client=client,**args)
         if name=='commerce_intel_article_start':return self.articles.start(**args)
@@ -326,7 +447,7 @@ class Commerce:
         if name=='commerce_intel_article_list':return self.articles.for_item(**args)
         if name=='commerce_intel_article_translate':return self.articles.translate(**args)
         if name=='commerce_intel_sources':return self.intelligence.sources()
-        if name=='commerce_intel_search':return self.intelligence.search(**args)
+        if name=='commerce_intel_search':return self.intel_reading.decorate(self.intelligence.search(**args))
         if name=='commerce_intel_refresh':return self.intelligence.refresh(**args)
         if name=='commerce_worldmonitor_status':return self.intelligence.worldmonitor(**args)
         if name=='commerce_status':

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { randomUUID } from 'node:crypto';
 
-const source = await readFile('../web/copilot-ui.js', 'utf8');
+const source = await readFile(process.env.COPILOT_SOURCE || '../web/copilot-ui.js', 'utf8');
 const flush = () => new Promise(setImmediate);
 function mount(storage, scope = { module: 'overview', demo: false }, sendError = false, openGate) {
   const handlers = new Map(), calls = [];
@@ -19,6 +19,7 @@ function mount(storage, scope = { module: 'overview', demo: false }, sendError =
     calls.push([name, args]);
     if (name === 'commerce_model_list') return { models: [{ id: 'project-default', label: '项目默认', selectable: true }] };
     if (name === 'commerce_copilot_list') return { threads: [] };
+    if (name === 'commerce_copilot_get') return args.thread_id === thread.id ? thread : { ...thread, id: args.thread_id, context: { ...scope, entity: { kind: 'case', id: 'other-product' } } };
     if (name === 'commerce_copilot_open') { if(openGate) await openGate; return thread; }
     if (name === 'commerce_copilot_send') { if (sendError) throw Error('offline'); return thread; }
     throw Error(name);
@@ -75,4 +76,31 @@ test('opaque draft responses require the expected parent and nonce', async () =>
   s.emit('message', { source: {}, data: message }); s.emit('message', { source: s.window.parent, data: { ...message, nonce: 'wrong' } }); await Promise.resolve(); assert.equal(settled, false);
   s.emit('message', { source: s.window.parent, data: message }); assert.equal(await result, '合法草稿');
   await assert.rejects(storage.request('read', 'auth.token'), /invalid_draft_key/); storage.dispose(); s.controller.dispose();
+});
+
+test('a composition completing after an external thread switch persists only in its original draft', async () => {
+  const storage = store(), s = mount(storage); await flush();
+  await s.controller.openThread('draft-test-thread'); await flush();
+  s.input('原商品草稿'); await flush();
+  s.emit('compositionstart', { target: { id: 'copilot-message', value: '原商品草稿' } });
+  await s.controller.openThread('other-draft-thread'); await flush();
+  s.input('原商品中文完成');
+  s.emit('compositionend', { target: { id: 'copilot-message', value: '原商品中文完成' } }); await flush();
+  assert.equal(storage.values.get('commerce-copilot-draft-v1:draft-test-thread'), '原商品中文完成');
+  assert.notEqual(storage.values.get('commerce-copilot-draft-v1:other-draft-thread'), '原商品中文完成');
+  await s.controller.openThread('draft-test-thread'); assert.ok(s.controller.view().includes('原商品中文完成'));
+  s.controller.dispose();
+  const restored = mount(storage); await flush(); await restored.controller.openThread('other-draft-thread'); await flush();
+  assert.ok(!restored.controller.view().includes('原商品中文完成'));
+  await restored.controller.openThread('draft-test-thread'); restored.controller.view(); await flush(); assert.ok(restored.controller.view().includes('原商品中文完成')); restored.controller.dispose();
+});
+
+test('closing during composition does not leave the reopened composer unable to send', async () => {
+  const s = mount(store()); await flush();
+  s.input('关闭前输入');
+  s.emit('compositionstart', { target: { id: 'copilot-message', value: '关闭前输入' } });
+  s.controller.close(); s.controller.open(undefined, { focus: false }); await flush();
+  s.send(); await flush(); await flush();
+  assert.equal(s.calls.filter(([name]) => name === 'commerce_copilot_send').length, 1);
+  s.controller.dispose();
 });

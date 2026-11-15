@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
-const source = await readFile(new URL('../web/intel-ui.js', import.meta.url), 'utf8');
+const source=(await readFile(new URL('../web/intel-dashboard-ui.js',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../web/intel-ui.js',import.meta.url),'utf8'));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function fixture() {
   const documentEvents = new Map(), windowEvents = new Map(), requests = [];
@@ -12,6 +12,7 @@ function fixture() {
   vm.runInNewContext(source, { window, document, location: { hash: '' }, setInterval() {}, setTimeout, clearTimeout, URL, Date, console });
   const api = (tool, args) => {
     if (tool !== 'commerce_intel_search') return Promise.resolve({ watches: [], jobs: [], alerts: [] });
+    if (args.category !== 'all') return Promise.resolve({items:[],total:0});
     return new Promise(resolve => requests.push({ args, resolve }));
   };
   const intel = window.CommerceIntel({ api, repaint() {}, isActive: () => true });

@@ -18,6 +18,7 @@ class Articles:
         self.slots=threading.BoundedSemaphore(1);self.fetcher=fetcher or self.capture
         with core.db() as db:
             db.execute('CREATE TABLE IF NOT EXISTS intel_articles (id TEXT PRIMARY KEY, idem TEXT UNIQUE, item_id TEXT, record_sha TEXT, doc TEXT)')
+            db.execute('CREATE INDEX IF NOT EXISTS intel_articles_item ON intel_articles(item_id)')
 
     def recover(self):
         with self.core.db() as db:
@@ -82,7 +83,16 @@ class Articles:
                     time.sleep(1)
             finally:
                 if child.poll() is None:terminate(child)
-        if child.returncode or not output.is_file():raise ValueError('article_capture_failed_check_private_receipt')
+        if child.returncode or not output.is_file():
+            # The worker prints fixed diagnostic codes. Never expose arbitrary
+            # stderr/exception strings, request URLs or proxy configuration.
+            safe={'article_body_unavailable','article_text_too_large','article_text_encoding_invalid','article_text_encoding_unsupported','article_route_conflict','article_native_http_failed','article_http_failed','article_capture_failed','article_payload_too_large'}
+            lines=(folder/'worker.log').read_bytes()[-4096:].decode('utf-8',errors='replace').splitlines()
+            for line in reversed(lines):
+                try:code=json.loads(line).get('error')
+                except (ValueError,AttributeError):continue
+                if isinstance(code,str)and code in safe:raise ValueError(code)
+            raise ValueError('article_capture_failed_check_private_receipt')
         if output.stat().st_size>2_000_000:raise ValueError('article_payload_too_large')
         return json.loads(output.read_text())
 

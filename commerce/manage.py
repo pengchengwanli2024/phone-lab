@@ -45,6 +45,10 @@ def doctor():
         checks['read_connectors']=summarize(request('commerce_platform_catalog',{}),request('commerce_platform_list',{}))
     except Exception:
         checks['read_connectors']={'status':'unknown','running_version_current':False,'diagnostic_only':True}
+    try:
+        desktop=request('commerce_live_readiness',{'scope':'desktop'})
+        checks['ozon_desktop_preflight']={'status':'ready'if desktop['complete']==desktop['total']else'needs_action','complete':desktop['complete'],'total':desktop['total'],'pending':[c['key']for c in desktop['checks']if c['status']!='ready'],'deferred_notifications':len(desktop.get('deferred',[])),'business_acceptance':False}
+    except Exception:checks['ozon_desktop_preflight']={'status':'update_pending_or_unavailable','business_acceptance':False}
     current=checks['read_connectors']['running_version_current']
     result={'status':'ready_local' if checks['runtime']['worker']=='running' and current else 'degraded','checks':checks,'full_business_acceptance':False}
     if not current:result['next_action']='review_current_version_and_load_only_after_shared_idle_audit'

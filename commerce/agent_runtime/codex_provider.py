@@ -122,7 +122,7 @@ def stop(process):
     process.wait(timeout=2)
 
 
-def invoke_json(payload, cancelled, config, output_schema, instructions, *, input_limit=100000, response_limit=40000, with_receipt=False):
+def invoke_json(payload, cancelled, config, output_schema, instructions, *, input_limit=100000, response_limit=40000, with_receipt=False, images=()):
     if cancelled():raise Cancelled()
     # An empty temporary working directory prevents ancestor project discovery.
     # All temporary outputs are owned and removed; no CLI auth is copied.
@@ -130,6 +130,15 @@ def invoke_json(payload, cancelled, config, output_schema, instructions, *, inpu
         work=Path(folder)
         (work/'schema.json').write_text(json.dumps(output_schema))
         (work/'instructions.txt').write_text(instructions+'\nDo not call any built-in Codex tools. Use only the supplied input and return the required JSON.\n')
+        attachments=[]
+        if not isinstance(images,(list,tuple)) or len(images)>4:raise ValueError('agent_model_image_limit')
+        for index,source in enumerate(images):
+            source=Path(source)
+            if source.is_symlink() or not source.is_file() or source.stat().st_size>8*1024*1024:raise ValueError('agent_model_invalid_image')
+            raw=source.read_bytes()
+            suffix='.png' if raw.startswith(b'\x89PNG\r\n\x1a\n') else '.jpg' if raw.startswith(b'\xff\xd8\xff') else None
+            if not suffix:raise ValueError('agent_model_invalid_image')
+            target=work/('reference-'+str(index)+suffix);target.write_bytes(raw);target.chmod(0o600);attachments+=['--image',str(target)]
         encoded=json.dumps(payload,ensure_ascii=False).encode()
         if len(encoded)>input_limit:raise ValueError('agent_model_input_too_large')
         # Do not forward commerce, device, platform or unrelated API credentials.
@@ -139,7 +148,7 @@ def invoke_json(payload, cancelled, config, output_schema, instructions, *, inpu
         env={key:value for key,value in os.environ.items() if key in allowed}
         with (work/'request.json').open('wb+') as input_file,(work/'events.jsonl').open('wb+') as output,(work/'stderr.log').open('wb+') as errors:
             input_file.write(encoded);input_file.seek(0)
-            process=subprocess.Popen(command(work,config),stdin=input_file,stdout=output,stderr=errors,
+            process=subprocess.Popen(command(work,config)+attachments,stdin=input_file,stdout=output,stderr=errors,
                                      env=env,cwd=work,start_new_session=True)
             try:
                 end=time.monotonic()+100

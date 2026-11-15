@@ -39,7 +39,7 @@ def views(core, case, current_artifact_id, selected_task_id=None):
                         or payload.get('sku') != case['scope']['sku']):
                     raise ValueError()
                 candidate = candidates[0]
-                reference = {'task_id': task_id, 'run_id': job['run_id'], 'status': job['status'],
+                reference = {'task_id': task_id, 'run_id': candidate.get('research_run_id', job['run_id']), 'status': job['status'],
                              'revision': job['revision'], 'case_id': case['id'],
                              'artifact_id': artifact_id, 'artifact_sha256': sha,
                              'source_ids': candidate['source_ids'],

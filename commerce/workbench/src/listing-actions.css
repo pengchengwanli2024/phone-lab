@@ -1,0 +1,6 @@
+.r-listing-action-previews {display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:var(--ui-space-3,12px);margin-block:var(--ui-space-3,12px)}
+#listing-image-actions {grid-column:1/-1;min-width:0}
+.r-listing-action-previews figure {margin:0;min-width:0}
+.r-listing-action-previews img {width:100%;height:180px;object-fit:contain;background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:var(--ui-radius-md)}
+.r-listing-action-previews figcaption {font-size:var(--ui-font-size-sm,12px);color:var(--ui-text-muted)}
+#listing-image-actions .r-code {overflow-wrap:anywhere}

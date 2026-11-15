@@ -3,7 +3,7 @@ from pathlib import Path
 from urllib.parse import urlsplit,urlunsplit
 import hashlib,ipaddress,json,os,re,secrets,threading,time,uuid,webbrowser
 
-ENGINES={'llama_cpp':'llama.cpp','vllm':'vLLM','custom':'自定义兼容服务'}
+ENGINES={'llama_cpp':'llama.cpp','vllm':'vLLM','ollama':'Ollama','lm_studio':'LM Studio','custom':'自定义兼容服务'}
 PROBE=threading.BoundedSemaphore(1)
 
 

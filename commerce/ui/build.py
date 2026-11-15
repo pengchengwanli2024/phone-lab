@@ -4,6 +4,7 @@ import json
 import hashlib
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
+    subprocess.run([sys.executable, str(ROOT / 'creative_ui_build.py'), *(['--check'] if args.check else [])], check=True)
+    subprocess.run([sys.executable, str(ROOT / 'skills_ui_build.py'), *(['--check'] if args.check else [])], check=True)
+    subprocess.run([sys.executable, str(ROOT / 'a2ui/build_contract.py'), *(['--check'] if args.check else [])], check=True)
     path = ROOT / 'web/style.css'
     content = path.read_text()
     block = generated()
@@ -63,7 +67,7 @@ def main():
     else:
         js_expected = kit + '\n' + javascript
     intel_start, intel_end = '/* COMMERCE_INTEL_START */', '/* COMMERCE_INTEL_END */'
-    intel = (ROOT / 'web/social-ui.js').read_text() + '\n' + (ROOT / 'web/intel-ui.js').read_text().replace('__INTEL_WORLD_PATH__', (ROOT / 'web/intel-land.txt').read_text())
+    intel = (ROOT / 'web/social-ui.js').read_text() + '\n' + (ROOT / 'web/intel-dashboard-ui.js').read_text() + '\n' + (ROOT / 'web/intel-live-ui.js').read_text() + '\n' + (ROOT / 'web/intel-ui.js').read_text().replace('__INTEL_WORLD_PATH__', (ROOT / 'web/intel-land.txt').read_text())
     if intel_start not in js_expected or intel_end not in js_expected:
         raise SystemExit('Shared information module markers missing; preserve existing business modules.')
     before, tail = js_expected.split(intel_start, 1)
@@ -115,8 +119,14 @@ def main():
         before, tail = js_expected.split(legacy_begin, 1)
         _, after = tail.split(legacy_end, 1)
         js_expected = before + after.lstrip('\n')
-    for name in ('organization','channels','connections','live','platform','pilot','businessforms','business','workspace','copilot'):
-        begin, end = '/* COMMERCE_'+name.upper()+'_START */', '/* COMMERCE_'+name.upper()+'_END */'
+    legacy_begin, legacy_end = '/* BEGIN GENERATED LIVE PLAN MODULE */', '/* END GENERATED LIVE PLAN MODULE */'
+    if legacy_begin in js_expected:
+        before, tail = js_expected.split(legacy_begin, 1)
+        _, after = tail.split(legacy_end, 1)
+        js_expected = before + after.lstrip('\n')
+    for name in ('organization','channels','connections','live-plan','live','platform','pilot','businessforms','business','workspace','copilot'):
+        marker=name.upper().replace('-','_')
+        begin, end = '/* COMMERCE_'+marker+'_START */', '/* COMMERCE_'+marker+'_END */'
         source = (ROOT/('web/'+name+'-ui.js')).read_text().rstrip()
         if name == 'workspace':
             source = (ROOT/'ui/next-actions.js').read_text().rstrip()+'\n'+source
@@ -125,15 +135,27 @@ def main():
             before, tail = js_expected.split(begin, 1);_, after = tail.split(end, 1);js_expected = before+block+after
         else:
             anchor='/* COMMERCE_EXPOSURE_END */';js_expected=js_expected.replace(anchor,anchor+'\n'+block,1)
-        if name in ('organization', 'channels', 'connections', 'live'):
+        if name in ('organization', 'channels', 'connections', 'live-plan', 'live'):
             continue  # These views reuse the existing primitives and layout styles.
         begin, end = '/* COMMERCE_'+name.upper()+'_STYLE_START */', '/* COMMERCE_'+name.upper()+'_STYLE_END */'
         block = begin+'\n'+(ROOT/('web/'+name+'-ui.css')).read_text().rstrip()+'\n'+end
         if begin in expected:
             before, tail = expected.split(begin, 1);_, after = tail.split(end, 1);expected=before+block+after
         else:expected+='\n'+block+'\n'
-    product_css = generated()+'\n'+(ROOT/'ui/primitives.css').read_text()+'\n'+(ROOT/'web/copilot-ui.css').read_text()+'\n'+(ROOT/'web/product-workspace-ui.css').read_text()
-    product_js = (ROOT/'ui/status.js').read_text()+'\n'+(ROOT/'ui/kit.js').read_text()+'\n'+(ROOT/'web/copilot-ui.js').read_text()+'\n'+(ROOT/'web/research-context.js').read_text()+'\n'+(ROOT/'web/product-workspace-ui.js').read_text()
+    for name in ('catalog','media-provider','media-workflow','creative','extensions'):
+        begin,end='/* COMMERCE_'+name.upper()+'_STYLE_START */','/* COMMERCE_'+name.upper()+'_STYLE_END */'
+        block=begin+'\n'+(ROOT/('web/'+name+'-ui.css')).read_text().rstrip()+'\n'+end
+        if begin in expected:
+            before,tail=expected.split(begin,1);_,after=tail.split(end,1);expected=before+block+after
+        else:expected+='\n'+block+'\n'
+    workspace_style = (ROOT/'ui/workspace.css').read_text().rstrip()
+    begin,end='/* COMMERCE_UI_COMPOSITION_START */','/* COMMERCE_UI_COMPOSITION_END */'
+    block=begin+'\n'+workspace_style+'\n'+end
+    if begin in expected:
+        before,tail=expected.split(begin,1);_,after=tail.split(end,1);expected=before+block+after
+    else:expected+='\n'+block+'\n'
+    product_css = generated()+'\n'+(ROOT/'ui/primitives.css').read_text()+'\n'+(ROOT/'web/copilot-ui.css').read_text()+'\n'+(ROOT/'web/product-workspace-ui.css').read_text()+'\n'+(ROOT/'web/catalog-ui.css').read_text()+'\n'+(ROOT/'web/media-provider-ui.css').read_text()+'\n'+(ROOT/'web/media-workflow-ui.css').read_text()+'\n'+(ROOT/'web/creative-ui.css').read_text()+'\n'+workspace_style
+    product_js = (ROOT/'ui/status.js').read_text()+'\n'+(ROOT/'ui/kit.js').read_text()+'\n'+(ROOT/'web/copilot-ui.js').read_text()+'\n'+(ROOT/'web/research-context.js').read_text()+'\n'+(ROOT/'web/catalog-ui.js').read_text()+'\n'+(ROOT/'web/media-video-review-ui.js').read_text()+'\n'+(ROOT/'web/media-plugin-execution-ui.js').read_text()+'\n'+(ROOT/'web/media-plugin-ui.js').read_text()+'\n'+(ROOT/'web/media-provider-ui.js').read_text()+'\n'+(ROOT/'web/creative-readiness-ui.js').read_text()+'\n'+(ROOT/'web/media-workflow-ui.js').read_text()+'\n'+(ROOT/'creative_ui.js').read_text()+'\n'+(ROOT/'web/product-workspace-ui.js').read_text()
     product_outputs = {ROOT/'web/product-workspace.bundle.css':product_css,ROOT/'web/product-workspace.bundle.js':product_js}
     if args.check:
         if any(not path.exists() or path.read_text()!=body for path,body in product_outputs.items()):

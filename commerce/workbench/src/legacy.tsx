@@ -9,6 +9,7 @@ export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, 
   const [refreshStatus, setRefreshStatus] = useState('');
   const [refreshEpoch, setRefreshEpoch] = useState(0);
   const previousActive = useRef<boolean | null>(null);
+  const activeView=useRef(active);activeView.current=active;
   const awaitingRefresh = useRef(false);
   const copilotCallback = useRef(onCopilot); copilotCallback.current = onCopilot;
   const widthCallback=useRef(onChatWidth);widthCallback.current=onChatWidth;
@@ -21,7 +22,7 @@ export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, 
   const legacyTab = tab === 'restock' ? 'operations' : tab;
   const mode = tab === 'restock' ? 'stock' : 'cost';
   const source = useMemo(() => {
-    const bootstrap = JSON.stringify({ tab: legacyTab, mode, demo, case_id: frameCaseId, research_task_id: product ? researchRequest.current : undefined, bridge: true, embedded: !product, hosted: true, reactHost: true }).replaceAll('<', '\\u003c');
+    const bootstrap = JSON.stringify({ tab: legacyTab, mode, demo, intel_section: !product && legacyTab === 'intelligence' && location.hash === '#social' ? 'social' : undefined, case_id: frameCaseId, research_task_id: product ? researchRequest.current : undefined, bridge: true, embedded: !product, hosted: true, reactHost: true }).replaceAll('<', '\\u003c');
     let html = product ? __PRODUCT_HTML__.replace('__COMMERCE_NESTED_BOOTSTRAP__', () => bootstrap) : __LEGACY_HTML__.replace('<script>', () => `<script>window.__COMMERCE_LEGACY__=${bootstrap};`);
     if (product) html = html.replace('</head>', '<style>.pw-sidebar,.pw-topbar,.pw-platform-bottom-nav{display:none!important}.pw-frame{grid-template-columns:minmax(0,1fr)!important}.pw-body{grid-column:1/-1!important;height:100dvh!important}.pw-columns{height:100%!important}</style></head>');
     return html.replaceAll('__COMMERCE_NESTED_NONCE__', nonce.current);
@@ -34,6 +35,9 @@ export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, 
     const receive = async (event: MessageEvent) => {
       const m = event.data;
       if (event.source !== frame.current?.contentWindow || m?.nonce !== nonce.current) return;
+      // A hidden frame can finish initialization after the user has left it.
+      // Its reads/draft replies remain valid, but it cannot replace the active route.
+      if(!activeView.current&&['commerce:workspace-backend','commerce:workspace-open','commerce:workspace-navigate','commerce:workspace-selected','commerce:workspace-dynamic-cost','commerce:workspace-research','commerce:workspace-copilot'].includes(m.type))return;
       if(m.type==='commerce:copilot-draft'){
         if(typeof m.id!=='string'||m.id.length>80)return;
         const target=event.source as Window;
@@ -70,6 +74,8 @@ export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, 
   useEffect(()=>{if(product&&ready&&assistantToggle!==lastAssistantToggle.current){lastAssistantToggle.current=assistantToggle;frame.current?.contentWindow?.postMessage({type:'commerce:workspace-assistant-toggle',nonce:nonce.current},'*');}},[product,ready,assistantToggle]);
   useEffect(()=>{if(product&&ready&&typeof chatWidth==='number'&&Number.isFinite(chatWidth)&&chatWidth>=320&&chatWidth<=960)frame.current?.contentWindow?.postMessage({type:'commerce:workspace-layout',nonce:nonce.current,chat_width:chatWidth},'*');},[ready,product,chatWidth]);
   useEffect(() => { if (ready) frame.current?.contentWindow?.postMessage(product ? { type: 'commerce:theme', nonce: nonce.current, theme } : { type: 'commerce:legacy-navigate', nonce: nonce.current, tab: legacyTab, mode, theme }, '*'); }, [ready, legacyTab, mode, theme, product]);
+  useEffect(() => { if (!product && active && ready && legacyTab === 'creative' && /^pluginexec_[a-f0-9]{20}$/.test(caseId)) frame.current?.contentWindow?.postMessage({ type: 'commerce:legacy-plugin-execution', nonce: nonce.current, execution_id: caseId }, '*'); }, [product, active, ready, legacyTab, caseId]);
+  useEffect(() => { if (!product && ready && legacyTab === 'agent' && /^[a-f0-9]{32}$/.test(caseId)) frame.current?.contentWindow?.postMessage({ type: 'commerce:legacy-agent-open', nonce: nonce.current, run_id: caseId }, '*'); }, [product, ready, legacyTab, caseId]);
   useEffect(() => {
     if (!product || !ready) return;
     if (active && previousActive.current === false) { awaitingRefresh.current = true; frame.current?.contentWindow?.postMessage({ type: 'commerce:workspace-refresh', nonce: nonce.current }, '*'); }

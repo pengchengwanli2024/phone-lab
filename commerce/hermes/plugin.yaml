@@ -1,0 +1,4 @@
+name: commerce-workbench
+version: 0.1.0
+description: 在 Hermes 内打开本机电商共享工作台；不增加模型工具或自主执行。
+author: Local

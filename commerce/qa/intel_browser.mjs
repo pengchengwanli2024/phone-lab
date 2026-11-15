@@ -31,7 +31,7 @@ try{
   const pages=await(await fetch(`http://127.0.0.1:${debug}/json/list`)).json();ws=new WebSocket(pages.find(p=>p.type==='page').webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});
   ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=waiting.get(m.id);if(p){waiting.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result)}}else if(m.method==='Runtime.exceptionThrown')exceptions.push(m.params.exceptionDetails.text)};
   await cdp('Runtime.enable');await cdp('Page.enable');await cdp('Emulation.setDeviceMetricsOverride',{width:1920,height:1200,deviceScaleFactor:1,mobile:false});
-  await cdp('Page.navigate',{url:`http://127.0.0.1:${port}/login?token=${encodeURIComponent(auth)}`});
+  await cdp('Page.navigate',{url:`http://127.0.0.1:${port}/login?token=${encodeURIComponent(auth)}`});await until(`!!document.querySelector('.r-app')`);await cdp('Page.navigate',{url:`http://127.0.0.1:${port}/legacy`});
   await until(`!!document.querySelector('[data-tab="intelligence"]')&&!!document.querySelector('.kpi-value')`);
   await evaluate(`document.querySelector('[data-tab="intelligence"]').click()`);
   await until(`document.querySelectorAll('.intel-source-strip .intel-source-pill').length===8&&!document.querySelector('#intel-search button').disabled`);

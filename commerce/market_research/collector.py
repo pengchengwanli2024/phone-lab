@@ -46,13 +46,17 @@ class Page(HTMLParser):
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
         if tag == 'article' and 'schema.org/Product' in a.get('itemtype', ''):
-            self.current = {'title': '', 'url': '', 'price': '', 'currency': '', 'text': ''}
+            self.current = {'title': '', 'url': '', 'price': '', 'currency': '', 'text': '', 'images': []}
             self.product_depth = len(self.stack) + 1
         prop = a.get('itemprop', '')
         if self.current:
             if prop == 'url' and a.get('href'):
                 link = urljoin(self.url, a['href'])
                 if urlsplit(link).netloc == urlsplit(self.url).netloc: self.current['url'] = link
+            if prop == 'image':
+                image=urljoin(self.url,a.get('src') or a.get('content') or '')
+                parsed=urlsplit(image)
+                if parsed.scheme=='https' and parsed.hostname and not parsed.username and not parsed.password and len(image)<=2000 and len(self.current['images'])<12 and image not in self.current['images']:self.current['images'].append(image)
             if prop == 'priceCurrency': self.current['currency'] = a.get('content', '')[:10]
             if prop == 'price' and a.get('content'): self.current['price'] = a['content'][:40]
         if tag not in ('meta', 'img', 'br', 'hr', 'input', 'link', 'source', 'wbr', 'area', 'embed'):

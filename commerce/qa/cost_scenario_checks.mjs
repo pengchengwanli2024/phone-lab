@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import path from 'node:path';
+export async function costScenarioChecks({page,origin,caseId,output,invoke,checks}){
+  await page.goto(origin+'/workspace?host=harness&tab=workspace&demo=true&case_id='+caseId);
+  const frame=page.frameLocator('iframe[title="完整商品内容编辑"]');
+  await frame.locator('#pw-main[aria-busy="false"]').waitFor();
+  await frame.locator('[data-pw-tab="cost"]').click();
+  await frame.locator('[data-pw-action="scenario-open-save"]').waitFor();
+  const values={currency:'CNY',price:100,purchase_cost:20,domestic_shipping:2,packaging:1,fulfillment_cost:10,electronic_fee:1,commission_rate:.1,payment_rate:.02,return_rate:.03,ad_rate:.05};
+  for(const [key,value]of Object.entries(values))await frame.locator('#pw-cost-'+key).fill(String(value));
+  assert.equal(await frame.locator('[data-pw-action="scenario-open-save"]').isDisabled(),true);
+  await frame.getByRole('button',{name:'保存并测算',exact:true}).click();
+  await frame.locator('#pw-announcement').filter({hasText:/^测算已保存$/}).waitFor({state:'attached'});
+  await frame.locator('[data-pw-action="scenario-open-save"]:enabled').waitFor();
+  const before=await invoke('commerce_workspace_get',{case_id:caseId});
+  await frame.getByRole('button',{name:'保存成本情景',exact:true}).click();
+  await frame.getByLabel('情景名称',{exact:true}).fill('合成验收：基准成本');
+  await frame.getByRole('button',{name:'保存情景',exact:true}).click();
+  await frame.getByLabel('情景名称',{exact:true}).waitFor({state:'detached'});
+  await frame.getByRole('button',{name:'对比已存情景',exact:true}).click();
+  await frame.getByRole('dialog').getByText('合成验收：基准成本',{exact:true}).waitFor();
+  assert.deepEqual((await invoke('commerce_workspace_get',{case_id:caseId})).forms.cost,before.forms.cost);
+  for(const [width,height,theme]of [[1440,1000,'light'],[390,900,'dark']]){
+    await page.setViewportSize({width,height});await page.getByLabel('界面主题',{exact:true}).selectOption(theme);
+    await page.screenshot({path:path.join(output,`cost-scenarios-${theme}-${width}.png`)});
+    assert.ok(await frame.locator('html').evaluate(el=>el.scrollWidth<=el.clientWidth+2));
+  }
+  await frame.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).last().click();
+  await page.setViewportSize({width:1440,height:960});
+  checks.push('Saved cost scenario uses original current inputs, never mutates the current calculation, rejects unsaved edits, and renders comparison at 1440/390 light/dark');
+  const beforePlan=await invoke('commerce_workflow_plan_get',{case_id:caseId}),tasks=(await invoke('commerce_task_list')).tasks;
+  await page.goto(origin+'/workspace?host=harness&tab=workflow&demo=true&case_id='+caseId);
+  await page.getByRole('heading',{name:'工作流画布',exact:true}).waitFor();
+  await page.getByLabel('本次目标',{exact:true}).fill('合成验收：历史版本新修订');
+  const review=page.getByRole('checkbox',{name:'商品依据已变化；我已在原工作区核对当前来源后继续编辑。',exact:true});
+  if(await review.isVisible())await review.check();
+  await page.getByRole('button',{name:'保存工作计划',exact:true}).click();
+  await page.getByText('已保存到原商品工作计划。',{exact:true}).waitFor();
+  const updated=await invoke('commerce_workflow_plan_get',{case_id:caseId});assert.ok(updated.versions.length>=2);
+  await page.getByText('计划历史版本',{exact:true}).click();
+  await page.getByRole('button',{name:`载入修订 ${beforePlan.revision} 为草稿`,exact:true}).click();
+  assert.equal(await page.getByLabel('本次目标',{exact:true}).inputValue(),beforePlan.payload.goal);
+  if(await review.isVisible())await review.check();
+  await page.getByRole('button',{name:'保存工作计划',exact:true}).click();
+  await page.getByText('已保存到原商品工作计划。',{exact:true}).waitFor();
+  const restored=await invoke('commerce_workflow_plan_get',{case_id:caseId});assert.equal(restored.revision,updated.revision+1);
+  assert.deepEqual(restored.payload,beforePlan.payload);assert.deepEqual((await invoke('commerce_task_list')).tasks,tasks);
+  await page.screenshot({path:path.join(output,'workflow-versions.png')});
+  checks.push('Legacy and graph plans share typed immutable history; loading an old version creates an unsaved draft and saving appends a new revision without creating or replaying tasks');
+}

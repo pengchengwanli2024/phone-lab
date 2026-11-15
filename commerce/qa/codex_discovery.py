@@ -36,7 +36,23 @@ try:
     if result.get('isError'):raise RuntimeError('native Codex commerce_status returned an error')
     status=result.get('structuredContent')or json.loads(result['content'][0]['text'])
     if status.get('version')!='0.1.0':raise RuntimeError('Unexpected shared service version')
-    output={'status':'passed','client':'native Codex app-server','tools':len(names),'model_turn_sent':False,'server':'commerce','tool_call':'commerce_status','knowledge_configured':status['knowledge']['configured']}
+    intel=call(5,'mcpServer/tool/call',{'threadId':thread['thread']['id'],'server':'commerce','tool':'commerce_intel_search','arguments':{'query':'地震','limit':'20'}})
+    if intel.get('isError'):raise RuntimeError('native Codex intelligence call failed')
+    intel_data=intel.get('structuredContent')or json.loads(intel['content'][0]['text'])
+    assert intel_data['scope']=='latest_successful_source_snapshots_not_whole_web_or_history'
+    pref=call(6,'mcpServer/tool/call',{'threadId':thread['thread']['id'],'server':'commerce','tool':'commerce_ui_get_preferences','arguments':{}})
+    if pref.get('isError'):raise RuntimeError('native Codex theme preference read failed')
+    archive=call(7,'mcpServer/tool/call',{'threadId':thread['thread']['id'],'server':'commerce','tool':'commerce_intel_search','arguments':{'scope':'archive','query':'地震','limit':'20'}})
+    if archive.get('isError'):raise RuntimeError('native Codex local archive failed')
+    rows=(archive.get('structuredContent')or json.loads(archive['content'][0]['text']))['items']
+    assert rows,'expected previously collected public cache'
+    record=call(8,'mcpServer/tool/call',{'threadId':thread['thread']['id'],'server':'commerce','tool':'commerce_intel_item_get','arguments':{'item_id':rows[0]['id']}})
+    if record.get('isError'):raise RuntimeError('native Codex provenance read failed')
+    item=record.get('structuredContent')or json.loads(record['content'][0]['text']);assert len(item['record_sha256'])==64
+    runtime=call(9,'mcpServer/tool/call',{'threadId':thread['thread']['id'],'server':'commerce','tool':'commerce_runtime_status','arguments':{}})
+    assert not runtime.get('isError')
+    assert (runtime.get('structuredContent')or json.loads(runtime['content'][0]['text']))['worker']=='running'
+    output={'status':'passed','client':'native Codex app-server','tools':len(names),'model_turn_sent':False,'server':'commerce','tool_calls':['commerce_runtime_status','commerce_status','commerce_intel_search','commerce_intel_item_get','commerce_ui_get_preferences'],'knowledge_configured':status['knowledge']['configured']}
     Path(__file__).with_name('codex-result.json').write_text(json.dumps(output,indent=2));print(json.dumps(output))
 finally:
     p.terminate();p.wait(timeout=8);p.stdin.close();p.stdout.close()

@@ -1,0 +1,60 @@
+{
+  "schema": "creative-brief-proposal-v1",
+  "example_kind": "synthetic_template_not_a_processed_video",
+  "implementation_status": "planned_not_integrated",
+  "reference": {
+    "asset_id": null,
+    "source_url": null,
+    "usage_scope": "to_be_provided",
+    "duration_ms": null,
+    "analysis_status": "not_started"
+  },
+  "product": {
+    "asset_ids": [],
+    "verified_facts": [],
+    "claim_evidence": [],
+    "preserve": ["shape", "color", "packaging_text", "label", "proportions"]
+  },
+  "target": {
+    "platform": null,
+    "country": null,
+    "language": null,
+    "aspect_ratio": "9:16",
+    "planned_duration_ms": 30000
+  },
+  "deliverables": {
+    "timecoded_analysis": true,
+    "script_angles": 3,
+    "shooting_storyboard": true,
+    "image_plans": ["product_main", "usage_scene", "advertisement"],
+    "editable_asset_manifest": true,
+    "base_video": 1,
+    "hook_variants_after_base_review": 2,
+    "captions": true,
+    "editable_video_project": true
+  },
+  "timeline_template": [
+    {"start_ms": 0, "end_ms": 3000, "role": "hook", "text": null, "source_evidence": []},
+    {"start_ms": 3000, "end_ms": 8000, "role": "problem", "text": null, "source_evidence": []},
+    {"start_ms": 8000, "end_ms": 18000, "role": "demonstration", "text": null, "source_evidence": []},
+    {"start_ms": 18000, "end_ms": 24000, "role": "evidence_or_objection", "text": null, "source_evidence": []},
+    {"start_ms": 24000, "end_ms": 30000, "role": "call_to_action", "text": null, "source_evidence": []}
+  ],
+  "execution": {
+    "status": "awaiting_source_assets",
+    "external_generation_submitted": false,
+    "provider_job_ids": [],
+    "budget_limit": null,
+    "keep_completed_stage_outputs": true,
+    "ambiguous_provider_outcome": "unknown_query_existing_job_before_resubmit"
+  },
+  "experiment": {
+    "round_one_variable": "hook",
+    "keep_constant": ["body_script", "product_assets", "audience", "test_conditions"],
+    "hypothesis": null,
+    "primary_metric": null,
+    "baseline": null,
+    "observation_window": null,
+    "results": null
+  }
+}

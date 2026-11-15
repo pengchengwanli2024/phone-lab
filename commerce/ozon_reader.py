@@ -19,7 +19,15 @@ from sync_guard import assess_batch
 
 HOST = 'https://api-seller.ozon.ru'
 ENDPOINTS = {'FBS': '/v4/posting/fbs/list', 'realFBS': '/v4/posting/fbs/list',
-             'OGL': '/v4/posting/fbs/list', 'FBO': '/v3/posting/fbo/list', 'stock': '/v4/product/info/stocks'}
+             'OGL': '/v4/posting/fbs/list', 'FBO': '/v3/posting/fbo/list', 'stock': '/v4/product/info/stocks',
+             'listing_tree':'/v1/description-category/tree',
+             'listing_attributes':'/v1/description-category/attribute',
+             'listing_values':'/v1/description-category/attribute/values',
+             'listing_import_receipt':'/v1/product/import/info',
+             'listing_product_readback':'/v3/product/info/list',
+             'catalog_attributes':'/v4/product/info/attributes',
+             'catalog_description':'/v1/product/info/description'}
+ENDPOINTS['listing_pictures_readback']='/v2/product/pictures/info'
 
 
 class ConnectionIssue(ValueError):

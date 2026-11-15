@@ -1,0 +1,23 @@
+.adoption-form { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
+.adoption-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.adoption-grid .ui-field,.adoption-form .ui-field { min-width: 0; display: grid; gap: 6px; }
+.adoption-form input,.adoption-form select,.adoption-form textarea { width: 100%; box-sizing: border-box; }
+.adoption-form textarea { min-height: 100px; resize: vertical; }
+.adoption-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+.adoption-notice { color: var(--ui-color-muted); line-height: 1.6; overflow-wrap: anywhere; }
+.adoption-list { display: grid; gap: 12px; padding: 0; list-style: none; }
+.adoption-item { border-bottom: 1px solid var(--ui-color-border); padding: 12px 0; min-width: 0; }
+.adoption-item p,.adoption-item pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.adoption-scope { color: var(--ui-color-muted); font-size: 12px; overflow-wrap: anywhere; }
+.adoption-check { display: flex; align-items: flex-start; gap: 8px; }
+.adoption-check input { width: 18px; min-width: 18px; margin-top: 3px; }
+.adoption-canvas-scroll { max-width: 100%; overflow: auto; border: 1px solid var(--ui-color-border); border-radius: 8px; margin: 16px 0; }
+.adoption-canvas { position: relative; min-height: 420px; background: var(--ui-color-surface); }
+.adoption-canvas svg { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.adoption-canvas line { stroke: var(--ui-color-muted); stroke-width: 2; }
+.adoption-node { position: absolute; width: 180px; height: 84px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 6px; text-align: left; touch-action: none; overflow: hidden; }
+.adoption-node strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adoption-node[aria-pressed="true"] { border-color: var(--ui-color-brand); outline: 2px solid var(--ui-color-brand); outline-offset: 2px; }
+.adoption-node small { color: var(--ui-color-muted); }
+.adoption-edge-list { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; }
+@media(max-width:600px) { .adoption-grid { grid-template-columns: minmax(0,1fr); } .adoption-actions button { min-height: 44px; } }

@@ -70,5 +70,12 @@ window.CommerceAgent=({api,esc,toast,repaint,modal,closeModal,isActive})=>{
     }catch(error){toast('操作未完成：'+({agent_case_evidence_changed:'依据已变化，请重新分析后审阅；本次没有派单。',agent_case_unavailable:'原工作项已不可用，请核对当前连接；不会替换为其它商品。'}[error.message]||error.message));target.disabled=false}
   });
   setInterval(()=>{if(isActive()&&state.selected&&active.includes(state.selected.status)&&!state.busy&&!document.querySelector('.dialog'))load()},1500);
-  return {view,enter:load};
+  async function openRun(id){
+    if(!/^[a-f0-9]{32}$/.test(id))throw Error('invalid_agent_run');
+    const generation=++state.loadId;
+    const run=await api('commerce_agent_get',{run_id:id});
+    if(generation!==state.loadId)return;
+    state.selected=run;state.error='';if(isActive())repaint();
+  }
+  return {view,enter:load,openRun};
 };

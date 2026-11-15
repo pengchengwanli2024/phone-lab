@@ -38,13 +38,14 @@ def tool_definitions(schema, string):
         ('list', '列出本机创意项目；不读取其它目录', {}, []),
         ('get', '读取创意项目、三类草稿、素材和真实处理回执', {'project_id': string}, ['project_id']),
         ('save', '按版本保存产品依据与参考文案；不把参考片主张当成产品事实', {'project_id': string,'brief': obj,'revision': string}, ['project_id','brief','revision']),
-        ('upload_begin', '开始有界私有素材上传，不抓取任意网址', {'project_id':string,'filename':string,'kind':{'type':'string','enum':['reference_video','product_image','audio','captions','generated_image','generated_video']},'size':string,'sha256':string,'source_ref':{'type':'string','maxLength':1000}}, ['project_id','filename','kind','size','sha256']),
+        ('upload_begin', '开始有界私有素材上传，不抓取任意网址', {'project_id':string,'filename':string,'kind':{'type':'string','enum':['reference_video','reference_image','product_image','audio','captions','generated_image','generated_video']},'size':string,'sha256':string,'source_ref':{'type':'string','maxLength':1000}}, ['project_id','filename','kind','size','sha256']),
         ('upload_chunk', '上传一个有序分片；重传相同分片不重复写入', {'upload_id':string,'index':string,'content_base64':{'type':'string','minLength':1,'maxLength':66000}}, ['upload_id','index','content_base64']),
         ('upload_finish', '校验上传哈希和实际媒体格式后登记素材', {'upload_id':string}, ['upload_id']),
         ('asset_read', '分片读取本项目登记的私有素材，不接受文件路径', {'project_id':string,'asset_id':string,'offset':string}, ['project_id','asset_id']),
         ('analyze', '本机读取视频元信息、关键帧、OCR与已提供字幕；不下载语音模型', {'project_id':string,'asset_id':string,'idempotency_key':string}, ['project_id','asset_id','idempotency_key']),
         ('review_transcript', '校对指定分析任务的口播并回填参考文案，按版本保存；不变成商品事实', {'project_id':string,'job_id':string,'revision':string,'text':{'type':'string','minLength':1,'maxLength':6000}}, ['project_id','job_id','revision','text']),
         ('render', '将所选素材与有依据文案渲染为图文视频草稿，可使用已导入音轨；不是实拍UGC或效果验证', {'project_id':string,'asset_id':string,'idempotency_key':string,'audio_asset_id':string,'variant':{'type':'string','enum':['0','1','2']}}, ['project_id','asset_id','idempotency_key']),
+        ('design_analyze', '将选定参考图片或最多四张已提取关键帧提交既有视觉模型，拆解设计思路；结果待审阅', {'project_id':string,'asset_id':string,'idempotency_key':string}, ['project_id','asset_id','idempotency_key']),
         ('refine', '将产品事实和所填参考文案提交给既有模型升级文案；不上传原视频，结果待审阅', {'project_id':string,'idempotency_key':string}, ['project_id','idempotency_key']),
         ('approve_script', '按项目版本采用明确审阅的AI文案作为制作稿；保留模型与主张依据', {'project_id':string,'job_id':string,'angle':{'type':'string','enum':['detail','selection','demonstration']},'revision':string}, ['project_id','job_id','angle','revision']),
         ('image_layout', '保留商品原图，生成三种可编辑模板排版；不执行自动主体分割', {'project_id':string,'asset_id':string,'idempotency_key':string}, ['project_id','asset_id','idempotency_key']),
@@ -55,9 +56,10 @@ def tool_definitions(schema, string):
     return [('commerce_creative_'+name, desc, schema(props, required)) for name, desc, props, required in definitions]
 
 
-def normalize_brief(brief, allow_reviewed=False):
+def normalize_brief(brief, allow_reviewed=False, allow_direction=False):
     if not isinstance(brief,dict) or len(canonical(brief))>20000:
         raise ValueError('creative_brief_too_large')
+    if 'design_direction' in brief and not allow_direction:raise ValueError('creative_direction_requires_review_action')
     if 'reviewed_script' in brief and not allow_reviewed:raise ValueError('creative_use_review_action_for_model_script')
     product=brief.get('product') or {}
     if not isinstance(product,dict): raise ValueError('creative_invalid_product')
@@ -69,6 +71,9 @@ def normalize_brief(brief, allow_reviewed=False):
     reference=brief.get('reference') or {}
     target=brief.get('target') or {}
     if not isinstance(reference,dict) or not isinstance(target,dict): raise ValueError('creative_invalid_brief')
+    if any(k in target and (not isinstance(target[k],str) or len(target[k])>1000) for k in ('language','country','audience','use_scene')):raise ValueError('creative_invalid_target')
+    binding=brief.get('product_binding')
+    if binding is not None and (not isinstance(binding,dict) or set(binding)!={'case_id','source_sha256'} or not isinstance(binding['case_id'],str) or not re.fullmatch('[a-f0-9]{32}',binding['case_id']) or not isinstance(binding['source_sha256'],str) or not re.fullmatch('[a-f0-9]{64}',binding['source_sha256'])):raise ValueError('creative_invalid_product_binding')
     if not isinstance(reference.get('transcript',''),str) or len(reference.get('transcript',''))>6000:
         raise ValueError('creative_transcript_too_large')
     plan(brief)
@@ -88,7 +93,7 @@ class CreativeStudio:
             db.execute('CREATE TABLE IF NOT EXISTS creative_uploads (id TEXT PRIMARY KEY, project TEXT, spec TEXT, next_index INTEGER, received INTEGER, asset TEXT)')
             db.execute('CREATE TABLE IF NOT EXISTS creative_jobs (id TEXT PRIMARY KEY, idem TEXT UNIQUE, project TEXT, input TEXT, status TEXT, stage TEXT, result TEXT, created TEXT, cancel INTEGER)')
             for old in db.execute("SELECT id,input,status FROM creative_jobs WHERE status IN ('queued','running')").fetchall():
-                unknown=json.loads(old[1]).get('kind')=='refine' and old[2]=='running'
+                unknown=json.loads(old[1]).get('kind') in ('refine','design_analyze') and old[2]=='running'
                 status='unknown' if unknown else 'interrupted'
                 db.execute('UPDATE creative_jobs SET status=?,stage=?,result=? WHERE id=?',(status,status,canonical({'error':'creative_model_outcome_unknown_no_automatic_resubmit' if unknown else 'creative_worker_interrupted_no_automatic_retry'}),old[0]))
 
@@ -121,7 +126,8 @@ class CreativeStudio:
         if not key.strip(): raise ValueError('invalid_idempotency_key')
         frozen=canonical(brief)
         with self.core.db() as db:
-            db.execute('BEGIN IMMEDIATE')
+
+            if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
             row=db.execute('SELECT id,brief FROM creative_projects WHERE idem=?',(key,)).fetchone()
             if row:
                 if row[1]!=frozen: raise ValueError('idempotency_conflict')
@@ -132,8 +138,17 @@ class CreativeStudio:
                 db.execute('INSERT INTO creative_projects VALUES (?,?,?,?,?)',(project,key,frozen,1,stamp()))
         return self.get(project)
 
-    def save(self, project, brief, revision, allow_reviewed=False):
-        brief=normalize_brief(brief,allow_reviewed)
+    def save(self, project, brief, revision, allow_reviewed=False, allow_direction=False):
+        from creative_direction import input_sha
+        current=self.get(project)['brief']
+        brief=json.loads(canonical(brief))
+        if 'design_direction' in brief and not allow_direction and brief['design_direction']!=current.get('design_direction'):
+            raise ValueError('creative_direction_requires_review_action')
+        if input_sha(brief)!=input_sha(current):
+            brief.pop('design_direction',None);brief.pop('reviewed_script',None)
+        elif not allow_direction and current.get('design_direction') and 'design_direction' not in brief:
+            brief['design_direction']=current['design_direction']
+        brief=normalize_brief(brief,allow_reviewed or brief.get('reviewed_script')==current.get('reviewed_script'),allow_direction=True)
         with self.core.db() as db:
             cursor=db.execute('UPDATE creative_projects SET brief=?,revision=revision+1 WHERE id=? AND revision=?',(canonical(brief),ident(project),revision))
             if cursor.rowcount!=1: raise ValueError('creative_revision_conflict_refresh_first')
@@ -150,7 +165,8 @@ class CreativeStudio:
         spec.update(size=size,source_ref=args.get('source_ref','user_provided_unverified'))
         frozen=canonical(spec)
         with self.core.db() as db:
-            db.execute('BEGIN IMMEDIATE')
+
+            if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
             old=db.execute('SELECT id,next_index,asset FROM creative_uploads WHERE project=? AND spec=?',(args['project_id'],frozen)).fetchone()
             if old:return dict(upload_id=old[0],next_index=old[1],asset_id=old[2],chunk_bytes=CHUNK)
             reserved=db.execute('SELECT spec FROM creative_uploads WHERE project=?',(args['project_id'],)).fetchall()
@@ -165,7 +181,8 @@ class CreativeStudio:
         except (ValueError,TypeError): raise ValueError('creative_invalid_chunk') from None
         if not 0<len(data)<=CHUNK or not 0<=index<math.ceil(MAX_ASSET/CHUNK): raise ValueError('creative_invalid_chunk')
         with self.core.db() as db:
-            db.execute('BEGIN IMMEDIATE')
+
+            if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
             row=db.execute('SELECT project,spec,next_index,received,asset FROM creative_uploads WHERE id=?',(ident(upload),)).fetchone()
             if not row or row[4]: raise ValueError('creative_upload_closed')
             target=self.folder(row[0])/(upload+'.part')
@@ -209,7 +226,8 @@ class CreativeStudio:
         destination=self.folder(project)/(asset+path.suffix.lower())
         metadata={**metadata,'size':path.stat().st_size,'sha256':digest(path.read_bytes()),'created_at':stamp()}
         with self.core.db() as db:
-            db.execute('BEGIN IMMEDIATE')
+
+            if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
             records=db.execute('SELECT metadata FROM creative_assets WHERE project=?',(project,)).fetchall()
             if len(records)>=500 or sum(json.loads(x[0])['size'] for x in records)+metadata['size']>512*1024*1024:raise ValueError('creative_project_storage_limit')
             path.replace(destination);os.chmod(destination,0o600)
@@ -218,7 +236,8 @@ class CreativeStudio:
 
     def finish(self, upload):
         with self.core.db() as db:
-            db.execute('BEGIN IMMEDIATE')
+
+            if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
             row=db.execute('SELECT project,spec,received,asset FROM creative_uploads WHERE id=?',(ident(upload),)).fetchone()
             if not row: raise ValueError('creative_upload_not_found')
             if row[3]:return dict(asset_id=row[3],duplicate=True)
@@ -226,7 +245,7 @@ class CreativeStudio:
             if row[2]!=spec['size'] or source.is_symlink() or not source.is_file() or digest(source.read_bytes())!=spec['sha256']:
                 raise ValueError('creative_upload_hash_or_size_mismatch')
             head=source.read_bytes()[:16];kind=spec['kind']
-            if kind in ['product_image','generated_image']:
+            if kind in ['product_image','generated_image','reference_image']:
                 if head.startswith(b'\x89PNG\r\n\x1a\n'):suffix='.png'
                 elif head.startswith(b'\xff\xd8\xff'):suffix='.jpg'
                 else:raise ValueError('creative_image_requires_png_or_jpeg')
@@ -244,7 +263,7 @@ class CreativeStudio:
                 metadata['media']=self.probe(source)
                 media=metadata['media']
                 if kind in ['reference_video','generated_video'] and (media['width']==0 or media['duration_seconds']<=0): raise ValueError('creative_video_required')
-                if kind in ['product_image','generated_image'] and media['width']==0:raise ValueError('creative_image_required')
+                if kind in ['product_image','generated_image','reference_image'] and media['width']==0:raise ValueError('creative_image_required')
                 if kind=='audio' and not media['has_audio']:raise ValueError('creative_audio_required')
             asset=uuid.uuid4().hex;dest=self.folder(row[0])/(asset+suffix)
             source.replace(dest);os.chmod(dest,0o600)
@@ -269,8 +288,10 @@ class CreativeStudio:
 
     def start(self, kind, args):
         project=self.get(args['project_id']);asset_kind=None
+        if args.get('_expected_revision') and args['_expected_revision']!=project['revision']:raise ValueError('creative_request_stale')
         if kind!='refine':path,meta,asset_kind=self.asset(project['id'],args['asset_id'])
         elif project['plan']['status']!='draft_ready':raise ValueError('creative_product_facts_required')
+        if kind=='design_analyze' and asset_kind not in ('reference_image','reference_video'):raise ValueError('creative_reference_media_required')
         if kind=='analyze' and asset_kind!='reference_video':raise ValueError('creative_reference_video_required')
         if kind=='render' and (asset_kind not in ['product_image','generated_image','generated_video'] or project['plan']['status']!='draft_ready'):
             raise ValueError('creative_render_requires_product_asset_and_facts')
@@ -278,9 +299,12 @@ class CreativeStudio:
             raise ValueError('creative_product_image_required')
         if args.get('audio_asset_id') and self.asset(project['id'],args['audio_asset_id'])[2]!='audio':raise ValueError('creative_audio_required')
         data=dict(kind=kind,project_id=project['id'],asset_id=args.get('asset_id'),audio_asset_id=args.get('audio_asset_id'),revision=project['revision'],brief=project['brief'],variant=args.get('variant','0'))
+        if args.get('_production_spec'):data.update(production_spec=args['_production_spec'],shot_assets=args.get('_shot_assets',[]),request_id=args['_request_id'],source_assets=args['_source_assets'])
         frozen=canonical(data);key=args['idempotency_key']
         with self.core.db() as db:
-            db.execute('BEGIN IMMEDIATE');old=db.execute('SELECT id,input FROM creative_jobs WHERE idem=?',(key,)).fetchone()
+
+            if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
+            old=db.execute('SELECT id,input FROM creative_jobs WHERE idem=?',(key,)).fetchone()
             if old:
                 if old[1]!=frozen:raise ValueError('idempotency_conflict')
                 return self.job_get(old[0])
@@ -300,7 +324,10 @@ class CreativeStudio:
 
     def work(self, job, data):
         try:
-            result={'analyze':self.analyze,'render':self.render,'image_layout':self.image_layout,'refine':self.refine}[data['kind']](job,data)
+            for aid,sha in data.get('source_assets',{}).items():
+                source,_,_=self.asset(data['project_id'],aid)
+                if digest(source.read_bytes())!=sha:raise ValueError('creative_asset_changed')
+            result={'analyze':self.analyze,'render':self.render,'image_layout':self.image_layout,'refine':self.refine,'design_analyze':self.design_analyze,'story_render':self.story_render}[data['kind']](job,data)
             self.stage(job,'finished')
             status='completed' if not result.get('missing') else 'partial'
         except Exception as error:
@@ -444,13 +471,21 @@ class CreativeStudio:
         title=data['brief'].get('product',{}).get('name') or '商品图片'
         fact=draft['facts'][0]['text'] if draft['facts'] else '商品资料待补充'
         assets=[]
-        for layout in ['product_main','usage_scene','advertisement']:
+        for layout in ([data['production_spec']['format']] if data.get('production_spec') else ['product_main','usage_scene','advertisement']):
             self.stage(job,'layout_'+layout)
-            svg,png=render_svg(self,self.folder(project),job+'-'+layout,layout_svg(path,title,fact,layout))
-            metadata={'origin':'derived','parent_asset_id':data['asset_id'],'job_id':job,'source_revision':data['revision'],'layout':layout,'generator':'local_svg_layout','automatic_object_segmentation':False}
+            svg,png=render_svg(self,self.folder(project),job+'-'+layout,layout_svg(path,title,fact,layout,data.get('production_spec')))
+            metadata={'production_request_id':data.get('request_id'),'origin':'derived','parent_asset_id':data['asset_id'],'job_id':job,'source_revision':data['revision'],'layout':layout,'generator':'local_svg_layout','automatic_object_segmentation':False}
             assets.append(self.register(project,'image_layout_draft',png,dict(metadata,display_name=layout+' · 模板排版')))
             assets.append(self.register(project,'editable_layout',svg,dict(metadata,display_name=layout+' · 可编辑 SVG')))
         return dict(project_revision=data['revision'],assets=assets,output_kind='original_image_preserved_template_layouts',missing=[],limitations=['Original image background is retained; no automatic object segmentation or generated real scene.'])
+
+    def design_analyze(self,job,data):
+        from creative_direction import analyze
+        return analyze(self,job,data)
+
+    def story_render(self,job,data):
+        from creative_story_render import render
+        return render(self,job,data)
 
     def refine(self,job,data):
         from creative_model import refine
@@ -478,14 +513,14 @@ class CreativeStudio:
         if action=='create':return self.create(args['brief'],args['idempotency_key'])
         if action=='list':
             with self.core.db() as db:rows=db.execute('SELECT id,brief,revision,created FROM creative_projects ORDER BY rowid DESC LIMIT 50').fetchall()
-            return {'creative_studio_version':'0.2.0','projects':[dict(id=r[0],name=json.loads(r[1]).get('product',{}).get('name') or '未命名项目',revision=str(r[2]),created_at=r[3],synthetic=bool(json.loads(r[1]).get('synthetic'))) for r in rows]}
+            return {'creative_studio_version':'0.2.0','projects':[dict(id=r[0],name=json.loads(r[1]).get('product',{}).get('name') or '未命名项目',revision=str(r[2]),created_at=r[3],case_id=json.loads(r[1]).get('product_binding',{}).get('case_id'),synthetic=bool(json.loads(r[1]).get('synthetic'))) for r in rows]}
         if action=='get':return self.get(args['project_id'])
         if action=='save':return self.save(args['project_id'],args['brief'],args['revision'])
         if action=='upload_begin':return self.begin(args)
         if action=='upload_chunk':return self.chunk(args['upload_id'],args['index'],args['content_base64'])
         if action=='upload_finish':return self.finish(args['upload_id'])
         if action=='asset_read':return self.read_asset(args['project_id'],args['asset_id'],args.get('offset','0'))
-        if action in ['analyze','render','image_layout','refine']:return self.start(action,args)
+        if action in ['analyze','render','image_layout','refine','design_analyze']:return self.start(action,args)
         if action=='approve_script':return self.approve(args['project_id'],args['job_id'],args['angle'],args['revision'])
         if action=='review_transcript':return self.review_transcript(args['project_id'],args['job_id'],args['text'],args['revision'])
         if action=='job_get':return self.job_get(args['job_id'])

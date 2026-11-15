@@ -18,6 +18,8 @@ try{
  ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=waits.get(m.id);if(p){waits.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result)}}else if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.exception?.description||m.params.exceptionDetails.text)};
  await cdp('Runtime.enable');await cdp('Page.enable');await cdp('Emulation.setDeviceMetricsOverride',{width:1800,height:1100,deviceScaleFactor:1,mobile:false});
  await cdp('Page.navigate',{url:`http://127.0.0.1:38731/login?token=${encodeURIComponent(token)}#social`});
+ await until(`!!document.querySelector('.r-app')`);
+ await cdp('Page.navigate',{url:'http://127.0.0.1:38731/legacy#social'});
  await until(`document.querySelectorAll('.social-cards>li').length===13`);
  assert.ok(await ev(`document.querySelector('.social-cards').textContent.includes('网页补充')`));
  await ev(`document.querySelector('#social-filter').value='top';document.querySelector('#social-search').requestSubmit()`);

@@ -1,0 +1,409 @@
+{
+  "version": 1,
+  "catalog": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://github.com/pengchengwanli2024/phone-lab/a2ui/commerce-cost-v1",
+    "catalogId": "https://github.com/pengchengwanli2024/phone-lab/a2ui/commerce-cost-v1",
+    "protocolVersion": "1.0",
+    "title": "Commerce Cost Catalog",
+    "description": "Bounded native controls. Rates are fractions from 0 to 1. Plain text only.",
+    "components": {
+      "Column": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "const": "Column"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+          },
+          "children": {
+            "$ref": "#/$defs/ChildList"
+          }
+        },
+        "required": [
+          "component",
+          "id",
+          "children"
+        ],
+        "additionalProperties": false
+      },
+      "Text": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "const": "Text"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+          },
+          "text": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "@path": {
+                    "type": "string",
+                    "pattern": "^/(input/[a-z_]+|display/[a-z_]+)$"
+                  }
+                },
+                "required": [
+                  "@path"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "variant": {
+            "enum": [
+              "body",
+              "caption"
+            ]
+          }
+        },
+        "required": [
+          "component",
+          "id",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "NumberField": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "const": "NumberField"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "value": {
+            "type": "object",
+            "properties": {
+              "@path": {
+                "type": "string",
+                "pattern": "^/(input/[a-z_]+|display/[a-z_]+)$"
+              }
+            },
+            "required": [
+              "@path"
+            ],
+            "additionalProperties": false
+          },
+          "minimum": {
+            "type": "number"
+          },
+          "maximum": {
+            "type": "number"
+          },
+          "unit": {
+            "enum": [
+              "amount",
+              "fraction"
+            ]
+          }
+        },
+        "required": [
+          "component",
+          "id",
+          "label",
+          "value",
+          "minimum",
+          "maximum",
+          "unit"
+        ],
+        "additionalProperties": false
+      },
+      "CurrencyField": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "const": "CurrencyField"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "value": {
+            "type": "object",
+            "properties": {
+              "@path": {
+                "type": "string",
+                "pattern": "^/(input/[a-z_]+|display/[a-z_]+)$"
+              }
+            },
+            "required": [
+              "@path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "component",
+          "id",
+          "label",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "Button": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "const": "Button"
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "action": {
+            "type": "object",
+            "properties": {
+              "event": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "const": "commerce.cost.calculate"
+                  },
+                  "context": {
+                    "type": "object",
+                    "maxProperties": 0
+                  }
+                },
+                "required": [
+                  "name",
+                  "context"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "event"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "component",
+          "id",
+          "label",
+          "action"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "functions": {},
+    "$defs": {
+      "anyComponent": {
+        "oneOf": [
+          {
+            "$ref": "#/components/Column"
+          },
+          {
+            "$ref": "#/components/Text"
+          },
+          {
+            "$ref": "#/components/NumberField"
+          },
+          {
+            "$ref": "#/components/CurrencyField"
+          },
+          {
+            "$ref": "#/components/Button"
+          }
+        ]
+      },
+      "anyFunction": {
+        "not": {}
+      },
+      "ComponentId": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,79}$"
+      },
+      "ChildList": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ComponentId"
+        },
+        "minItems": 1,
+        "maxItems": 48
+      }
+    }
+  },
+  "fields": [
+    {
+      "key": "currency",
+      "label": "测算币种",
+      "kind": "currency"
+    },
+    {
+      "key": "price",
+      "label": "单件售价",
+      "kind": "money",
+      "minimum": 0.01,
+      "maximum": 1000000000000
+    },
+    {
+      "key": "purchase_cost",
+      "label": "采购成本",
+      "kind": "money",
+      "minimum": 0,
+      "maximum": 1000000000000
+    },
+    {
+      "key": "domestic_shipping",
+      "label": "国内运费",
+      "kind": "money",
+      "minimum": 0,
+      "maximum": 1000000000000
+    },
+    {
+      "key": "packaging",
+      "label": "包装成本",
+      "kind": "money",
+      "minimum": 0,
+      "maximum": 1000000000000
+    },
+    {
+      "key": "fulfillment_cost",
+      "label": "履约费用",
+      "kind": "money",
+      "minimum": 0,
+      "maximum": 1000000000000
+    },
+    {
+      "key": "electronic_fee",
+      "label": "其他固定费用",
+      "kind": "money",
+      "minimum": 0,
+      "maximum": 1000000000000
+    },
+    {
+      "key": "commission_rate",
+      "label": "平台佣金率",
+      "kind": "rate",
+      "minimum": 0,
+      "maximum": 1
+    },
+    {
+      "key": "payment_rate",
+      "label": "支付费率",
+      "kind": "rate",
+      "minimum": 0,
+      "maximum": 1
+    },
+    {
+      "key": "return_rate",
+      "label": "退货预留比例",
+      "kind": "rate",
+      "minimum": 0,
+      "maximum": 1
+    },
+    {
+      "key": "ad_rate",
+      "label": "广告费用比例",
+      "kind": "rate",
+      "minimum": 0,
+      "maximum": 1
+    }
+  ],
+  "currencies": [
+    "CNY",
+    "USD",
+    "RUB",
+    "EUR",
+    "GBP",
+    "JPY",
+    "SGD",
+    "MXN",
+    "BRL",
+    "AED",
+    "SAR",
+    "TRY",
+    "ZAR",
+    "NGN",
+    "KES",
+    "ETB"
+  ],
+  "nodes": {
+    "root": "root",
+    "fields": "fields",
+    "output": "output",
+    "calculate": "calculate"
+  },
+  "display": [
+    "status",
+    "contribution",
+    "contribution_rate",
+    "total_cost",
+    "source"
+  ],
+  "renderer": {
+    "Column": {
+      "slots": {
+        "children": "multiple"
+      }
+    },
+    "Text": {
+      "resolved": {
+        "text": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      }
+    },
+    "NumberField": {
+      "writable": [
+        "value"
+      ],
+      "resolved": {
+        "value": {
+          "type": "number",
+          "nullable": true,
+          "optional": true
+        }
+      }
+    },
+    "CurrencyField": {
+      "writable": [
+        "value"
+      ],
+      "resolved": {
+        "value": {
+          "type": "string",
+          "nullable": true,
+          "optional": true
+        }
+      }
+    },
+    "Button": {
+      "events": {
+        "action": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

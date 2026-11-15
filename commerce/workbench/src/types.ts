@@ -59,6 +59,6 @@ declare global {
     CommerceResearchContext: { task: (value?: string | null) => string; mergeJob: <T extends { task_id: string; revision?: string | number }>(jobs: T[], readback: T) => T[]; mergeJobs: <T extends { task_id: string; revision?: string | number }>(jobs: T[], readback: T[]) => T[] };
     CommerceCopilotDraftStorage: () => { request: (op: string, key: string, value?: string, expected?: string) => Promise<string>; dispose: () => void };
     CommerceCopilot: (options: SharedCopilotOptions) => SharedCopilotController;
-    CommerceUI: { icon: (name: string) => string; applyTheme: (theme: string) => void; status: (status: string) => { label: string; tone: string } };
+    CommerceUI: { icon: (name: string) => string; applyTheme: (theme: string) => void; chatLayout: (areaWidth: number, preferred?: number | string | null) => { min: number; max: number; width: number }; status: (status: string) => { label: string; tone: string }; fieldDiff: (props: { rows: { key: string; label: string; before: unknown; after: unknown }[]; beforeLabel?: string; afterLabel?: string }) => string };
   }
 }

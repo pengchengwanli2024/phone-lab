@@ -2,9 +2,9 @@
 window.CommerceUI = (() => {
   'use strict';
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const permitted=/^(class|id|type|title|role|name|value|placeholder|maxlength|min|max|step|autocomplete|disabled|readonly|required|checked|aria-[a-z-]+|data-[a-z0-9-]+)$/;
+  const permitted=/^(class|id|type|title|role|tabindex|name|value|placeholder|maxlength|min|max|step|autocomplete|disabled|readonly|required|checked|aria-[a-z-]+|data-[a-z0-9-]+)$/;
   function attributes(values={}){
-    return Object.entries(values).filter(([key,value])=>permitted.test(key)&&value!==undefined&&value!==null&&(value!==false||key.startsWith('aria-')||key.startsWith('data-'))).map(([key,value])=>value===true&&['disabled','readonly','required','checked'].includes(key)?key:`${key}="${escape(value)}"`).join(' ');
+    return Object.entries(values).filter(([key,value])=>permitted.test(key)&&value!==undefined&&value!==null&&(key!=='tabindex'||['-1','0'].includes(String(value)))&&(value!==false||key.startsWith('aria-')||key.startsWith('data-'))).map(([key,value])=>value===true&&['disabled','readonly','required','checked'].includes(key)?key:`${key}="${escape(value)}"`).join(' ');
   }
   // Compatibility adapter for pre-existing local templates. DOM parsing decodes
   // escaped values; the attribute allowlist removes event handlers and URLs.
@@ -37,6 +37,23 @@ window.CommerceUI = (() => {
   }
   function table(headers,rows,emptyText='没有匹配的数据。未授权店铺时真实数据为空。'){
     return `<div class="table-wrap ui-table"><table class="data-table"><thead><tr>${headers.map(h=>`<th scope="col">${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>${rows.length?'':empty(emptyText)}</div>`;
+  }
+  // These views accept data only. Source text never becomes markup or an action.
+  function evidence({title='来源依据',quote='',sourceId='',version='',recordKey='',recordId='',sha256='',verification='unknown',detailKey=''}={}){
+    const states={imported_unverified:'导入资料 · 未独立核实',confirmed:'人工确认 · 未独立核实',active:'有效摘要 · 未独立核实',not_independently_verified:'未独立核实',stale:'来源已变化 · 待核对',withdrawn:'已撤回'};
+    const label=states[verification]||'核实状态未知';
+    const provenance=[['记忆记录',recordId],['来源',sourceId],['版本',version],['记录',recordKey],['SHA-256',sha256]].filter(([,v])=>v!==''&&v!=null);
+    return `<section class="ui-evidence" aria-label="来源依据"><header><strong>${escape(title)}</strong>${badge(label,['stale','withdrawn'].includes(verification)?'warning':'gray')}</header>${quote?`<blockquote>${escape(quote)}</blockquote>`:''}${provenance.length?`<details ${attributes({'data-view-key':detailKey||undefined})}><summary>来源与版本</summary><dl>${provenance.map(([k,v])=>`<div><dt>${escape(k)}</dt><dd>${escape(v)}</dd></div>`).join('')}</dl></details>`:''}</section>`;
+  }
+  function fieldDiff({rows=[],beforeLabel='当前参数',afterLabel='建议参数',emptyText='参数一致。'}={}){
+    const value=v=>v==null||v===''?'未知':typeof v==='object'?JSON.stringify(v):String(v);
+    return rows.length?`<div class="ui-field-diff">${table(['字段',beforeLabel,afterLabel],rows.map(row=>`<tr ${attributes({'data-field-id':row.key})}><th scope="row">${escape(row.label||row.key)}</th><td>${escape(value(row.before))}</td><td>${escape(value(row.after))}</td></tr>`))}</div>`:`<p class="muted ui-field-diff-empty">${escape(emptyText)}</p>`;
+  }
+  function receipt(value={}){
+    const outcome=['succeeded','failed','cancelled','pending'].includes(value.outcome)?value.outcome:'unknown';
+    const label=outcome==='succeeded'?'本地处理完成':outcome==='failed'?'本地处理失败':outcome==='cancelled'?'已取消':outcome==='pending'?(value.status==='running'?'本地处理中':'排队中'):'结果待核对';
+    const note=outcome==='pending'?'尚未完成，请核对后续回执。':outcome==='unknown'?'执行结果尚未确认，请核对原任务；不会自动重试。':outcome==='succeeded'?'本地任务已完成；资料核实状态仍以原依据为准。':'请核对原任务；不会自动重试。';
+    return `<section class="ui-receipt" aria-label="任务回执" ${attributes({'data-task-id':value.task_id})}><header><strong>任务回执</strong>${badge(label,outcome==='succeeded'?'success':outcome==='failed'?'danger':'gray')}</header><p>${escape(note)}</p><dl><div><dt>任务</dt><dd>${escape(value.task_id||'待核对')}</dd></div>${value.finished_at?`<div><dt>完成时间</dt><dd>${escape(value.finished_at)}</dd></div>`:''}${value.result_sha256?`<div><dt>结果 SHA-256</dt><dd>${escape(value.result_sha256)}</dd></div>`:''}</dl>${value.external_operations_executed===false?'<small class="muted">未执行外部操作</small>':''}</section>`;
   }
   function tabs(items,value){
     return `<div class="ui-navigation"><nav class="tabs ui-tabs" aria-label="电商模块">${Object.entries(items).map(([key,name])=>`<button type="button" class="tab ${value===key?'active':''}" data-tab="${escape(key)}" data-module-category="${escape(moduleDetails(key).group)}" aria-current="${value===key?'page':'false'}">${escape(name)}</button>`).join('')}</nav><div class="ui-module-picker">${field('工作台模块',select({id:'ui-module',value,options:Object.entries(items).map(([value,label])=>({value,label}))}))}</div></div>`;
@@ -95,7 +112,7 @@ window.CommerceUI = (() => {
   function modal({title,body,actions=''}){
     return `<div class="overlay"><section class="dialog ui-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div class="dialog-head"><h2 id="dialog-title">${escape(title)}</h2>${button({label:'×',action:'close',attrs:{'aria-label':'关闭'}})}</div>${body}<div class="dialog-actions">${actions||button({label:'关闭',action:'close'})}</div></section></div>`;
   }
-  const icon=(name='grid')=>{const paths={plus:'<path d="M12 5v14M5 12h14"/>',arrowUp:'<path d="M12 19V5m-6 6 6-6 6 6"/>',panelLeft:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',chevronDown:'<path d="m6 9 6 6 6-6"/>',more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',bell:'<path d="M5 9a7 7 0 0 1 14 0v6l2 3H3l2-3zM9 21h6"/>',chart:'<path d="M3 3v18h18M7 16v-5m5 5V6m5 10V9"/>',person:'<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>',image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-7 5 8"/>',grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',chat:'<path d="M3 4h18v13H9l-6 4z"/><path d="M8 9h8M8 13h5"/>',store:'<path d="M4 10v11h16V10M3 3h18l1 7H2zM9 21v-7h6v7"/>',cart:'<path d="M2 3h3l3 13h11l3-10H6"/><circle cx="9" cy="21" r="1"/><circle cx="19" cy="21" r="1"/>',clock:'<circle cx="12" cy="12" r="10"/><path d="M12 5v7l5 3"/>',box:'<path d="m12 2 10 5v11l-10 5-10-5V7zM2 7l10 5 10-5M12 12v11M7 4l10 6v5"/>',bolt:'<path d="m14 1-12 13h9l-1 9 12-14h-9z"/>',book:'<path d="M2 3h8l2 2 2-2h8v17h-8l-2 2-2-2H2zM12 5v17"/>',code:'<path d="m8 4-7 8 7 8m8-16 7 8-7 8M14 2l-4 20"/>',link:'<path d="m9 15 6-6M8 6l2-2a5 5 0 0 1 7 7l-2 2M16 18l-2 2a5 5 0 0 1-7-7l2-2"/>',info:'<circle cx="12" cy="12" r="10"/><path d="M12 11v6m0-11v1"/>',gear:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3"/>',headset:'<path d="M3 14v-3a9 9 0 0 1 18 0v3M3 12h4v7H3zM17 12h4v7h-4zM17 20l-5 2"/>',doc:'<path d="M5 2h10l5 5v15H5zM15 2v6h5M9 12h7M9 16h7"/>',spark:'<path d="m12 1 3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/>'};return `<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths[name]||paths.grid}</svg>`};
+  const icon=(name='grid')=>{const paths={plus:'<path d="M12 5v14M5 12h14"/>',arrowUp:'<path d="M12 19V5m-6 6 6-6 6 6"/>',panelLeft:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',chevronDown:'<path d="m6 9 6 6 6-6"/>',more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',search:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',bell:'<path d="M5 9a7 7 0 0 1 14 0v6l2 3H3l2-3zM9 21h6"/>',chart:'<path d="M3 3v18h18M7 16v-5m5 5V6m5 10V9"/>',person:'<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/>',image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-7 5 8"/>',grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',chat:'<path d="M3 4h18v13H9l-6 4z"/><path d="M8 9h8M8 13h5"/>',store:'<path d="M4 10v11h16V10M3 3h18l1 7H2zM9 21v-7h6v7"/>',cart:'<path d="M2 3h3l3 13h11l3-10H6"/><circle cx="9" cy="21" r="1"/><circle cx="19" cy="21" r="1"/>',clock:'<circle cx="12" cy="12" r="10"/><path d="M12 5v7l5 3"/>',box:'<path d="m12 2 10 5v11l-10 5-10-5V7zM2 7l10 5 10-5M12 12v11M7 4l10 6v5"/>',bolt:'<path d="m14 1-12 13h9l-1 9 12-14h-9z"/>',book:'<path d="M2 3h8l2 2 2-2h8v17h-8l-2 2-2-2H2zM12 5v17"/>',code:'<path d="m8 4-7 8 7 8m8-16 7 8-7 8M14 2l-4 20"/>',link:'<path d="m9 15 6-6M8 6l2-2a5 5 0 0 1 7 7l-2 2M16 18l-2 2a5 5 0 0 1-7-7l2-2"/>',info:'<circle cx="12" cy="12" r="10"/><path d="M12 11v6m0-11v1"/>',gear:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3"/>',headset:'<path d="M3 14v-3a9 9 0 0 1 18 0v3M3 12h4v7H3zM17 12h4v7h-4zM17 20l-5 2"/>',doc:'<path d="M5 2h10l5 5v15H5zM15 2v6h5M9 12h7M9 16h7"/>',phone:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',spark:'<path d="m12 1 3 8 8 3-8 3-3 8-3-8-8-3 8-3z"/>'};return `<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths[name]||paths.grid}</svg>`};
   const systemScheme=window.matchMedia('(prefers-color-scheme: dark)');
   let theme='system';
   const getTheme=()=>({preference:theme,resolved:theme==='system'?(systemScheme.matches?'dark':'light'):theme});
@@ -107,6 +124,47 @@ window.CommerceUI = (() => {
     return current;
   }
   systemScheme.addEventListener('change',()=>{if(theme==='system')applyTheme('system')});
+  function chatLayout(areaWidth,preferred){
+    const area=Number.isFinite(Number(areaWidth))&&Number(areaWidth)>0?Number(areaWidth):1024;
+    const min=320,max=Math.max(min,Math.min(area>=1800?960:640,Math.round((area-24)*.5),area-514));
+    const saved=Number(preferred),fallback=Math.min(400,Math.round((area-24)*.3/8)*8);
+    return {min,max,width:Math.round(Math.max(min,Math.min(max,Number.isFinite(saved)&&saved>0?saved:fallback)))};
+  }
+  function observeReadingRegions(root=document){
+    if(typeof ResizeObserver!=='function'||typeof MutationObserver!=='function')return ()=>{};
+    const selector='.ui-table,.r-table-wrap,.r-section-tabs,.r-business-nav,.pw-tabs';
+    const regions=new Map();let scheduled=false,disposed=false;
+    const restore=(el,previous)=>{for(const key of ['tabindex','role','aria-label']){const value=previous[key];if(value===null)el.removeAttribute(key);else el.setAttribute(key,value)}el.removeAttribute('data-ui-scrollable')};
+    const update=el=>{
+      const overflow=el.clientWidth>0&&el.scrollWidth>el.clientWidth+1;
+      const previous=regions.get(el);if(!previous)return;
+      if(!overflow){if(el.hasAttribute('data-ui-scrollable'))restore(el,previous);return}
+      if(!el.hasAttribute('data-ui-scrollable')){
+        if(previous.tabindex===null)el.setAttribute('tabindex','0');
+        if(el.matches('.ui-table,.r-table-wrap')){
+          if(previous.role===null)el.setAttribute('role','region');
+          if(previous['aria-label']===null){const title=el.closest('section,.card')?.querySelector('h2,h3')?.textContent?.trim().slice(0,60);el.setAttribute('aria-label',(title||'数据表')+'，可横向滚动')}
+        }
+        el.setAttribute('data-ui-scrollable','true');
+      }
+    };
+    const resize=new ResizeObserver(entries=>entries.forEach(entry=>update(entry.target)));
+    const sync=()=>{
+      scheduled=false;if(disposed)return;
+      for(const [el,previous] of regions)if(!el.isConnected){resize.unobserve(el);restore(el,previous);regions.delete(el)}
+      for(const el of root.querySelectorAll(selector)){
+        if(!regions.has(el)){regions.set(el,Object.fromEntries(['tabindex','role','aria-label'].map(key=>[key,el.getAttribute(key)])));resize.observe(el)}
+        update(el);
+      }
+    };
+    const mutation=new MutationObserver(()=>{if(!scheduled&&!disposed){scheduled=true;requestAnimationFrame(sync)}});
+    mutation.observe(root.documentElement||root,{childList:true,subtree:true});sync();
+    return ()=>{disposed=true;resize.disconnect();mutation.disconnect();for(const [el,previous] of regions)restore(el,previous);regions.clear()};
+  }
+  if(typeof document.querySelectorAll==='function'&&typeof ResizeObserver==='function'){
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>observeReadingRegions(),{once:true});
+    else observeReadingRegions();
+  }
   applyTheme('system');
-  return Object.freeze({version:'1.3.0',applyTheme,getTheme,icon,escape,attributes,legacyAttributes,button,badge,input,select,field,empty,alert,card,table,tabs,navigationGroups,moduleDetails,moduleDirectory,modal,status:(code,capabilities)=>globalThis.CommerceStatus.describe(code,capabilities)});
+  return Object.freeze({version:'1.4.0',applyTheme,getTheme,chatLayout,observeReadingRegions,icon,escape,attributes,legacyAttributes,button,badge,input,select,field,empty,alert,card,table,evidence,fieldDiff,receipt,tabs,navigationGroups,moduleDetails,moduleDirectory,modal,status:(code,capabilities)=>globalThis.CommerceStatus.describe(code,capabilities)});
 })();

@@ -25,6 +25,12 @@ class Planning(unittest.TestCase):
     def publish(self,kind,**kwargs):
         config=self.live.config();self.live._publish(config['connection_id'],kind,batch(kind,**kwargs),config,self.live.snapshot(config['connection_id'],kind) is not None)
     def review(self):self.live.configure({'stock_basis':'present_minus_reserved','basis_confirmed':True,'orders_scope_confirmed':True})
+    def test_desktop_readiness_keeps_notification_steps_deferred_without_enabling_them(self):
+        before=self.live.config();desktop=self.plans.readiness(scope='desktop');all_checks=self.plans.readiness()
+        self.assertEqual(desktop['total'],6);self.assertEqual(len(desktop['deferred']),4)
+        self.assertFalse(any(c['key']in ('feishu','test','receipt','notifications')for c in desktop['checks']))
+        self.assertEqual(all_checks['total'],10);self.assertEqual(self.live.config(),before)
+        with self.assertRaisesRegex(ValueError,'invalid_readiness_scope'):self.plans.readiness(scope='unknown')
     def inputs(self,**kwargs):return dict(sold_units=60,window_days=30,lead_time_days=14,safety_days=7,pack_size=6,inbound_units=0,source_ref='synthetic:sales.csv row 2; units, same scope',demand_observed_at=now(),**kwargs)
     def save(self,data=None,key='draft-1',row='10:fbs',sha=None):return self.plans.save(row,sha or self.plans.candidates()[0]['source_sha256'],data if data is not None else self.inputs(),key)
 

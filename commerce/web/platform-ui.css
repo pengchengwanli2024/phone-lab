@@ -7,6 +7,11 @@
 .platform-root .data-table td{white-space:normal;overflow-wrap:anywhere}
 .platform-setup{max-width:900px;margin:var(--ui-space-6) auto;padding:var(--ui-space-4)}
 .platform-setup form{display:grid;gap:var(--ui-space-3)}
+.platform-setup h1{font-size:24px;line-height:1.35;margin:0}
+.platform-setup p{line-height:1.6}
+.platform-setup .card>.ui-field{margin-block:var(--ui-space-4)}
+.platform-setup form>label:not(.ui-field){display:flex;align-items:flex-start;gap:var(--ui-space-2);line-height:1.6;min-height:44px}
+.platform-setup form>label:not(.ui-field) input{flex:none;margin-top:5px}
 .platform-setup .ui-field input,.platform-setup .ui-field select{width:100%}
 .platform-setup pre{white-space:pre-wrap;overflow-wrap:anywhere}
 @media(max-width:600px){.platform-controls{align-items:stretch;flex-direction:column}.platform-controls .ui-field{min-width:0}}

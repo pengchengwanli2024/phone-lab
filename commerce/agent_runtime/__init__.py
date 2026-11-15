@@ -106,6 +106,9 @@ class AgentRuntime:
         payload['evidence_required']=requires_evidence(question,topic)
         if _conversation is not None:payload['conversation']=_conversation
         payload['model_route']=_model_route if _model_route is not None else self.service.models.default_snapshot()
+        if topic=='workspace':
+            from copilot.memory_scope import scope_binding
+            payload['project_memory_binding']=scope_binding(self.service,parameters['context'])
         if topic=='organization_case':payload['case_binding']=self.cases.validate_scope(parameters)
         if topic=='business_exposure' and self.service.exposure.current(parameters['assessment_id'])!='current':raise ValueError('agent_exposure_evidence_changed')
         if parent_id:
@@ -115,6 +118,23 @@ class AgentRuntime:
             if topic=='business_exposure' and parent['parameters']!=parameters:raise ValueError('agent_exposure_reply_scope_changed')
             if topic=='workspace' and parent['parameters']!=parameters:raise ValueError('agent_workspace_reply_scope_changed')
             payload['previous']={'question':parent['question'],'answer':parent['result']['answer'],'questions':parent['result']['questions'],'result_sha256':parent['result_sha256']}
+        if topic=='workspace':
+            from copilot.memory_scope import history_refs
+            references={}
+            history=[]
+            for entry in payload.get('conversation',[]):
+                refs=history_refs(self.service,parameters['context'],entry['run_id'])
+                if refs is not None:
+                    history.append(entry)
+                    references.update((r['run_id'],r) for r in refs)
+            payload['conversation']=history
+            if parent_id:
+                refs=history_refs(self.service,parameters['context'],parent_id)
+                if refs is None:payload.pop('previous',None)
+                else:references.update((r['run_id'],r) for r in refs)
+            if len(references)>40:
+                payload.pop('previous',None);payload['conversation']=[];references={}
+            payload['project_memory_history']=list(references.values())
         at=time.time();ident=uuid.uuid4().hex
         with (nullcontext(_db) if _db is not None else self.core.db()) as db:
             if _db is None:db.execute('BEGIN IMMEDIATE')
@@ -123,6 +143,7 @@ class AgentRuntime:
                 if old[1]!=encoded:raise ValueError('idempotency_conflict')
                 ident=old[0]
             else:
+                self.service.chain_budget.check_child(db,parent_id)
                 count=db.execute("SELECT count(*) FROM agent_runs WHERE status IN ('queued','running','cancel_requested')").fetchone()[0]
                 if count>=8:raise ValueError('agent_queue_full')
                 db.execute('INSERT INTO agent_runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?)',(ident,idempotency_key,encoded,canonical(payload),'queued',at,at,'[]'))
@@ -224,6 +245,19 @@ class AgentRuntime:
                      'generator':'configured_model','provider':str(result.get('provider','unknown'))[:100],'model':str(result.get('model','unknown'))[:160],
                      'review_status':'pending_review','independently_verified':False,'observations':observations}
 
+    def _check_project_memory(self, payload, observations):
+        if payload['topic']!='workspace':return
+        from copilot.memory_scope import scope_binding, revalidate, check_history_refs
+        context=payload['parameters']['context']
+        if 'project_memory_binding' in payload and payload['project_memory_binding']!=scope_binding(self.service,context):
+            raise ValueError('agent_memory_scope_changed')
+        check_history_refs(self.service,context,payload.get('project_memory_history',[]))
+        for observation in observations:
+            if observation['tool']=='commerce_project_memory_search':revalidate(self.service,context,observation['data'])
+            elif observation['tool'] in ('commerce_workspace_get','commerce_workspace_quote_compare'):
+                from copilot.reads import revalidate_workspace
+                revalidate_workspace(self.service,context,observation['data'])
+
     def run_once(self):
         with self.core.db() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -243,6 +277,7 @@ class AgentRuntime:
                 return True
             for turn in range(3):
                 if self.cancelled(ident):raise model.Cancelled()
+                self._check_project_memory(payload,observations)
                 if payload['topic']=='organization_case':self.cases.check_binding(payload)
                 if payload['topic']=='business_exposure' and self.service.exposure.current(payload['parameters']['assessment_id'])!='current':raise ValueError('agent_exposure_evidence_changed')
                 context={'role':payload['role'],'question':payload['question'],'parameters':payload['parameters'],'previous':payload.get('previous'),'conversation':payload.get('conversation',[]),
@@ -258,10 +293,13 @@ class AgentRuntime:
                 # New requests freeze their profile at enqueue; historical requests
                 # keep the legacy default route. Never switch a running model turn.
                 provider=self.service.models.runtime_route(payload.get('model_route') or route(self.service.state))
-                if provider['provider']=='host_native':result=self.service.host_execution.invoke_run(ident,turn+1,context,lambda:self.cancelled(ident))
-                elif provider['provider'] in ('codex','compatible'):result=model.invoke(context,lambda:self.cancelled(ident),route=provider)
-                else:result=model.invoke(context,lambda:self.cancelled(ident))
+                self._check_project_memory(payload,observations)
+                with self.service.chain_budget.model_step(ident,'dialogue:'+str(turn+1),lambda:self.cancelled(ident)) as cancelled:
+                    if provider['provider']=='host_native':result=self.service.host_execution.invoke_run(ident,turn+1,context,cancelled)
+                    elif provider['provider'] in ('codex','compatible'):result=model.invoke(context,cancelled,route=provider)
+                    else:result=model.invoke(context,cancelled)
                 if payload['topic']=='business_exposure' and self.service.exposure.current(payload['parameters']['assessment_id'])!='current':raise ValueError('agent_exposure_evidence_changed')
+                self._check_project_memory(payload,observations)
                 calls,answer=self.step(result,payload,observations)
                 trace.append({'event':'model_turn','turn':turn+1,'provider':str(result.get('provider','unknown'))[:100],'model':str(result.get('model','unknown'))[:160]})
                 if answer is not None:
@@ -274,7 +312,13 @@ class AgentRuntime:
                     if payload['topic']=='organization_case':self.cases.check_binding(payload)
                     if payload['topic']=='business_exposure' and self.service.exposure.current(payload['parameters']['assessment_id'])!='current':raise ValueError('agent_exposure_evidence_changed')
                     calls_used+=1
-                    raw=self.service.invoke(name,args,'local');data=project(name,raw)
+                    self.service.chain_budget.read_step(ident,'read:'+str(calls_used))
+                    self._check_project_memory(payload,observations)
+                    if name=='commerce_project_memory_search':
+                        from copilot.memory_scope import retrieve
+                        raw=retrieve(self.service,**args)
+                    else:raw=self.service.invoke(name,args,'local')
+                    data=project(name,raw)
                     if len(canonical(data))>16000:raise ValueError('agent_tool_result_too_large')
                     if name in ('commerce_intel_search','commerce_skills_search'):seen.update(r['id'] for r in data['items'])
                     observation={'id':'R'+str(calls_used),'tool':name,'data':data,'sha256':sha(data),'observed_at':time.time()}
@@ -306,7 +350,19 @@ class AgentRuntime:
         if not proposal:raise ValueError('agent_proposal_not_found')
         if proposal['operation']=='organization_handoff':return self.cases.apply(run,proposal)
         if proposal['operation']=='exposure_review':return self.service.exposure.apply_agent(run,proposal)
-        task=self.service.invoke('commerce_task_create',{'kind':proposal['kind'],'input':proposal['input'],'idempotency_key':'agent:'+run_id+':'+proposal_id},'local')
+        task_args={'kind':proposal['kind'],'input':proposal['input'],'idempotency_key':'agent:'+run_id+':'+proposal_id}
+        if run['topic']=='workspace':
+            # Existing receipts are reads. Fresh approvals bind validation and task
+            # creation to one shared-core transaction, before scheduling any work.
+            with self.service.live.config_lock,self.core.atomic(reuse=True) as db:
+                prior=db.execute('SELECT task_id FROM agent_actions WHERE run_id=? AND proposal_id=?',(run_id,proposal_id)).fetchone()
+                if prior:
+                    result=self.service.autonomy.result(prior[0])
+                    return {'task':result['task'],'execution':result['execution'],'external_operations_executed':False,'approval_scope':'single_local_proposal'}
+                payload=json.loads(db.execute('SELECT payload FROM agent_runs WHERE id=?',(run_id,)).fetchone()[0])
+                self._check_project_memory(payload,run['result'].get('observations',[]))
+                task=self.service.invoke('commerce_task_create',task_args,'local')
+        else:task=self.service.invoke('commerce_task_create',task_args,'local')
         result=self.service.autonomy.request(task['id'],proposal['operation'])
         with self.core.db() as db:db.execute('INSERT OR IGNORE INTO agent_actions VALUES (?,?,?,?)',(run_id,proposal_id,task['id'],time.time()))
         return {'task':result['task'],'execution':result['execution'],'external_operations_executed':False,'approval_scope':'single_local_proposal'}

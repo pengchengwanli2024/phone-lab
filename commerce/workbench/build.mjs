@@ -1,11 +1,14 @@
 import { build } from 'esbuild';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inlineLegacy } from './embed.mjs';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const web = path.resolve(root, '../web');
+execFileSync(process.env.COMMERCE_PYTHON || 'python3', [path.resolve(root, '../a2ui/build_contract.py'), '--check'], { stdio: 'inherit' });
+execFileSync(process.env.COMMERCE_PYTHON || 'python3', [path.resolve(root, '../skills_ui_build.py'), '--check'], { stdio: 'inherit' });
 async function inline(template, css, js) {
   const [html, styles, script] = await Promise.all([template, css, js].map(file => readFile(path.join(web, file), 'utf8')));
   return inlineLegacy(html, styles, script);
@@ -33,8 +36,9 @@ async function tree(folder) {
   const entries = await readdir(folder, { withFileTypes: true });
   return (await Promise.all(entries.map(e => e.isDirectory() ? tree(path.join(folder,e.name)) : [path.join(folder,e.name)]))).flat();
 }
-const sources = [...await tree(path.join(root,'src')), ...['build.mjs','embed.mjs','package.json','package-lock.json','tsconfig.json'].map(name=>path.join(root,name)), ...['index.html','app.js','style.css','product-workspace.html','product-workspace.bundle.js','product-workspace.bundle.css','copilot-ui.js','copilot-ui.css','research-context.js'].map(name=>path.join(web,name)), ...['tokens.json','kit.js','status.js','primitives.css'].map(name=>path.resolve(root,'../ui',name)),path.resolve(root,'../a2ui/catalog.json')];
+const sources = [...await tree(path.join(root,'src')), ...['build.mjs','embed.mjs','package.json','package-lock.json','tsconfig.json'].map(name=>path.join(root,name)), ...['index.html','app.js','style.css','product-workspace.html','product-workspace.bundle.js','product-workspace.bundle.css','copilot-ui.js','copilot-ui.css','research-context.js'].map(name=>path.join(web,name)), ...['tokens.json','kit.js','status.js','primitives.css'].map(name=>path.resolve(root,'../ui',name)),...['catalog.json','contract.json','build_contract.py'].map(name=>path.resolve(root,'../a2ui',name))];
 const digest = async file => createHash('sha256').update(await readFile(file)).digest('hex');
+sources.push(...['skills_ui.js','skills_ui_build.py','ui/build.py','ui/skill-input.js','ui/workspace.css'].map(name=>path.resolve(root,'..',name)));
 const manifest = { sources: {}, outputs: {} };
 for (const file of sources.sort()) manifest.sources[path.relative(path.resolve(root,'..'),file)] = await digest(file);
 for (const name of ['workbench.bundle.js','workbench.bundle.css']) manifest.outputs['web/'+name] = await digest(path.join(web,name));

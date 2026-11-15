@@ -21,6 +21,16 @@ def stamp():return datetime.now(timezone.utc).isoformat()
 def bytes_sha(value):return hashlib.sha256(value).hexdigest()
 
 
+def image_delivery_input_sha(brief):
+    # A delivered image becomes part of the case source. Rebinding that output
+    # must not invalidate the same image; actual product/design inputs still do.
+    value=json.loads(canonical(brief));value.pop('reviewed_script',None)
+    if isinstance(value.get('product_binding'),dict):value['product_binding'].pop('source_sha256',None)
+    if isinstance(value.get('design_direction'),dict):
+        for key in ('input_sha256','reviewed_at','analysis_job_id'):value['design_direction'].pop(key,None)
+    return digest(canonical(value))
+
+
 class Organization:
     def __init__(self, service):
         self.service=service;self.core=service.core;self.state=service.state/'organization'
@@ -72,7 +82,10 @@ class Organization:
         if kind not in ('research','supply','economics'):raise ValueError('unsupported_organization_record_kind')
         if not isinstance(payload,dict)or not isinstance(idempotency_key,str)or not 1<=len(idempotency_key)<=160:raise ValueError('invalid_organization_record')
         if kind=='supply':
-            if set(payload)-{'currency','purchase_cost','lead_time_days','supplier','source_ref'}:raise ValueError('invalid_supply_fields')
+            if set(payload)-{'currency','purchase_cost','lead_time_days','supplier','source_ref','quote_ref'}:raise ValueError('invalid_supply_fields')
+            if 'quote_ref' in payload:
+                ref=payload['quote_ref']
+                if type(ref) is not dict or set(ref)!={'quote_id','artifact_id','sha256'} or not all(type(v) is str for v in ref.values()) or not re.fullmatch('[A-Za-z0-9_-]{1,60}',ref['quote_id']) or not re.fullmatch('[a-f0-9]{32}',ref['artifact_id']) or not re.fullmatch('[a-f0-9]{64}',ref['sha256']):raise ValueError('invalid_supply_quote_ref')
             for k in ('purchase_cost','lead_time_days'):
                 if payload.get(k)is not None:number(payload[k],k,maximum=365 if k=='lead_time_days'else 10**12,integer=k=='lead_time_days')
             for k in ('currency','supplier','source_ref'):
@@ -122,10 +135,14 @@ class Organization:
         if old:
             prior=json.loads(old[0]);prior_spec=dict(case_id=case_id,project_id=prior['project_id'],revision=prior['project_revision'],assets=[dict(id=f['asset_id'],sha256=f['sha256'])for f in prior['files']])
             if prior_spec!=spec:raise ValueError('organization_idempotency_conflict')
-        token=digest(canonical(spec))[:32];relative=Path('outbox/listing')/case_id/token;destination=self._path(relative)
+        # Keep old-key replay and its frozen manifest byte shape compatible.
+        versioned=not old or 'creative_input_sha256'in prior
+        inputs=dict(creative_input_sha256=image_delivery_input_sha(project['brief']),
+                    creative_binding_source_sha256=(project['brief'].get('product_binding')or{}).get('source_sha256'))if versioned else{}
+        token=digest(canonical({**spec,**inputs}))[:32];relative=Path('outbox/listing')/case_id/token;destination=self._path(relative)
         self.state.mkdir(exist_ok=True,parents=True,mode=0o700)
         destination.mkdir(parents=True,exist_ok=True,mode=0o700)
-        manifest=dict(case_id=case_id,scope=case['scope'],project_id=project_id,project_revision=project['revision'],synthetic_source=bool(project['brief'].get('synthetic')),files=[],claim='仅校验本机交付完整性，未验证图集数量、平台规格、使用权或商品真实性。')
+        manifest=dict(case_id=case_id,scope=case['scope'],project_id=project_id,project_revision=project['revision'],synthetic_source=bool(project['brief'].get('synthetic')),files=[],claim='仅校验本机交付完整性，未验证图集数量、平台规格、使用权或商品真实性。',**inputs)
         for i,source,raw,meta in files:
             target=destination/(i+source.suffix.lower())
             if target.is_symlink():raise ValueError('unsafe_delivery_path')
@@ -194,6 +211,8 @@ class Organization:
                     same=bool(case and case['currency']and data.get('currency')==case['currency'])
                     add('supply','PASS'if complete and same else'HOLD','供应商成本交期资料完整（操作者提供，未独立核实）'if complete and same else'缺采购成本、交期、供应商、来源或明确币种','补齐含币种的供应链资料，并设置当前工作项币种',[dict(ref='artifact:'+item['id'],sha256=item['sha256'])])
                     if case and case['currency']and data.get('currency')and not same:add('currency','FAIL','供应链币种与工作项币种不同','核对原始金额币种，不按字段名猜测或自动换算')
+                    from supply_quotes import selection_issues
+                    for issue in selection_issues(self,case,item):add('quote','HOLD',issue,'读取当前报价版本、有效期、币种和履约范围，重新明确选择')
             elif sid=='S2':
                 item=stored('economics');supply=artifacts['supply']
                 if item:
@@ -214,10 +233,25 @@ class Organization:
                             manifest_path=self._path(Path(f['relative_path']).parent/'manifest.json')
                             valid=valid and manifest_path.is_file()and digest(canonical(json.loads(manifest_path.read_text())))==item['sha256']
                         except (ValueError,OSError):valid=False
-                    try:current=self.service.creative.get(item['payload']['project_id']);valid=valid and current['revision']==item['payload']['project_revision']
+                    try:
+                        current=self.service.creative.get(item['payload']['project_id']);payload=item['payload']
+                        same_revision=current['revision']==payload['project_revision']
+                        if 'creative_input_sha256'in payload:
+                            same_inputs=image_delivery_input_sha(current['brief'])==payload['creative_input_sha256']
+                            binding=current['brief'].get('product_binding')or{}
+                            prior_source=payload.get('creative_binding_source_sha256')
+                            rebound=(isinstance(prior_source,str)and binding.get('case_id')==ident
+                                     and binding.get('source_sha256')!=prior_source
+                                     and binding.get('source_sha256')==self.service.product_workspace.sources(ident)[3])
+                            valid=valid and same_inputs and(same_revision or rebound)
+                        else:valid=valid and same_revision
                     except ValueError:valid=False
                     add('delivery','PASS'if valid else'FAIL','本机图集交付文件和版本一致；尚未证明平台规格或使用权'if valid else'交付文件缺失、哈希变化或创意版本已更新','从已登记且对应本工作项的图片重新交付，校验交付目录和版本',[dict(ref='artifact:'+item['id'],sha256=item['sha256'])])
                     if item['payload'].get('synthetic_source'):add('synthetic','HOLD','素材项目标为合成验收资料，不能冒充真实商品交付','为真实工作项提供明确对应的真实产品资料和素材')
+            elif sid=='S6':
+                if case and getattr(self.service,'owner_reviews',None):
+                    gate=self.service.owner_reviews.case_gate(case['id']);add('owner_signoff',gate['status'],gate['detail'],'打开该店铺方案，逐项核对并由经营负责人签收；不是独立认证',gate['evidence'])
+                else:add('owner_signoff','BLOCKED','负责人核查尚未签收当前版本','打开对应店铺方案补齐核查资料')
             elif sid=='S8':
                 candidate=next((r for r in self.service.live_plans.candidates()if r['key']==scope.get('row_key')),None)
                 ok=bool(candidate and candidate['fresh']and candidate['available']is not None and live['orders']['fresh']and live['orders_scope_confirmed'])

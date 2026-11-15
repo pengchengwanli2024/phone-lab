@@ -28,7 +28,13 @@ def definitions(schema, string):
         ('commerce_market_research_cancel', '停止同一研究任务，保留已采集证据与已保存候选', schema(task, ['task_id'])),
         ('commerce_market_research_resume', '明确按修订恢复中断或失败的原研究任务；已确认步骤不重放',
          schema({**task, 'expected_revision': {'type': 'integer', 'minimum': 1}, 'idempotency_key': string},
-                ['task_id', 'expected_revision', 'idempotency_key']))]
+                ['task_id', 'expected_revision', 'idempotency_key'])),
+        ('commerce_market_research_supplement', '显式引用同任务已保存公开资料笔记的版本和哈希，追加分析及待核验候选；保留历史与采集失败，不执行店铺操作',
+         schema({**task, 'expected_revision': {'type': 'integer', 'minimum': 1}, 'idempotency_key': string,
+                 'source_refs': {'type': 'array', 'minItems': 1, 'maxItems': 12, 'items': {'type': 'object',
+                     'properties': {'id': string, 'version': {'type': 'integer', 'minimum': 1}, 'sha256': string},
+                     'required': ['id', 'version', 'sha256'], 'additionalProperties': False}}},
+                ['task_id', 'expected_revision', 'source_refs', 'idempotency_key']))]
 
 
 class MarketResearch:
@@ -42,7 +48,12 @@ class MarketResearch:
 
     def invoke(self, name, args):
         return {'commerce_market_research_list': self.listing, 'commerce_market_research_get': self.get,
-                'commerce_market_research_cancel': self.cancel, 'commerce_market_research_resume': self.resume}[name](**args)
+                'commerce_market_research_cancel': self.cancel, 'commerce_market_research_resume': self.resume,
+                'commerce_market_research_supplement': self.supplement}[name](**args)
+
+    def supplement(self, task_id, expected_revision, source_refs, idempotency_key):
+        from .supplement import begin
+        return begin(self, task_id, expected_revision, source_refs, idempotency_key)
 
     def _load(self, db, task_id):
         row = db.execute('SELECT document FROM market_research_jobs WHERE task_id=?', (task_id,)).fetchone()
@@ -52,6 +63,7 @@ class MarketResearch:
     def _save(self, db, job):
         job['revision'] += 1; job['updated_at'] = stamp()
         job['source_count'] = sum(s['status'] == 'collected' for s in job['sources'])
+        job['supplemental_source_count'] = sum(s['status'] == 'imported' for s in job['sources'])
         job['candidate_count'] = len(job['candidates'])
         db.execute('UPDATE market_research_jobs SET document=? WHERE task_id=?', (canonical(job), job['task_id']))
         db.execute('UPDATE tasks SET status=? WHERE id=?', (job['status'], job['task_id']))
@@ -190,6 +202,7 @@ class MarketResearch:
             return self.public(job)
 
     def _queue_successor(self, db, job, payload):
+        self.service.chain_budget.check_successor(db,job['run_id'])
         run_id = uuid.uuid4().hex; at = time.time()
         db.execute('INSERT INTO agent_runs VALUES (?,?,?,?,?,?,?,NULL,NULL,NULL,?)',
                    (run_id, 'research-resume:' + uuid.uuid4().hex,
@@ -224,8 +237,12 @@ class MarketResearch:
                         elif not context_matches:
                             job.update(status='interrupted', error={'code':'market_research_context_changed','message':'对话范围已变化；不会自动恢复执行。'})
                         else:
-                            self._queue_successor(db, job, payload)
-                            continue
+                            try:
+                                self._queue_successor(db, job, payload)
+                                continue
+                            except ValueError as error:
+                                if str(error)!='agent_chain_depth_exhausted':raise
+                                job.update(status='interrupted',error={'code':str(error),'message':'任务链接续层级已达上限，原始记录保留；本任务已暂停。'})
                         self._save(db, job)
                         continue
                     job.update(status='interrupted', error={'code': 'market_research_interrupted', 'message': '执行已中断；不会自动重新提交模型。'})
@@ -248,17 +265,25 @@ class MarketResearch:
 
     def _generate(self, job, phase, payload, cancelled, route, expected_owner):
         self._checkpoint(job['task_id'], job['run_id'], expected_owner, _model_pending=phase)
+        generated=None
         if job.get('_execution_hosts'):
-            try:
-                generated = self.service.host_execution.generate(job, phase, payload,
-                    model.output_schema(phase,payload.get('source_ids',()),payload.get('product_refs',())),
-                    model.instructions(phase,model.output_schema(phase,payload.get('source_ids',()),payload.get('product_refs',()))),cancelled)
-            except ValueError as error:
-                if str(error) in ('host_parent_superseded','host_attempt_superseded','host_context_changed','host_phase_changed'):
-                    raise _SupersededAttempt() from None
-                if str(error)=='host_lease_expired':raise ValueError('agent_provider_outcome_unknown') from None
-                raise
-        else:generated = model.generate(phase, payload, cancelled, route)
+            from .receipts import completed
+            generated=completed(self.service,job['task_id'],job['run_id'],phase,payload,
+                model.output_schema(phase,payload.get('source_ids',()),payload.get('product_refs',())),
+                model.instructions(phase,model.output_schema(phase,payload.get('source_ids',()),payload.get('product_refs',()))))
+        if generated is None:
+            with self.service.chain_budget.model_step(job['run_id'],'research:'+phase,cancelled) as should_stop:
+                if job.get('_execution_hosts'):
+                    try:
+                        generated = self.service.host_execution.generate(job, phase, payload,
+                            model.output_schema(phase,payload.get('source_ids',()),payload.get('product_refs',())),
+                            model.instructions(phase,model.output_schema(phase,payload.get('source_ids',()),payload.get('product_refs',()))),should_stop)
+                    except ValueError as error:
+                        if str(error) in ('host_parent_superseded','host_attempt_superseded','host_context_changed','host_phase_changed'):
+                            raise _SupersededAttempt() from None
+                        if str(error)=='host_lease_expired':raise ValueError('agent_provider_outcome_unknown') from None
+                        raise
+                else:generated = model.generate(phase, payload, should_stop, route)
         data = generated.get('data')
         import jsonschema
         try: jsonschema.validate(data, model.output_schema(phase, payload.get('source_ids', ()), payload.get('product_refs', ())))
@@ -289,7 +314,7 @@ class MarketResearch:
                 if plan['questions']:
                     job = checkpoint(status='awaiting_input'); return self._answer(job)
                 if not plan['query_ru'].strip(): raise ValueError('market_research_search_phrase_required')
-            if len(job['sources']) < len(collector.urls(job['_plan']['query_ru'])):
+            if not job.get('_supplement_batch') and len(job['sources']) < len(collector.urls(job['_plan']['query_ru'])):
                 job = checkpoint(phase='collecting')
                 for url in collector.urls(job['_plan']['query_ru']):
                     if cancelled(): raise model.transport.Cancelled()
@@ -310,16 +335,22 @@ class MarketResearch:
                                   'status': 'failed', 'error': code, 'evidence_kind': 'public_page', 'excerpt': ''}
                     job = checkpoint(sources=[*job['sources'], source], _captures=job['_captures'])
             products = {}
+            batch_ids = (job.get('_supplement_batch') or {}).get('source_ids')
             for page in job['_captures']:
                 if page.get('capture_sha256') != digest(canonical({k: v for k, v in page.items() if k != 'capture_sha256'})):
                     raise ValueError('market_research_evidence_changed')
+                if batch_ids is not None and page['id'] not in batch_ids: continue
                 for n, item in enumerate(page.get('products', [])):
                     products[page['id'] + ':P' + str(n+1)] = {**item, 'source_id': page['id']}
             if not products: raise ValueError('market_research_no_product_evidence')
             if not job['_analysis']:
+                from .supplement import validate_pinned
+                validate_pinned(self, job)
                 job = checkpoint(phase='analyzing')
-                source_ids = [p['id'] for p in job['_captures']]
-                evidence = [{'id': p['id'], 'url': p['url'], 'captured_at': p['captured_at'], 'sha256': p['sha256'], 'text': p['text'][:12000]} for p in job['_captures']]
+                pages = [p for p in job['_captures'] if batch_ids is None or p['id'] in batch_ids]
+                source_ids = [p['id'] for p in pages]
+                evidence = [{**{k: p[k] for k in ('id', 'url', 'captured_at', 'sha256', 'evidence_kind', 'provenance', 'snapshot_age', 'source_ref') if k in p},
+                             'text': p['text'][:12000]} for p in pages]
                 analysis = self._generate(job, 'analyzing', {'question': job['query'], 'market': 'RU',
                     'sources': evidence, 'products': products, 'source_ids': source_ids, 'product_refs': list(products)}, cancelled, route, expected_owner)
                 if not analysis['summary'].strip() or not analysis['limitations']:
@@ -360,7 +391,8 @@ class MarketResearch:
                             # hit forever when the user explicitly retries.
                             rejected=job.setdefault('_rejected_host_attempts',[])
                             if attempt not in rejected:rejected.append(attempt)
-                    job.update(status=status, error={'code': code, 'message': '研究未完成；来源和已确认步骤保留，可显式恢复原任务。'})
+                    message='当前任务链额度已用尽；原始资料和已确认步骤保留，请查看任务时间线。' if code.startswith('agent_chain_') else '研究未完成；来源和已确认步骤保留，可显式恢复原任务。'
+                    job.update(status=status, error={'code': code, 'message': message})
                     self._save(db, job)
             return self._answer(job)
 
@@ -372,23 +404,29 @@ class MarketResearch:
             if job['status'] in ('cancelled', 'cancelling'): raise model.transport.Cancelled()
             thread = self.service.copilot._thread(db, job['thread_id'])
             if thread['context'] != job['_context']: raise ValueError('market_research_context_changed')
-            saved = []
+            from .supplement import validate_pinned
+            validate_pinned(self, job)
+            saved = list(job['candidates']) if job.get('_supplement_batch') else []
             for candidate in job['_analysis']['candidates']:
                 item = products[candidate['product_ref']]
                 source = next(p for p in job['_captures'] if p['id'] == item['source_id'])
                 case = save_research_candidate(self.core, task_id=task_id, product=item)
                 record = template('research')['record']
-                record.update(market='RU', language='ru', source_url=source['url'], captured_at=source['captured_at'],
-                              raw_excerpt=item['text'][:6000], evidence_note='公开目录供给样本；非销量、需求或独立事实核实。原始页SHA256=' + source['sha256'])
+                imported = source.get('evidence_kind') == 'imported_public_notes'
+                note = ('导入的公开资料笔记，未经独立核验；非本机原始网页、非实时价格或销量。资料文档SHA256=' if imported else
+                        '公开目录供给样本；非销量、需求或独立事实核实。原始页SHA256=')
+                record.update(market='RU', language='zh' if imported else 'ru', source_url=source['url'], captured_at=source['captured_at'],
+                              raw_excerpt=item['text'][:6000], evidence_note=note + source['sha256'])
                 values = {'subject': (item['title'], job['query']), 'findings': (item['text'][:6000], candidate['reason']),
                           'limitations': ('Public catalog offer; sales and demand unknown.', '单次公开目录样本，翻译待校对；销量、需求、成本和利润未知。')}
                 for key, (original, zh) in values.items():
                     record['fields'][key].update(original=original, zh=zh, reviewed=False, kind='inference' if key in ('findings', 'limitations') else 'source_statement', source_url=source['url'], locator=candidate['product_ref'])
                 artifact = self.service.organization.record(case['id'], 'research', {'record': record, 'sku': None, 'row_key': case['scope']['row_key']}, 'market-research:' + task_id)
                 saved.append({'case_id': case['id'], 'name': item['title'], 'source_url': source['url'], 'product_url': item['url'], 'source_ids': candidate['source_ids'],
-                              'workspace_url': '/workspace?tab=operations&case_id=' + case['id'], 'artifact_id': artifact['id']})
+                              'workspace_url': '/workspace?tab=operations&case_id=' + case['id'], 'artifact_id': artifact['id'], 'research_run_id': run_id})
             job.update(candidates=saved, report={k: job['_analysis'][k] for k in ('summary', 'findings', 'limitations', 'evidence_refs')},
                        phase='finished', status='partial' if any(s['status'] == 'failed' for s in job['sources']) else 'completed', questions=[], error=None)
+            job.pop('_supplement_batch', None)
             self._save(db, job)
 
     @staticmethod

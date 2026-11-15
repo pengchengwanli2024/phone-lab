@@ -91,3 +91,32 @@ are not product branding. See `sealeap/README.md` for validation boundaries.
 实际进入工作台 bundle 的依赖许可证和 NOTICE 原文保留在 [workbench/licenses/THIRD_PARTY_LICENSES.txt](workbench/licenses/THIRD_PARTY_LICENSES.txt)。其中 `@bufbuild/protobuf` 同时保留 Apache-2.0 及 varint 实现的 BSD-3-Clause 声明；版本以锁文件为准。
 
 `commerce/a2ui/spec/` 保留 A2UI 官方固定版本的四份 JSON Schema、Apache-2.0 许可证与 `provenance.json` 中的来源和哈希。Catalog 与领域实现经当前共享核心整合，独立于现有助手的 0.8 子集。Python 可选校验依赖见 `a2ui/requirements.txt`；未安装时标准计算接口仍可用，动态入口明确失败。
+
+
+## Personal Agent OS capability reference
+
+The review sample/deduplication and geometric packing capabilities were studied
+from Personal Agent OS (`services/api/commerce_reviews.py` and
+`services/api/commerce_growth.py`). The local review summarizer and packing
+estimator are independent implementations using the Python standard library.
+No source project's runtime data, assets, framework or dependencies are bundled.
+This reference does not assert an upstream license or confer distribution rights
+for that separate project. Adoption scope is recorded in SOURCE-INTEGRATION.md.
+
+
+The second capability batch also references Personal Agent OS
+`commerce_imports.py`, `workflow_contract.py`, `knowledge_service.py` and
+`memory_governance_service.py` for staged imports, graph validation and
+source-bound knowledge invalidation. Local implementations reuse phone-lab's
+existing task, draft and evidence stores. No upstream graph framework, account
+store, runtime database or bundled dependency was copied.
+
+## Optional scrcpy-server runtime
+
+The experimental low-latency phone preview can launch the unmodified
+`scrcpy-server` v5.0.1 from Genymobile/scrcpy (Apache License 2.0,
+https://github.com/Genymobile/scrcpy). The jar is not bundled or committed; it
+lives in the private `.local/` directory and is supplied by the operator. The
+protocol implementation in `commerce/phone_scrcpy.py` is original; no scrcpy
+source is copied into this repository. A distribution that bundles the jar must
+include the Apache License 2.0 text and the upstream NOTICE.

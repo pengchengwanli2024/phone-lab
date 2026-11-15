@@ -134,6 +134,21 @@ class InformationWorkspace(unittest.TestCase):
         self.assertEqual(IntelligenceStore.matches([row],IntelligenceStore.filters(country='RUS')),[])
         self.assertEqual(len(IntelligenceStore.matches([row],IntelligenceStore.filters(country='BLR'))),1)
 
+    def test_country_aliases_do_not_match_inside_unrelated_words(self):
+        from intel_store import IntelligenceStore
+        def row(number, title, country=None, code=None):
+            return dict(id=str(number), source='hmrc', title=title, country=country,
+                        country_code=code, category='trade', published=1700000000,
+                        url='https://example.org/'+str(number), is_viewed=False, is_bookmarked=False)
+        rows=[row(1,'Pay a penalty for maintaining a trust'),
+              row(2,'Russia trade update'), row(3,'Shipping bulletin','Russia','RUS'),
+              row(4,'Industrial machinery'), row(5,'USA trade update'),
+              row(6,'Software usage guidance'), row(7,'墨西哥洪水预警')]
+        for query, expected in [('俄罗斯',['2','3']),('美国',['5']),('墨西哥洪水',['7'])]:
+            with self.subTest(query=query):
+                self.assertEqual(sorted(r['id'] for r in IntelligenceStore.matches(
+                    rows,IntelligenceStore.filters(query=query))),expected)
+
     def test_same_content_refresh_reuses_frozen_task_payload(self):
         self.collect(feed())
         item=self.call('search')['items'][0]

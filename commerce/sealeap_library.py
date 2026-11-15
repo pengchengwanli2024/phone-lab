@@ -22,6 +22,7 @@ ROOT=Path(__file__).resolve().parent
 def definitions(schema,string):
     skill={'type':'string','minLength':1,'maxLength':160,'pattern':'^sealeap-[a-z0-9-]+$'}
     return [
+      ('commerce_skills_readiness','只读检查当前技能版本、输入、模式和本机执行条件；不准备任务、不调用模型或外部工具',schema({'skill_id':skill,'mode_id':skill,'input':{'type':'object'}},['skill_id'])),
       ('commerce_skills_status','读取固定版本能力库与覆盖分层；源码已读取不等于业务验证',schema()),
       ('commerce_skills_search','搜索两库全部技能及逐项接入缺口；分类为自动归纳，需结合原文',schema({'query':{'type':'string','maxLength':120},'repo':{'type':'string','enum':['all','ecommerce','amazon']},'platform':{'type':'string','maxLength':30},'area':{'type':'string','enum':['all','research','advertising','inventory','creative','operations']},'execution':{'type':'string','enum':['all','unmapped','adapter_ready','local_verified','live_verified']},'offset':{'type':'integer','minimum':0,'maximum':10000},'limit':{'type':'integer','minimum':1,'maximum':50}})),
       ('commerce_skills_get','读取技能流程、来源哈希、依赖、样例及完整引用清单',schema({'skill_id':skill},['skill_id'])),
@@ -112,15 +113,21 @@ class SkillLibrary:
             elif e.get('example_input_inline') is not None:result['example_input']=json.loads(canonical(e['example_input_inline']))
         return result
 
+    def readiness(self,skill_id,input=None,mode_id=None,expected_source=None,expected_mode=None):
+        from skill_readiness import assess
+        return assess(self,skill_id,input,mode_id,expected_source,expected_mode)
+
     def read(self,skill,path):
         e=self.entry(skill);p=self.source_file(e,path)
         if p.stat().st_size>160000:raise ValueError('sealeap_reference_too_large_read_upstream')
         return dict(skill_id=skill,path=path,content=p.read_text(),sha256=sha(p.read_bytes()),reference_data_not_execution_authority=True)
 
-    def case(self,ident):
+    def case(self,ident,*,with_readiness=True):
         with self.core.db() as db:r=db.execute('SELECT id,frozen,skill,source_sha,adapter,status,output,created FROM sealeap_cases WHERE id=?',(ident,)).fetchone()
         if not r:raise ValueError('sealeap_case_not_found')
-        data=json.loads(r[1]);return dict(id=r[0],skill_id=r[2],mode_id=data.get('mode_id'),mode_sha256=data.get('mode_sha256'),source_sha256=r[3],adapter=r[4],status=r[5],output=json.loads(r[6]) if r[6] else None,created_at=r[7],input=data['input'],synthetic=data['synthetic'],drafts=self.drafts.list_for_case(r[0]),marketplace_writes=False)
+        data=json.loads(r[1]);value=dict(id=r[0],skill_id=r[2],mode_id=data.get('mode_id'),mode_sha256=data.get('mode_sha256'),source_sha256=r[3],adapter=r[4],status=r[5],output=json.loads(r[6]) if r[6] else None,created_at=r[7],input=data['input'],synthetic=data['synthetic'],drafts=self.drafts.list_for_case(r[0]),marketplace_writes=False)
+        if with_readiness:value['readiness']=self.readiness(r[2],data['input'],data.get('mode_id'),r[3],data.get('mode_sha256'))
+        return value
 
     def prepare(self,args):
         e=self.entry(args['skill_id'])
@@ -207,6 +214,7 @@ class SkillLibrary:
     def invoke(self,name,args):
         action=name.removeprefix('commerce_skills_')
         if action=='status':return self.summary()
+        if action=='readiness':return self.readiness(**args)
         if action=='search':return self.search(args)
         if action=='get':return self.get(args['skill_id'])
         if action=='read':return self.read(args['skill_id'],args['path'])
@@ -220,6 +228,6 @@ class SkillLibrary:
         if action=='draft_review':return self.drafts.review(args['draft_id'],args['result_sha256'],args['decision'],args.get('note',''))
         if action=='cases':
             with self.core.db() as db:ids=[r[0] for r in db.execute('SELECT id FROM sealeap_cases ORDER BY rowid DESC LIMIT 30')]
-            return {'cases':[self.case(i) for i in ids]}
+            return {'cases':[self.case(i,with_readiness=False) for i in ids]}
         if action=='export':return self.export(args.get('format','json'))
         raise ValueError('sealeap_unknown_tool')

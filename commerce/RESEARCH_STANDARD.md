@@ -50,6 +50,12 @@
 
 ## 接入约定和验证
 
+已结束的公开研究可显式调用 `commerce_market_research_supplement(task_id, expected_revision, source_refs, idempotency_key)`，其中每个引用为 `{id, version, sha256}`，引用 1–12 份已保存、未过期且为当前版本的真实 `commerce_business_import` 事实资料。资料范围必须为 `platform: ozon`、`store_ref: null`、`subject_ref: 原 task_id`。活动、未知或已取消的研究不能通过补证重放；修订冲突与幂等冲突会拒绝排队。
+
+补证事实资料的 `records` 包含 `acquisition: remote_indexed_snapshot`、`local_live_capture: false`、`review_status: operator_import_unverified` 和 `source_notes`。笔记包含 `url`、`crawl_age_reported` 以及 `kind`（`product_snapshot`、`review_snapshot` 或 `official_seller_guidance`）；URL 必须等于资料 `origin_ref`，仅接受 Ozon 官方产品／评论及卖家公开指导页。产品笔记在 `facts.product` 记录来源产品名；可选 `snapshot_price_rub_other_banks` 仅代表历史快照的一般展示价，缺失时保持未知，银行优惠价不能代填。其它来源观察、变体冲突和限制保留在笔记中，不作为指令。
+
+该动作沿用原任务和已冻结模型路线，仅分析本轮补证；旧报告进入 `report_history`，旧候选、历史产物和失败回执保留。补证批次发生已知失败时，可用准确失败修订和新的幂等键显式引用更正版本；旧批次保留于 `supplement_history`，旧资料卡标为 `superseded`，不覆盖文档。来源标为 `imported_public_notes / operator_import_unverified`，其 SHA-256 对应导入文档，不能称为原始 HTML 哈希。`source_count` 只统计实际采集，`supplemental_source_count` 单独统计仍在使用的导入笔记。新增候选仍需独立核验，不进入库存、不授权上架，也不代表本机网络超时已经修复。
+
 未来采集适配器、调研任务、汇总和导出均应沿用该结构；已存在的手机采集脚本尚未改造，历史文件不会自动补证或补译。截图、文件采集与来源真实性核验仍需具体适配器完成。
 
 新增工具：`commerce_collection_template / check / export`、`commerce_translation_start / get`；完整工具表以当前后台发现为准。翻译开始会保存本地任务并调用现有模型，查询和导出内容生成不修改店铺。原始资料及翻译任务保存在私有本机状态，项目发布不包含它们。

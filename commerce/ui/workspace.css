@@ -1,0 +1,213 @@
+/* Shared product composition. Included last in browser, embedded and product bundles.
+   Business modules retain their own data, events, routing and lifecycle. */
+[data-ui-appearance=shopify] body{line-height:var(--ui-line-height-body,1.6)}
+[data-ui-appearance=shopify] :is(h1,h2,h3){text-wrap:pretty}
+[data-ui-appearance=shopify] :is(input,select,textarea){accent-color:var(--ui-color-brand)}
+[data-ui-appearance=shopify] .ui-control:not([type=checkbox]):not([type=radio]):not([type=file]),
+[data-ui-appearance=shopify] .app :is(input:not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea),
+[data-ui-appearance=shopify] .dialog :is(input:not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea){
+  border-color:var(--ui-field-border,var(--ui-color-control-border));
+  box-shadow:none;
+}
+[data-ui-appearance=shopify] :is(input,select,textarea)[aria-invalid=true]{--ui-field-border:var(--ui-color-danger)}
+[data-ui-appearance=shopify] :is(input,select,textarea):focus-visible:not([aria-invalid=true]){--ui-field-border:var(--ui-color-brand)}
+[data-ui-appearance=shopify] :is(input,textarea)::placeholder{color:var(--ui-color-muted);opacity:1}
+[data-ui-appearance=shopify] :is(input,textarea)[readonly]{background:var(--ui-color-surface-alt)}
+[data-ui-appearance=shopify] button.ui-button.primary:hover:not(:disabled){background:var(--ui-color-action-hover);border-color:var(--ui-color-action-hover)}
+[data-ui-appearance=shopify] :is(.ui-button,.r-nav-link):disabled{cursor:not-allowed}
+[data-ui-appearance=shopify] :is(.r-number,.r-code,.badge,.ui-badge,td,dd){font-variant-numeric:tabular-nums}
+[data-ui-appearance=shopify] :is(.r-table-wrap,.ui-table,.table-wrap){overscroll-behavior-inline:contain;scrollbar-width:thin;scrollbar-color:var(--ui-color-control-border) transparent}
+[data-ui-appearance=shopify] :is(.r-table-wrap,.ui-table,.table-wrap) th{font-size:var(--ui-font-size-meta);font-weight:600;white-space:nowrap}
+[data-ui-appearance=shopify] :is(.r-table-wrap,.ui-table,.table-wrap) td{line-height:1.6;vertical-align:top}
+[data-ui-appearance=shopify] :is(.r-table-wrap,.ui-table,.table-wrap) tbody tr:last-child td{border-bottom:0}
+[data-ui-appearance=shopify] :is(.r-table-wrap,.ui-table,.table-wrap) tbody tr:hover{background:var(--ui-color-surface-alt)}
+[data-ui-appearance=shopify] :is(.r-tabs,.analysis-tabs,.pills){gap:var(--ui-space-1)}
+[data-ui-appearance=shopify] .form-actions{flex-wrap:wrap;gap:8px}
+[data-ui-appearance=shopify] .form-actions>.ui-button{flex:0 0 auto;width:auto;max-width:100%}
+
+/* One frame, with reading space allocated to the current task. */
+.r-app{--r-page-gutter:24px}
+@media(min-width:1361px){.r-app:not(.r-hosted){grid-template-columns:208px minmax(0,1fr)}}
+.r-app .r-sidebar{padding:20px 12px 12px}
+.r-sidebar .r-brand{margin-bottom:16px}
+.r-app .r-sidebar nav>.r-nav-link{margin-bottom:4px}
+.r-app .r-sidebar footer{padding-top:12px}
+.r-work-area.with-assistant{gap:0;padding:12px}
+.r-work-area.with-assistant>.r-main{background:var(--ui-color-canvas)}
+.r-app .r-main{min-width:0;scrollbar-gutter:stable;scroll-padding-block:16px}
+.r-main>.r-section-tabs{padding:4px 12px;min-height:52px;background:var(--ui-color-surface)}
+[data-ui-appearance] .r-main .r-section-tabs button.ui-button{border-color:transparent;background:transparent;font-weight:400;padding:8px 12px}
+[data-ui-appearance] .r-sidebar footer button.ui-button{border-color:transparent;background:transparent;justify-content:flex-start;padding:8px 12px}
+.r-main .r-page{padding:var(--r-page-gutter);max-width:none;line-height:var(--ui-line-height-body)}
+.r-main .r-page-heading{align-items:flex-start;gap:16px;margin-bottom:24px;min-height:40px}
+.r-page-heading h1{margin:0;font-size:var(--ui-font-size-title);font-weight:600;line-height:1.35;letter-spacing:-.4px}
+.r-page-heading p{max-width:70ch}
+.r-page-heading>.r-actions{justify-content:flex-end;gap:8px}
+.r-app .r-panel{padding:20px;border:1px solid var(--ui-color-border);background:var(--ui-color-surface);box-shadow:none}
+.r-panel>header{align-items:center;gap:12px;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--ui-color-border)}
+.r-panel>header h2{margin:0;font-size:var(--ui-font-size-section);font-weight:600}
+.r-panel>header .ui-button{font-size:var(--ui-font-size-meta);min-height:32px;padding:4px 8px}
+.r-main .r-empty{min-height:0;padding:24px 12px;font-size:var(--ui-font-size-body);line-height:1.7}
+.r-main .r-empty .ui-button{margin-top:12px}
+.r-main .r-kpis{margin-bottom:20px;background:var(--ui-color-surface)}
+.r-main .r-kpis>div{padding:16px 20px}
+.r-main .r-overview-grid{gap:20px;grid-template-columns:minmax(0,1fr)}
+.r-main .r-tabs{flex-wrap:wrap;margin-bottom:8px}
+.r-main .r-tabs button{font-size:var(--ui-font-size-meta);min-height:36px;padding:6px 10px}
+.r-main .r-notice{padding:16px 0}
+.r-main .r-notice p{line-height:1.6;margin:4px 0 0}
+.r-main .r-object-row{padding:14px 0}
+.r-main .r-object-row p{margin:4px 0 0}
+.r-main .r-quick-actions{padding-top:16px;margin-top:8px;border-top:1px solid var(--ui-color-border);flex-wrap:wrap}
+.r-main .r-list-filters{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin-bottom:20px}
+.r-list-filters>.ui-field{flex:1 1 160px}
+.r-list-filters>.ui-field:first-child{flex-grow:2}
+.r-main .r-cost-group{margin-bottom:20px}
+.r-main .r-cost-group legend{font-size:var(--ui-font-size-body);margin-bottom:12px}
+.r-main .r-cost-fields{gap:16px}
+.r-main .r-form-actions{flex-wrap:wrap;gap:8px;padding-top:16px}
+.r-store-workbench .r-store-columns{gap:20px}
+.r-store-workbench .r-store-columns .r-panel{margin-bottom:16px}
+.r-store-workbench .r-empty{min-height:0;padding:16px 8px}
+.r-store-workbench .r-store-columns>div>.r-panel:has(>.r-empty){display:grid;grid-template-columns:minmax(0,1fr)}
+.r-store-workbench .r-store-columns>div>.r-panel>.r-empty{text-align:left;padding:8px 0}
+.r-operation-list li{align-items:flex-start;padding:16px 0}
+.r-operation-list li:last-child{border-bottom:0}
+.r-listing-page .r-listing-target-selector{padding:16px 20px;background:var(--ui-color-surface);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-card)}
+.r-listing-target-selector>summary{font-size:var(--ui-font-size-body)}
+.r-listing-page .r-listing-grid{gap:20px}
+@container workpage (min-width:960px){.r-main .r-overview-grid{grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr)}}
+@container workpage (min-width:820px){.r-cost-page .r-calculation-grid{grid-template-columns:minmax(0,1.55fr) minmax(248px,1fr);align-items:start}}
+@container workpage (max-width:819px){.r-cost-page .r-calculation-grid{grid-template-columns:minmax(0,1fr)}}
+@container workpage (max-width:640px){.r-main .r-page{padding:20px 16px}.r-page-heading>.r-actions{justify-content:flex-start}.r-main .r-panel{padding:16px}.r-main .r-kpis>div{padding:14px 12px}}
+@container (min-width:720px){.r-store-columns{grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr)}}
+
+/* Embedded stable business pages share the same page rhythm as React. */
+[data-ui-appearance=shopify] body[data-react-host=true]{background:var(--ui-color-canvas)}
+[data-ui-appearance=shopify] body[data-react-host=true] .main-scroll{padding:24px;background:var(--ui-color-canvas);container-type:inline-size;container-name:businesspage;scroll-padding-block:16px}
+body[data-react-host=true] .workspace-heading{margin-bottom:0}
+body[data-react-host=true] .top-line{margin-bottom:24px}
+[data-ui-appearance=shopify] body[data-react-host=true] .card{padding:20px;margin-bottom:20px;border:1px solid var(--ui-color-border);background:var(--ui-color-surface)}
+body[data-react-host=true] .card h2{font-size:var(--ui-font-size-section);font-weight:600;line-height:1.5}
+body[data-react-host=true] .card>h2:first-child{margin-top:0}
+body[data-react-host=true] .card>.card-sub{margin-top:-4px;line-height:1.6}
+body[data-react-host=true] .empty{padding-block:24px;min-height:0}
+body[data-react-host=true] .filters{display:flex;flex-wrap:wrap;align-items:end;gap:12px}
+body[data-react-host=true] .skills-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end;margin-bottom:20px}
+body[data-react-host=true] .skills-filters>.ui-field:first-child{grid-column:span 2}
+body[data-react-host=true] .skills-filters .ui-control{width:100%}
+body[data-react-host=true] .skills-summary{margin-bottom:16px}
+body[data-react-host=true] .analysis-fields{gap:16px}
+body[data-react-host=true] :is(.form-actions,.business-actions){gap:8px;flex-wrap:wrap;align-items:center}
+body[data-react-host=true] :is(.creative-workspace,.skills-workspace,.catalog-browser){min-width:0}
+@container businesspage (max-width:640px){
+ body[data-react-host=true] .skills-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body[data-react-host=true] .skills-filters>.ui-field:first-child,body[data-react-host=true] .skills-filters>button{grid-column:1/-1}
+ body[data-react-host=true] .analysis-fields{grid-template-columns:minmax(0,1fr)}
+}
+
+/* Product identity, stages and the original object editor stay in one place. */
+.pw-main{background:var(--ui-color-canvas);scroll-padding-block:16px}
+.pw-object-header{align-items:flex-start;background:var(--ui-color-surface);padding:20px 24px;min-height:104px}
+.pw-object-title{min-width:180px}
+.pw-object-header .pw-header-actions{flex-wrap:wrap;justify-content:flex-end;max-width:55%}
+.pw-object-header h1{font-size:var(--ui-font-size-title);line-height:1.35}
+.pw-main .pw-tabs{padding-inline:24px;gap:24px;background:var(--ui-color-surface)}
+.pw-tabpanel{padding:20px}
+.pw-tabpanel .pw-section{padding:20px;margin-bottom:16px;background:var(--ui-color-surface)}
+.pw-section-header{padding-bottom:12px;border-bottom:1px solid var(--ui-color-border)}
+.pw-section .pw-empty{padding:20px 8px;min-height:0}
+.pw-main .pw-overview-grid{gap:16px}
+@container product (min-width:720px){.pw-overview-grid{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}}
+@container product (max-width:719px){.pw-overview-grid{grid-template-columns:minmax(0,1fr)}}
+@container product (max-width:519px){.pw-object-header{padding:16px}.pw-object-header .pw-header-actions{max-width:100%;width:100%;justify-content:flex-start}.pw-main .pw-tabs{padding-inline:16px}.pw-tabpanel{padding:16px}.pw-tabpanel .pw-section{padding:16px}}
+
+/* Generated views use the same evidence, decision and result vocabulary. */
+.ui-evidence,.ui-receipt,.copilot-card,.pw-task-summary{background:var(--ui-color-surface);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-card)}
+.ui-evidence>header,.ui-receipt>header{padding-bottom:8px;border-bottom:1px solid var(--ui-color-border)}
+.ui-evidence blockquote{border-left-color:var(--ui-color-brand);color:var(--ui-color-text)}
+.ui-field-diff :is(th,td){min-width:120px}
+.pw-task-summary{padding:16px}
+.pw-task-summary ol{gap:0}
+.pw-task-summary li{padding-block:8px;border-bottom:1px solid var(--ui-color-border)}
+.pw-task-summary li:last-child{border-bottom:0}
+:is(.pw-conversation,.r-shared-assistant) .copilot-header{padding:12px;min-height:56px}
+:is(.pw-conversation,.r-shared-assistant) .copilot-log{padding:16px 12px}
+:is(.pw-conversation,.r-shared-assistant) .copilot-card{padding:16px;margin-block:12px}
+:is(.pw-conversation,.r-shared-assistant) .copilot-card h3{margin:0 0 8px;font-weight:600}
+:is(.pw-conversation,.r-shared-assistant) .copilot-suggestions{display:flex;flex-wrap:wrap;gap:8px}
+:is(.pw-conversation,.r-shared-assistant) .copilot-suggestions .ui-button{font-size:var(--ui-font-size-meta);padding:6px 10px;min-height:36px;text-align:left;white-space:normal}
+:is(.pw-conversation,.r-shared-assistant) .copilot-composer{border-color:var(--ui-color-control-border)}
+:is(.pw-conversation,.r-shared-assistant) .copilot-composer:focus-within{outline:2px solid var(--ui-color-focus);outline-offset:2px}
+:is(.pw-conversation,.r-shared-assistant) .copilot-message-meta{font-size:var(--ui-font-size-meta)}
+.r-dialog::backdrop{background:var(--ui-color-overlay)}
+.r-dialog>header{padding-bottom:16px;border-bottom:1px solid var(--ui-color-border);margin-bottom:20px}
+.r-dialog .r-finder-list{gap:4px}
+.r-dialog .r-finder-list button{border:0;border-radius:var(--ui-radius-control);padding:12px;min-height:48px}
+
+/* Private setup and device surfaces use the same type and section scale. */
+[data-ui-appearance=shopify] :is(.setup-shell,.model-setup,.platform-setup,.capability-setup){max-width:1120px;padding:32px;margin:0 auto}
+[data-ui-appearance=shopify] :is(.setup-shell,.model-setup,.platform-setup,.capability-setup) h1{font-size:var(--ui-font-size-title);line-height:1.35;font-weight:600;margin:0 0 12px}
+[data-ui-appearance=shopify] :is(.setup-shell,.model-setup,.platform-setup,.capability-setup) :is(.card,.ui-card){padding:20px;margin-top:20px;border:1px solid var(--ui-color-border)}
+[data-ui-appearance=shopify] :is(.setup-shell,.model-setup,.platform-setup,.capability-setup) :is(h2,h3){font-size:var(--ui-font-size-section);margin-top:0}
+[data-ui-appearance=shopify] :is(.setup-shell,.model-setup,.platform-setup,.capability-setup) :is(.ui-field,.model-fields,.setup-fields){gap:12px}
+.r-phone-title :is(h1,h2){font-size:var(--ui-font-size-section);font-weight:600;line-height:1.4;margin:0}
+.r-phone-page-dialog .r-phone-title h1{font-size:20px}
+.r-phone-head{background:var(--ui-color-surface);border-bottom:1px solid var(--ui-color-border)}
+.r-phone-fleet-body{background:var(--ui-color-canvas)}
+.r-phone-side .r-phone-block{background:var(--ui-color-surface);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-card);padding:16px}
+
+/* Intelligence keeps its map-led layout and the original collector/reading actions. */
+.intel-root .intel-header{align-items:center;gap:12px;flex-wrap:wrap}
+.intel-root .intel-header>div:first-child{min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.intel-root .intel-header>div:last-child{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:0 1 auto}
+.intel-root .intel-header>div:last-child .ui-button{flex:0 0 auto;min-width:max-content;white-space:nowrap;font-size:12px;padding-inline:10px}
+.intel-root .intel-display-switch{flex:none}
+.intel-root .intel-control-options{flex:1 1 440px;min-width:0;align-items:center;gap:8px}
+[data-ui-appearance] .intel-root .intel-control-options>.ui-control:not([type=checkbox]):not([type=radio]):not([type=file]){width:auto;min-width:112px;max-width:168px;flex:1 1 112px}
+.intel-root .intel-dashboard-controls{gap:12px;align-items:center;padding-block:8px}
+.intel-root .intel-time-controls{flex:none;gap:2px}
+.intel-root .intel-time-controls button{white-space:nowrap}
+.intel-root .intel-search-line>.ui-button{white-space:nowrap}
+@media(min-width:1100px){
+ .intel-root.intel-dashboard{grid-template-columns:minmax(0,1fr) minmax(320px,380px)}
+ .intel-root.intel-dashboard>.intel-header{grid-column:1/-1;justify-content:space-between}
+ .intel-root.intel-dashboard>.intel-search-panel{grid-column:2;grid-row:2;align-self:center}
+ .intel-root.intel-dashboard>.intel-dashboard-controls{grid-column:1;grid-row:2;align-self:center;border-block:0}
+ .intel-root.intel-dashboard>.intel-results-head{margin-block:0}
+}
+@media(max-width:767px){
+ .r-app{--r-page-gutter:16px}
+ [data-ui-appearance=shopify] .form-actions>.ui-button{min-height:44px}
+ [data-ui-appearance=shopify] :is(.setup-shell,.model-setup,.platform-setup,.capability-setup){padding:20px 16px}
+ [data-ui-appearance=shopify] :is(.setup-shell,.model-setup,.platform-setup,.capability-setup) :is(.card,.ui-card){padding:16px}
+ .r-app .r-work-area.is-compact{grid-template-rows:minmax(0,1fr)}
+ .r-work-area.is-compact>.r-mode-switcher{display:none}
+ .r-app .r-work-area.is-compact>.r-main,.r-app .r-work-area.is-compact>.r-shared-assistant{grid-row:1;margin:0;width:100%;height:100%;border:0;border-radius:0}
+ .r-app .r-topbar>.r-assistant-toggle{min-width:44px;min-height:44px;padding:10px}
+ .r-topbar>.r-assistant-toggle[aria-pressed=true]{background:var(--ui-color-brand-soft);color:var(--ui-color-brand)}
+ .r-main>.r-section-tabs{padding:2px 8px;min-height:48px}
+ .r-main .r-section-tabs button{min-height:44px;padding:8px 10px}
+ .r-main .r-page-heading{margin-bottom:20px;min-height:0}
+ .r-main .r-panel>header .ui-button,.r-main .r-tabs button{min-height:44px}
+ .r-main .r-empty{padding:20px 8px}
+ .r-main .r-table-wrap td .ui-button{min-height:44px}
+ .r-main .r-kpis>div{padding:12px}
+ .pw-react-host .pw-mode-switch{display:none}
+ :is(.pw-conversation,.r-shared-assistant) .copilot-header-actions>.ui-button{min-width:44px;min-height:44px}
+ :is(.pw-conversation,.r-shared-assistant) .copilot-options>summary{width:44px;height:44px}
+ [data-ui-appearance=shopify] body[data-react-host=true] .main-scroll{padding:20px 16px}
+ [data-ui-appearance=shopify] body[data-react-host=true] .card{padding:16px}
+ body[data-react-host=true] .top-line{margin-bottom:20px}
+ .intel-root .intel-header{align-items:stretch;flex-direction:column;gap:8px}
+ .intel-root .intel-header>div:first-child{justify-content:space-between}
+ .intel-root .intel-header>div:last-child{width:100%;margin-left:0;gap:6px;justify-content:flex-start}
+ .intel-root .intel-header>div:last-child .ui-button{min-height:44px;font-size:12px;padding-inline:8px;flex:1 0 auto}
+ .intel-root .intel-search-line>.ui-button{min-height:44px}
+ .intel-root .intel-control-options{flex-basis:100%;width:100%}
+ .intel-root .intel-control-options[data-expanded=false]{display:none}
+ [data-ui-appearance] .intel-root .intel-control-options>.ui-control:not([type=checkbox]):not([type=radio]):not([type=file]){min-width:110px;max-width:none}
+ .intel-root .intel-time-controls{width:100%;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0}
+ .intel-root .intel-time-controls button{min-height:44px}
+ .intel-root .intel-dashboard-controls{gap:4px}
+}

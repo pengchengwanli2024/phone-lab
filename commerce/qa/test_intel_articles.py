@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(ROOT/'commerce'),str(ROOT/'crawlers')]
-from article import allowed, body
+from article import allowed, body, MAX_TEXT
 from article_binding import bind,text_hash
 from service import Commerce
 from translation import validate_response
@@ -79,6 +79,25 @@ class ArticleWorkflow(unittest.TestCase):
         self.service.articles.fetcher=lambda doc:dict(fetch(doc),content_sha256='0'*64)
         self.assertEqual(self.start()['status'],'failed')
 
+    def test_known_publisher_paths_include_ecb_feed_slashes_and_hmrc_guidance(self):
+        self.assertEqual(allowed('ecb','https://www.ecb.europa.eu//press/pr/synthetic.html',resolve=False),
+                         'https://www.ecb.europa.eu/press/pr/synthetic.html')
+        for path in ('/guidance/synthetic-imports','/hmrc-internal-manuals/synthetic'):
+            self.assertEqual(allowed('hmrc','https://www.gov.uk'+path,resolve=False),'https://www.gov.uk'+path)
+        for url in ('https://evil.test/guidance/synthetic','https://www.gov.uk/account/synthetic'):
+            with self.assertRaises(ValueError):allowed('hmrc',url,resolve=False)
+
+    def test_eia_current_container_and_declared_latin_encoding_keep_complete_body(self):
+        text='Synthetic customs £25. '*20
+        parsed,_=body('wto',('<meta charset="iso-8859-1"><div id="news"><p>'+text+'</p></div>').encode('latin-1'))
+        self.assertIn('£25',parsed)
+        parsed,_=body('wto',('<meta charset="iso-8859-1"><div id="mainContainer"><h1>Synthetic trade</h1><p>'+text+'</p></div>').encode('latin-1'))
+        self.assertIn('Synthetic trade',parsed)
+        parsed,_=body('eia',('<div class="tie-article"><h1>Synthetic energy</h1><p>'+text+'</p></div>').encode())
+        self.assertIn('Synthetic energy',parsed)
+        parsed,_=body('ecb',b'<main><p>'+b'x'*31000+b'</p></main>')
+        self.assertEqual(len(parsed),31000)
+
     def test_public_publisher_allowlist_and_private_dns(self):
         good=self.item['url']
         for url in ['https://127.0.0.1/private','http://www.federalreserve.gov/newsevents/a','https://www.federalreserve.gov.evil.test/newsevents/a','https://www.federalreserve.gov:443/newsevents/a','https://user:pass@www.federalreserve.gov/newsevents/a']:
@@ -90,7 +109,7 @@ class ArticleWorkflow(unittest.TestCase):
         html=('<html><div id="article"><script>DO NOT EXECUTE</script><p>'+('Synthetic cargo 25 USD. '*20)+'</p></div></html>').encode()
         text,locator=body('fed',html)
         self.assertNotIn('EXECUTE',text);self.assertEqual(locator,'#article')
-        with self.assertRaisesRegex(ValueError,'text_too_large'):body('fed',b'<div id="article"><p>'+b'x'*30001+b'</p></div>')
+        with self.assertRaisesRegex(ValueError,'text_too_large'):body('fed',b'<div id="article"><p>'+b'x'*(MAX_TEXT+1)+b'</p></div>')
 
 
 if __name__=='__main__':unittest.main()

@@ -1,0 +1,8 @@
+{
+  "name": "commerce-workbench",
+  "label": "电商工作台",
+  "description": "复用同一份本机界面与业务服务的 Hermes 安全适配器",
+  "version": "0.1.0",
+  "tab": {"path": "/commerce-workbench", "hidden": true},
+  "api": "plugin_api.py"
+}

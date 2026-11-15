@@ -90,6 +90,8 @@ class Copilot:
             if replacement and run_id==replacement[0]:
                 result,run_id,status=replacement[1]
             if status in ('completed','awaiting_input','awaiting_review'):
+                from .memory_scope import history_refs
+                if history_refs(self.service,thread['context'],run_id) is None:continue
                 replyable.append((question,json.loads(result) if result else {},run_id))
             if len(replyable)==6:break
         parent=replyable[0][2] if replyable else None
@@ -117,6 +119,9 @@ class Copilot:
             thread['next_cursor']=rows[0][0] if thread['has_more'] else None
             latest=db.execute('SELECT run_id FROM copilot_turns WHERE thread_id=? ORDER BY rowid DESC LIMIT 1',(thread_id,)).fetchone()
             thread['latest_run']=self.runtime._get(latest[0],_db=db) if latest else None
+            from .receipts import attach
+            for turn in thread['turns']:attach(db,turn['run'])
+            attach(db,thread['latest_run'])
             thread['research_job']=self.service.market_research.for_run(latest[0], db) if latest else None
         from .methods import method_for
         thread['method']=method_for(thread['context'])

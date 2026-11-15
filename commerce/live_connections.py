@@ -60,10 +60,10 @@ class LiveConnections:
     def channel(config): return digest(config.get('feishu_webhook','')+'\n'+config.get('feishu_target_label',''))[:24]
 
     def configure(self, values):
-        allowed={'store_label','fulfillment_modes','ozon_client_id','ozon_api_key','lookback_days','interval_seconds','low_stock_threshold','max_age_seconds','stock_basis','basis_confirmed','orders_scope_confirmed','feishu_webhook','feishu_signing_secret','feishu_target_label','sync_enabled','notifications_enabled','feishu_received_confirmed'}
+        allowed={'store_label','fulfillment_modes','ozon_client_id','ozon_api_key','lookback_days','interval_seconds','low_stock_threshold','max_age_seconds','stock_basis','basis_confirmed','orders_scope_confirmed','expected_orders_sha256','expected_stock_sha256','feishu_webhook','feishu_signing_secret','feishu_target_label','sync_enabled','notifications_enabled','feishu_received_confirmed'}
         if not isinstance(values,dict) or set(values)-allowed:raise ValueError('invalid_setup_fields')
         with self.config_lock:
-            old=self.config();new={**old,**{k:v for k,v in values.items() if k not in ('basis_confirmed',)}}
+            old=self.config();new={**old,**{k:v for k,v in values.items() if k not in ('basis_confirmed','expected_orders_sha256','expected_stock_sha256')}}
             for key in ('ozon_client_id','ozon_api_key','feishu_webhook','feishu_signing_secret'):
                 if key in values and values[key]=='':new[key]=old.get(key,'')
             for key in ('store_label','feishu_target_label'):
@@ -80,20 +80,33 @@ class LiveConnections:
             if new.get('feishu_webhook'):feishu_sender.validate_webhook(new['feishu_webhook'])
             if not isinstance(new.get('feishu_signing_secret',''),str) or len(new.get('feishu_signing_secret',''))>500:raise ValueError('invalid_signing_secret')
             account_changed=client!=old.get('ozon_client_id') or modes!=old.get('fulfillment_modes')
+            window_changed=new['lookback_days']!=old['lookback_days']
             if account_changed:
                 new['connection_id']=str(uuid.uuid4());new['stock_basis']='unconfirmed';new['orders_scope_confirmed']=False;new['sync_enabled']=False;new['notifications_enabled']=False
+                for field in ('basis_reviewed_at','basis_review_snapshot'):new.pop(field,None)
+            if account_changed or window_changed:
+                new['orders_scope_confirmed']=False;new['sync_enabled']=False;new['notifications_enabled']=False
+                for field in ('orders_scope_reviewed_at','orders_scope_review_snapshot'):new.pop(field,None)
             if not new.get('connection_id'):new['connection_id']=str(uuid.uuid4())
-            if new['orders_scope_confirmed'] and not old.get('orders_scope_confirmed'):
-                sample=self.snapshot(new['connection_id'],'orders')
-                if not sample:raise ValueError('fetch_orders_before_scope_review')
+            def reviewed(kind):
+                sample=self.snapshot(new['connection_id'],kind)
+                if not sample:raise ValueError('fetch_orders_before_scope_review'if kind=='orders'else'review_live_stock_before_confirming_basis')
+                if kind=='orders'and sample['data'].get('coverage_days')!=new['lookback_days']:raise ValueError('live_orders_window_changed_sync_first')
+                if not self._fresh(sample,new):raise ValueError('live_review_snapshot_stale')
+                if digest(canonical(sample['data']))!=sample['sha256']:raise ValueError('live_review_snapshot_changed')
+                expected=values.get('expected_'+kind+'_sha256')
+                if expected is not None and expected!=sample['sha256']:raise ValueError('live_review_snapshot_changed')
+                return sample
+            if new['orders_scope_confirmed'] and(not old.get('orders_scope_confirmed')or'expected_orders_sha256'in values):
+                sample=reviewed('orders')
                 new['orders_scope_review_snapshot']=sample['sha256'];new['orders_scope_reviewed_at']=now()
             channel_changed=self.channel(new)!=self.channel(old) or new.get('feishu_signing_secret')!=old.get('feishu_signing_secret')
             if channel_changed:new['feishu_test_verified']=False;new['feishu_received_confirmed']=False;new['notifications_enabled']=False
             basis=new['stock_basis']
             if basis not in ('unconfirmed','present_minus_reserved','present_is_available'):raise ValueError('invalid_stock_basis')
-            if basis!='unconfirmed' and basis!=old.get('stock_basis'):
-                snapshot=self.snapshot(new['connection_id'],'stock')
-                if not snapshot or values.get('basis_confirmed') is not True:raise ValueError('review_live_stock_before_confirming_basis')
+            if basis!='unconfirmed' and(basis!=old.get('stock_basis')or values.get('basis_confirmed')is True):
+                if values.get('basis_confirmed') is not True:raise ValueError('review_live_stock_before_confirming_basis')
+                snapshot=reviewed('stock')
                 new['basis_reviewed_at']=now();new['basis_review_snapshot']=snapshot['sha256']
             if new['notifications_enabled']:
                 if not new.get('feishu_webhook') or not new.get('feishu_target_label') or not new.get('feishu_test_verified') or not new.get('feishu_received_confirmed'):raise ValueError('verify_feishu_test_and_confirm_receipt_first')
@@ -110,6 +123,7 @@ class LiveConnections:
 
     def _fresh(self, snapshot, config):
         if not snapshot:return False
+        if snapshot['data'].get('kind')=='orders'and snapshot['data'].get('coverage_days')!=config['lookback_days']:return False
         dt=datetime.fromisoformat(snapshot['observed_at'])
         return 0<=(datetime.now(timezone.utc)-dt).total_seconds()<=config['max_age_seconds']
 
@@ -126,6 +140,7 @@ class LiveConnections:
                     stock_basis=config['stock_basis'],orders_scope_confirmed=config['orders_scope_confirmed'],sync_enabled=config['sync_enabled'],notifications_enabled=config['notifications_enabled'],feishu_test_verified=config['feishu_test_verified'],feishu_received_confirmed=config['feishu_received_confirmed'],
                     feishu_target_label=config['feishu_target_label'],orders=summary(orders),stock=summary(stock),outbox=outbox,timer_running=bool(self.timer and self.timer.is_alive()),
                     last_job=dict(id=job[0],status=job[1],started=job[2],finished=job[3],result=json.loads(job[4]) if job[4] else None) if job else None)
+        result['scope_review_version']=1
         if samples:
             result['order_samples']=orders['data']['records'][:8] if orders else []
             result['stock_samples']=self.inventory_rows()[:10]
@@ -160,7 +175,8 @@ class LiveConnections:
             for kind in ('orders','stock'):
                 try:
                     batch=ozon_reader.fetch(config,kind,request=lambda *args:self._request(ident,*args))
-                    if self.config().get('connection_id')!=connection:
+                    current=self.config()
+                    if current.get('connection_id')!=connection or(kind=='orders'and current['lookback_days']!=config['lookback_days']):
                         results[kind]={'status':'superseded'};continue
                     had_baseline=self.snapshot(connection,kind) is not None
                     self._publish(connection,kind,batch,config,had_baseline)
