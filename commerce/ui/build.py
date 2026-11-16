@@ -36,6 +36,9 @@ def main():
     subprocess.run([sys.executable, str(ROOT / 'creative_ui_build.py'), *(['--check'] if args.check else [])], check=True)
     subprocess.run([sys.executable, str(ROOT / 'skills_ui_build.py'), *(['--check'] if args.check else [])], check=True)
     subprocess.run([sys.executable, str(ROOT / 'a2ui/build_contract.py'), *(['--check'] if args.check else [])], check=True)
+    if not (ROOT / 'workbench/map/node_modules/esbuild').exists():
+        raise SystemExit('Install the pinned offline map build dependencies: npm ci --prefix commerce/workbench/map')
+    subprocess.run(['node', str(ROOT / 'workbench/map/build.mjs'), *(['--check'] if args.check else [])], check=True)
     path = ROOT / 'web/style.css'
     content = path.read_text()
     block = generated()
@@ -67,14 +70,14 @@ def main():
     else:
         js_expected = kit + '\n' + javascript
     intel_start, intel_end = '/* COMMERCE_INTEL_START */', '/* COMMERCE_INTEL_END */'
-    intel = (ROOT / 'web/social-ui.js').read_text() + '\n' + (ROOT / 'web/intel-dashboard-ui.js').read_text() + '\n' + (ROOT / 'web/intel-live-ui.js').read_text() + '\n' + (ROOT / 'web/intel-ui.js').read_text().replace('__INTEL_WORLD_PATH__', (ROOT / 'web/intel-land.txt').read_text())
+    intel = (ROOT / 'web/intel-map.bundle.js').read_text() + '\n' + (ROOT / 'web/social-ui.js').read_text() + '\n' + (ROOT / 'web/intel-dashboard-ui.js').read_text() + '\n' + (ROOT / 'web/intel-live-ui.js').read_text() + '\n' + (ROOT / 'web/intel-ui.js').read_text().replace('__INTEL_WORLD_PATH__', (ROOT / 'web/intel-land.txt').read_text())
     if intel_start not in js_expected or intel_end not in js_expected:
         raise SystemExit('Shared information module markers missing; preserve existing business modules.')
     before, tail = js_expected.split(intel_start, 1)
     _, after = tail.split(intel_end, 1)
     js_expected = before + intel_start + '\n' + intel.rstrip() + '\n' + intel_end + after
     intel_css_start, intel_css_end = '/* COMMERCE_INTEL_STYLE_START */', '/* COMMERCE_INTEL_STYLE_END */'
-    intel_css = intel_css_start + '\n' + (ROOT / 'web/social-ui.css').read_text().rstrip() + '\n' + (ROOT / 'web/intel-ui.css').read_text().rstrip() + '\n' + intel_css_end
+    intel_css = intel_css_start + '\n' + (ROOT / 'web/social-ui.css').read_text().rstrip() + '\n' + (ROOT / 'web/intel-ui.css').read_text().rstrip() + '\n' + (ROOT / 'web/intel-map.bundle.css').read_text().rstrip() + '\n' + intel_css_end
     if intel_css_start in expected:
         before, tail = expected.split(intel_css_start, 1)
         _, after = tail.split(intel_css_end, 1)

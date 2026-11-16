@@ -151,6 +151,16 @@ class Live(unittest.TestCase):
         self.assertIsNone(self.app.workbench('commerce_products_list',{})['products'][0]['available'])
         self.assertEqual(self.app.workbench('commerce_orders_list',{'platform':'amazon'})['orders'],[])
 
+    def test_dashboard_exposes_raw_inventory_without_confirming_execution_basis(self):
+        self.configure();self.publish('stock',value=10)
+        inventory=self.app.workbench('commerce_dashboard',{})['inventory']
+        self.assertEqual(inventory['groups'][0]['present'],10)
+        self.assertEqual(inventory['groups'][0]['reserved'],1)
+        self.assertEqual(inventory['groups'][0]['orderable_api'],9)
+        self.assertEqual(inventory['sku_count'],1)
+        self.assertEqual(self.app.config()['stock_basis'],'unconfirmed')
+        self.assertIsNone(self.app.workbench('commerce_dashboard',{})['stock_alerts'])
+
 
 class Reader(unittest.TestCase):
     def config(self):return {'fulfillment_modes':['OGL'],'lookback_days':30,'ozon_client_id':'123456','ozon_api_key':SECRET}

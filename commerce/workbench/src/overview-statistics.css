@@ -1,0 +1,36 @@
+.r-metrics.r-overview-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+.r-overview-metrics>div{min-width:0;padding:var(--ui-space-4)}
+.r-overview-metrics strong{overflow-wrap:anywhere}
+.r-overview-metrics .r-number{font:inherit;color:inherit}
+.r-overview-metrics .r-number small{font-size:var(--ui-font-size-meta);color:var(--ui-color-muted)}
+.r-overview-statistics{margin-bottom:var(--ui-space-5)}
+.r-statistics-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ui-space-5)}
+.r-statistics-columns>section{min-width:0}
+.r-statistics-columns h3{font-size:var(--ui-font-size-body);line-height:1.6;margin:0 0 var(--ui-space-3);font-weight:600}
+.r-statistics-note{font-size:var(--ui-font-size-meta);color:var(--ui-color-muted);line-height:1.65;margin:var(--ui-space-3) 0 0;overflow-wrap:anywhere}
+.r-statistics-flags{display:flex;flex-wrap:wrap;gap:var(--ui-space-2);margin-top:var(--ui-space-2)}
+.r-statistics-bars{list-style:none;padding:0;margin:var(--ui-space-4) 0;display:grid;gap:var(--ui-space-4)}
+.r-statistics-bars li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--ui-space-2);font-size:var(--ui-font-size-meta)}
+.r-statistics-bars li>span{overflow-wrap:anywhere}
+.r-statistics-bars strong{font-weight:500;font-variant-numeric:tabular-nums}
+.r-statistics-track{grid-column:1/-1;height:8px;background:var(--ui-color-surface-alt);border-radius:var(--ui-radius-control);overflow:hidden}
+.r-statistics-track i{display:block;height:100%;background:var(--ui-color-brand);border-radius:inherit}
+.r-operating-charts{display:grid;gap:var(--ui-space-5);margin-top:var(--ui-space-5);border-top:1px solid var(--ui-color-border);padding-top:var(--ui-space-5)}
+.r-operating-charts,.r-operating-charts>section{min-width:0}
+.r-operating-charts h3{font-size:var(--ui-font-size-section);margin:0 0 var(--ui-space-3)}
+.r-sales-chart{display:block;width:100%;max-height:300px;margin-top:var(--ui-space-3);overflow:visible}
+.r-sales-chart line{stroke:var(--ui-color-border)}
+.r-sales-chart text{fill:var(--ui-color-muted);font-size:11px;font-variant-numeric:tabular-nums}
+.r-sales-chart polyline{fill:none;stroke:var(--ui-color-brand);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.r-sales-details summary{cursor:pointer;font-size:var(--ui-font-size-meta);padding-block:var(--ui-space-2)}
+.r-sales-details summary:focus-visible{outline:2px solid var(--ui-color-focus);outline-offset:2px}
+.r-operating-charts .r-table-wrap{margin-top:var(--ui-space-3);min-width:0;max-width:100%}
+.r-statistics-sync{display:flex;align-items:center;flex-wrap:wrap;gap:var(--ui-space-2);margin-bottom:var(--ui-space-3)}
+.r-statistics-sync>span{font-size:var(--ui-font-size-meta);line-height:1.65;color:var(--ui-color-muted);flex:1 1 240px}
+@container workpage (max-width:700px){
+ .r-metrics.r-overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .r-overview-metrics>div:nth-child(odd){border-left:0}
+ .r-overview-metrics>div:nth-child(n+3){border-top:1px solid var(--ui-color-border)}
+ .r-statistics-columns{grid-template-columns:minmax(0,1fr)}
+ .r-sales-chart text{font-size:24px}
+}

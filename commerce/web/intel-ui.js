@@ -10,7 +10,7 @@ window.CommerceIntel = ({api,esc,toast,repaint,modal,closeModal,refreshTasks,isA
   state.panels={};state.focusPanel=null;state.reference=null;
   const globalActive=()=> (!isActive||isActive())&&state.section==='global';
   const dashboard=window.CommerceIntelDashboard({api,esc,repaint,isActive:globalActive,onFocus:focusPanel,onChange:(next,before)=>{
-    if(next.region!==before.region)state.box=dashboard.region();
+    if(next.region!==before.region){state.box=dashboard.region();geo?.box(state.box)}
     if(next.time!==before.time){state.filters.hours=next.time;state.draft.hours=next.time;}
     if(next.time!==before.time||next.region!==before.region||next.link_map!==before.link_map||JSON.stringify(next.layers)!==JSON.stringify(before.layers))search({reset:true,keepSelection:true});else repaint();
   }});
@@ -19,10 +19,19 @@ window.CommerceIntel = ({api,esc,toast,repaint,modal,closeModal,refreshTasks,isA
   const countryText=row=>dashboard.preferences().language==='zh'?(row.display?.country_zh||row.country||'国家未提供'):(row.country||'国家未提供');
   const live=window.CommerceIntelLive?.({api,esc,repaint,isActive:()=>globalActive()&&state.mapVisible&&state.side==='list',bounds,preferences:dashboard.preferences,isBlocked:()=>dashboard.interacting?.()||suppressMapClick||!!drag,onFocus:()=>focusPanel('live'),isFocused:()=>state.focusPanel==='live',onSelect:()=>{state.cluster=null;state.reference=null;},onLocate:row=>{
     if(state.focusPanel==='live')state.focusPanel='map';
-    const p=row.location;state.box={x:Math.max(0,Math.min(480,(p.lon+180)*2-120)),y:Math.max(0,Math.min(240,(90-p.lat)*2-60)),w:240,h:120};state.cluster=null;state.reference=null;refreshMapLink();
+    geo?.focus(row);const p=row.location;state.box={x:Math.max(0,Math.min(480,(p.lon+180)*2-120)),y:Math.max(0,Math.min(240,(90-p.lat)*2-60)),w:240,h:120};state.cluster=null;state.reference=null;refreshMapLink();
   }});
+  const geo=window.CommerceGeoMap?.({isActive:()=>globalActive()&&state.mapVisible&&state.side==='list',onPick:row=>{
+    if(['flight','vessel'].includes(row.kind)){live?.select(row);return;}
+    if(row.kind==='reference'){state.cluster=null;state.reference=row;repaint();return;}
+    openItem(row.id);
+  },onView:(range,view)=>{
+    const w=Math.min(720,360/2**(view.zoom-1)*2),h=w/2;state.box={x:Math.max(0,Math.min(720-w,(view.lng+180)*2-w/2)),y:Math.max(0,Math.min(360-h,(90-view.lat)*2-h/2)),w,h};
+    const key=JSON.stringify(range);if(key!==state.geoRange){state.geoRange=key;refreshMapLink();}
+  }});
+  function geoRows(){return [...(state.result?.markers||[]).map(row=>({...row,kind:'event',title:titleText(row)})),...dashboard.references().map(row=>({...row,kind:'reference'})),...(live?.points()||[])];}
   function liveMarkers(){const width=document.querySelector('#intel-map-svg')?.getBoundingClientRect().width||640;return live?.mapMarkers(state.box,state.box.w/Math.max(240,width))||'';}
-  function bounds(){const b=state.box;return {west:b.x/2-180,east:(b.x+b.w)/2-180,north:90-b.y/2,south:90-(b.y+b.h)/2};}
+  function bounds(){if(geo?.active())return geo.bounds();const b=state.box;return {west:b.x/2-180,east:(b.x+b.w)/2-180,north:90-b.y/2,south:90-(b.y+b.h)/2};}
   let linkTimer;
   function refreshMapLink(){clearTimeout(linkTimer);linkTimer=setTimeout(()=>{live?.read();if(dashboard.preferences().link_map)search({reset:true,keepSelection:true});},180);}
   function focusPanel(id){if(!['map','latest','live',...panelCategories].includes(id))return;state.panelScroll=document.querySelector('.main-scroll')?.scrollTop||0;state.focusPanel=id;repaint();requestAnimationFrame(()=>{const page=document.querySelector('.main-scroll');if(page)page.scrollTop=0;document.querySelector('#intel-panel-focus-title')?.focus({preventScroll:true})});}
@@ -30,6 +39,8 @@ window.CommerceIntel = ({api,esc,toast,repaint,modal,closeModal,refreshTasks,isA
   const social=window.CommerceSocial({api,esc,toast,repaint,isActive:()=> (!isActive||isActive())&&state.section==='social'});
   const fmt=value=>value?new Date(typeof value==='number'?value*1000:value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'}):'来源未提供';
   const icon=name=>ui.icon(name);
+  const assistantAction=(label='AI 助手',attrs={})=>ui.button({label,leadingIcon:'spark',variant:'secondary',action:'copilot-open',attrs});
+  const context=()=>state.side==='detail'&&state.selected&&!state.changed?{kind:'intel',id:state.selected.id}:null;
   const button=(label,action,attrs={},variant='secondary')=>ui.button({label,variant,attrs:{'data-intel-action':action,...attrs}});
   const choice=(label,value,active,kind='view')=>ui.button({label,variant:'quiet',attrs:{['data-intel-'+kind]:value,'aria-pressed':active,class:active?'intel-choice active':'intel-choice'}});
   const options=entries=>entries.map(([value,label])=>({value,label}));
@@ -54,7 +65,9 @@ window.CommerceIntel = ({api,esc,toast,repaint,modal,closeModal,refreshTasks,isA
     const revision=++state.request;state.loading=!quiet;state.error='';if(!quiet)repaint();
     try{
       const prefs=dashboard.preferences();
-      const result=await api('commerce_intel_search',{...state.filters,limit:state.pageSize,cursor:state.cursor,include_map:state.mapVisible,include_panels:state.mapVisible,map_layers:prefs.layers,bounds:bounds(),link_map:prefs.link_map});
+      const args={...state.filters,limit:state.pageSize,cursor:state.cursor,include_map:state.mapVisible,include_panels:state.mapVisible,map_layers:prefs.layers,bounds:bounds(),link_map:prefs.link_map,...(state.result?.marker_capacity?{map_limit:5000}:{})};
+      let result=await api('commerce_intel_search',args);if(revision!==state.request)return;
+      if(state.mapVisible&&!args.map_limit&&result.marker_capacity)result=await api('commerce_intel_search',{...args,map_limit:5000});
       if(revision!==state.request)return;
       state.result=result;state.sources=result.sources;
       if(result.panels)state.panels=result.panels;else if(state.mapVisible)loadPanels(revision);
@@ -306,7 +319,7 @@ window.CommerceIntel = ({api,esc,toast,repaint,modal,closeModal,refreshTasks,isA
     return name+(s.mode==='local_evaluation'?'开发测试':'')+' '+s.items.length+(s.truncated?'/'+s.matched+' · 上限600':' 条');
   }
   function map(){
-    return `<section class="card intel-map"><div class="intel-map-head"><h2>全球事件分布</h2>${dashboard.panelButtons('map')}<div class="intel-map-controls">${button('+','zoom-in',{'aria-label':'放大地图'})}${button('−','zoom-out',{'aria-label':'缩小地图'})}${button('复位','map-reset')}<span id="intel-map-zoom">${Math.round(720/state.box.w*100)}%</span></div></div><div class="intel-map-canvas"><svg id="intel-map-svg" viewBox="${state.box.x} ${state.box.y} ${state.box.w} ${state.box.h}" tabindex="0" aria-label="公开信息事件地图，可拖动平移，使用加减按钮缩放"><rect x="-720" y="-360" width="2160" height="1080" fill="var(--ui-color-map-ocean)"/>${[60,120,180,240,300].map(y=>`<path d="M0 ${y}H720" stroke="var(--ui-color-map-grid)"/>`).join('')}${[120,240,360,480,600].map(x=>`<path d="M${x} 0V360" stroke="var(--ui-color-map-grid)"/>`).join('')}<path d="__INTEL_WORLD_PATH__" fill="var(--ui-color-map-land)" stroke="var(--ui-color-map-border)" stroke-width=".35"/><g id="intel-map-markers">${clusters()}${referenceMarkers()}${liveMarkers()}</g></svg><div id="intel-cluster-popup">${clusterPopup()}</div></div><div class="intel-map-legend"><span><i class="disaster"></i>GDACS 灾害</span><span><i class="quake"></i>USGS 地震</span><span>◇ 地理参考</span><span>${esc(observationLegend('flights'))}</span><span>${esc(observationLegend('vessels'))}</span><span>${state.result?.markers.length||0}/${state.result?.map_stats?.matched??state.result?.stats.geolocated??0} 条事件坐标 · 上限250</span></div><small class="muted">底图 Natural Earth · 数字为邻近记录数量 · 点位不代表经营影响</small></section>`;
+    return `<section class="card intel-map"><div class="intel-map-head"><h2>全球事件分布</h2>${dashboard.panelButtons('map')}<div class="intel-map-controls">${button('+','zoom-in',{'aria-label':'放大地图'})}${button('−','zoom-out',{'aria-label':'缩小地图'})}${button('复位','map-reset')}<span id="intel-map-zoom">${geo?.active()?geo.zoomPercent():Math.round(720/state.box.w*100)}%</span></div></div><div class="intel-map-canvas"><svg id="intel-map-svg" viewBox="${state.box.x} ${state.box.y} ${state.box.w} ${state.box.h}" tabindex="0" aria-label="公开信息事件地图，可拖动平移，使用加减按钮缩放"><rect x="-720" y="-360" width="2160" height="1080" fill="var(--ui-color-map-ocean)"/>${[60,120,180,240,300].map(y=>`<path d="M0 ${y}H720" stroke="var(--ui-color-map-grid)"/>`).join('')}${[120,240,360,480,600].map(x=>`<path d="M${x} 0V360" stroke="var(--ui-color-map-grid)"/>`).join('')}<path d="__INTEL_WORLD_PATH__" fill="var(--ui-color-map-land)" stroke="var(--ui-color-map-border)" stroke-width=".35"/><g id="intel-map-markers">${clusters()}${referenceMarkers()}${liveMarkers()}</g></svg><div id="intel-cluster-popup">${clusterPopup()}</div></div><div class="intel-map-legend"><span><i class="disaster"></i>GDACS 灾害</span><span><i class="quake"></i>USGS 地震</span><span>◇ 地理参考</span><span>${esc(observationLegend('flights'))}</span><span>${esc(observationLegend('vessels'))}</span><span>${state.result?.markers.length||0}/${state.result?.map_stats?.matched??state.result?.stats.geolocated??0} 条事件坐标 · 上限${state.result?.marker_limit||250}</span></div><small class="muted">底图 Natural Earth · 数字为邻近记录数量 · 点位不代表经营影响</small></section>`;
   }
   function topicPanels(){return `<div id="intel-topic-panels" class="intel-topic-panels">${topicPanelContents()}</div>`;}
   function topicPanel(category){
@@ -326,9 +339,9 @@ window.CommerceIntel = ({api,esc,toast,repaint,modal,closeModal,refreshTasks,isA
   function globalView(){
     rememberScroll();
     if(state.side!=='list')return `<section class="intel-root intel-reader" aria-labelledby="intel-reader-title"><header class="intel-reader-header">${button(state.focusPanel?'返回面板':state.mapVisible?'返回仪表盘':'返回列表','reader-back')}<h2 id="intel-reader-title" tabindex="-1">${({detail:'来源详情',sources:'信息源与采集',topics:'关注主题'})[state.side]}</h2></header>${state.side==='detail'?detail():state.side==='sources'?sources():topics()}</section>`;
-    if(state.focusPanel){const id=state.focusPanel;return `<section class="intel-root intel-focused-view"><header class="intel-reader-header">${button(state.mapVisible?'返回仪表盘':'返回列表','focus-back')}<h2 id="intel-panel-focus-title" tabindex="-1">${({map:'全球事件分布',latest:'资讯列表',live:'实时监测',...categories})[id]}</h2></header>${id==='map'?dashboard.controls(state.result,state.sources,live?.source)+map():id==='latest'?stream():id==='live'?live.panel():topicPanel(id)}</section>`;}
+    if(state.focusPanel){const id=state.focusPanel;return `<section class="intel-root intel-focused-view"><header class="intel-reader-header">${button(state.mapVisible?'返回仪表盘':'返回列表','focus-back')}<h2 id="intel-panel-focus-title" tabindex="-1">${({map:'全球事件分布',latest:'资讯列表',live:'实时监测',...categories})[id]}</h2>${assistantAction()}</header>${id==='map'?dashboard.controls(state.result,state.sources,live?.source)+map():id==='latest'?stream():id==='live'?live.panel():topicPanel(id)}</section>`;}
     const translateBusy=state.readingBusy||['queued','running'].includes(state.readingJob?.status);
-    return `<div class="intel-root ${state.mapVisible?'intel-dashboard':'intel-list-view'}"><header class="intel-header"><div><div class="intel-display-switch" role="group" aria-label="情报布局">${button('仪表盘','dashboard-view',{'aria-pressed':state.mapVisible},state.mapVisible?'primary':'quiet')}${button('资讯列表','list-view',{'aria-pressed':!state.mapVisible},state.mapVisible?'quiet':'primary')}</div>${auxiliaryActions()}</div><div>${button('补齐正文','article-plan',{disabled:state.articleBatchBusy||batchActive(state.articleBatch)})}${button(translateBusy?'中文标题处理中…':'补全中文标题','reading-start',{disabled:translateBusy||!state.result?.items.length})}${button(state.refreshing?'正在提交…':activeJob(state.collectionJob)?'采集中…':'采集最新来源','refresh',{disabled:!!state.refreshing||!!activeJob(state.collectionJob)},'primary')}</div></header>
+    return `<div class="intel-root ${state.mapVisible?'intel-dashboard':'intel-list-view'}"><header class="intel-header"><div><div class="intel-display-switch" role="group" aria-label="情报布局">${button('仪表盘','dashboard-view',{'aria-pressed':state.mapVisible},state.mapVisible?'primary':'quiet')}${button('资讯列表','list-view',{'aria-pressed':!state.mapVisible},state.mapVisible?'quiet':'primary')}</div>${assistantAction()}${auxiliaryActions()}</div><div>${button('补齐正文','article-plan',{disabled:state.articleBatchBusy||batchActive(state.articleBatch)})}${button(translateBusy?'中文标题处理中…':'补全中文标题','reading-start',{disabled:translateBusy||!state.result?.items.length})}${button(state.refreshing?'正在提交…':activeJob(state.collectionJob)?'采集中…':'采集最新来源','refresh',{disabled:!!state.refreshing||!!activeJob(state.collectionJob)},'primary')}</div></header>
       ${toolbar()}${state.mapVisible?dashboard.controls(state.result,state.sources,live?.source):''}${collectionStatus()}${readingStatus()}${!state.mapVisible||batchActive(state.articleBatch)?articleBatchStatus():''}${state.error?ui.alert(state.error,'danger')+button('重试检索','search'):''}
       <div class="intel-results-head">${sourceStrip()}</div>
       ${state.mapVisible?live?.ribbon()||'':''}
@@ -349,7 +362,7 @@ window.CommerceIntel = ({api,esc,toast,repaint,modal,closeModal,refreshTasks,isA
       <h3>${esc(titleText(item))}</h3>
       ${titleCaption(item)?`<p class="intel-translation-label">${esc(titleCaption(item))}</p>`:''}${titleText(item)!==item.title?`<details><summary>原文标题</summary><p>${esc(item.title)}</p></details>`:''}
       <p class="intel-record-meta">${fmt(item.published)} · ${esc(countryText(item))}</p>
-      <div class="intel-record-actions">${button(item.is_bookmarked?'取消收藏':'收藏记录','bookmark',{disabled:busy})}${!reading?button(titleBusy?'中文标题处理中…':'生成中文标题','reading-start',{disabled:titleBusy}):''}${button('查看经营关联','exposure',{disabled:state.changed||!onExposure})}</div>
+      <div class="intel-record-actions">${assistantAction('与 AI 讨论',{disabled:state.changed})}${button(item.is_bookmarked?'取消收藏':'收藏记录','bookmark',{disabled:busy})}${!reading?button(titleBusy?'中文标题处理中…':'生成中文标题','reading-start',{disabled:titleBusy}):''}${button('查看经营关联','exposure',{disabled:state.changed||!onExposure})}</div>
       ${searchEvidence(item,true)}${readingStatus()}${articleSection()}
       <section class="intel-side-section"><h3>经营关联与核查</h3><p>选择已有商品工作项与明确的国家、仓库或路线范围，查看关联线索。实际影响仍需核查。</p>
         ${item.review_task?`<p>核查任务：${esc(({queued:'已排队',running:'处理中',completed:'已返回结果',cancelled:'已取消',awaiting_input:'等待补充',failed:'失败',interrupted:'已中断'})[item.review_task.status]||item.review_task.status)}</p>${ui.button({label:'查看共享核查任务',attrs:{'data-tab':'tasks'}})}`:button('创建影响核查任务','review',{disabled:busy||state.changed,'data-intel-task':item.id})}
@@ -376,7 +389,7 @@ window.CommerceIntel = ({api,esc,toast,repaint,modal,closeModal,refreshTasks,isA
     const zoom=document.querySelector('#intel-map-zoom');if(zoom)zoom.textContent=Math.round(720/w*100)+'%';
     if(!keepCluster){state.cluster=null;state.reference=null;}const popup=document.querySelector('#intel-cluster-popup');if(popup)popup.innerHTML=clusterPopup();
   }
-  function zoom(factor){const old=state.box,w=old.w/factor;setBox({w,x:old.x+(old.w-w)/2,y:old.y+(old.h-w/2)/2});refreshMapLink()}
+  function zoom(factor){if(geo?.active()){geo.zoomBy(factor);return;}const old=state.box,w=old.w/factor;setBox({w,x:old.x+(old.w-w)/2,y:old.y+(old.h-w/2)/2});refreshMapLink()}
   function watchOpen(){
     const pending=formFilters();
     if(JSON.stringify(pending)!==JSON.stringify(state.filters))applyFilters(pending);
@@ -456,8 +469,8 @@ window.CommerceIntel = ({api,esc,toast,repaint,modal,closeModal,refreshTasks,isA
     else if(['map-toggle','dashboard-view','list-view'].includes(action)){state.mapVisible=action==='map-toggle'?!state.mapVisible:action==='dashboard-view';search({keepSelection:true});repaint()}
     else if(action==='zoom-in')zoom(1.6);
     else if(action==='zoom-out')zoom(1/1.6);
-    else if(action==='map-reset'){setBox({x:0,y:0,w:720});refreshMapLink();}
-    else if(action==='locate'&&state.selected?.location){state.side='list';state.mapVisible=true;state.focusPanel='map';const p=state.selected.location;state.box={x:Math.max(0,Math.min(480,(p.lon+180)*2-120)),y:Math.max(0,Math.min(240,(90-p.lat)*2-60)),w:240,h:120};search({keepSelection:true});repaint();requestAnimationFrame(()=>document.querySelector('#intel-map-svg')?.focus())}
+    else if(action==='map-reset'){geo?.reset();setBox({x:0,y:0,w:720});refreshMapLink();}
+    else if(action==='locate'&&state.selected?.location){state.side='list';state.mapVisible=true;state.focusPanel='map';geo?.focus(state.selected);const p=state.selected.location;state.box={x:Math.max(0,Math.min(480,(p.lon+180)*2-120)),y:Math.max(0,Math.min(240,(90-p.lat)*2-60)),w:240,h:120};search({keepSelection:true});repaint();requestAnimationFrame(()=>document.querySelector('#intel-map-svg')?.focus())}
     else if(action==='cluster-close'){state.cluster=null;state.reference=null;const popup=document.querySelector('#intel-cluster-popup');if(popup)popup.innerHTML=''}
     else if(action==='item-retry'&&state.selectedId)openItem(state.selectedId);
     else if(action==='bookmark'||action==='unviewed'||action==='review')itemAction(action);
@@ -520,11 +533,11 @@ window.CommerceIntel = ({api,esc,toast,repaint,modal,closeModal,refreshTasks,isA
   function view(){return state.section==='social'?sectionTabs()+social.view():globalView()}
   function aside(){return state.section==='social'?social.aside():globalAside()}
   document.addEventListener('click',event=>{const b=event.target.closest('[data-intel-section]');if(!b||!['global','social'].includes(b.dataset.intelSection))return;state.section=b.dataset.intelSection;repaint();enter()});
-  async function enter(){if(state.section==='social')return social.enter();readArticleBatch();loadJobs();await dashboard.enter();const prefs=dashboard.preferences();state.filters.hours=prefs.time;state.draft.hours=prefs.time;if(!state.result)state.box=dashboard.region();live?.enter();search({keepSelection:true});loadWatches();try{state.wm=await api('commerce_worldmonitor_status');if(state.side==='sources')repaint()}catch{}}
+  async function enter(){if(state.section==='social')return social.enter();readArticleBatch();loadJobs();await dashboard.enter();const prefs=dashboard.preferences();state.filters.hours=prefs.time;state.draft.hours=prefs.time;if(!state.result){state.box=dashboard.region();if(prefs.region!=='global')geo?.box(state.box);}live?.enter();search({keepSelection:true});loadWatches();try{state.wm=await api('commerce_worldmonitor_status');if(state.side==='sources')repaint()}catch{}}
   if(location.hash==='#social'){
     const jump=()=>{const tab=document.querySelector('[data-tab="intelligence"]');if(!tab)return false;tab.click();return true};
     const observer=new MutationObserver(()=>{if(document.querySelector('[data-tab="intelligence"]')){observer.disconnect();jump()}});
     observer.observe(document.querySelector('#app')||document.body,{childList:true,subtree:true});
   }
-  return {view,aside,enter};
+  return {view,aside,enter,context,beforePaint:()=>geo?.beforePaint(),afterPaint:()=>geo?.mount(document.querySelector('.intel-map-canvas'),geoRows(),live?.selection()?.id||state.selectedId||state.reference?.id)};
 };

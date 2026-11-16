@@ -14,6 +14,7 @@ import uuid
 import webbrowser
 from research import canonical, digest
 import ozon_reader
+from operating_statistics import inventory_summary, sales_window
 import feishu_sender
 from sync_guard import can_send, delivery_state
 
@@ -123,13 +124,14 @@ class LiveConnections:
 
     def _fresh(self, snapshot, config):
         if not snapshot:return False
-        if snapshot['data'].get('kind')=='orders'and snapshot['data'].get('coverage_days')!=config['lookback_days']:return False
+        if snapshot['data'].get('kind') in ('orders','sales') and snapshot['data'].get('coverage_days')!=config['lookback_days']:return False
+        if snapshot['data'].get('kind')=='sales' and snapshot['data'].get('date_to')!=sales_window(config)[1].isoformat():return False
         dt=datetime.fromisoformat(snapshot['observed_at'])
         return 0<=(datetime.now(timezone.utc)-dt).total_seconds()<=config['max_age_seconds']
 
     def status(self, samples=False):
         config=self.config();connection=config.get('connection_id','')
-        orders=self.snapshot(connection,'orders');stock=self.snapshot(connection,'stock')
+        orders=self.snapshot(connection,'orders');stock=self.snapshot(connection,'stock');sales=self.snapshot(connection,'sales')
         with self.core.db() as db:
             job=db.execute('SELECT id,status,started,finished,result FROM live_jobs ORDER BY started DESC LIMIT 1').fetchone()
             outbox=[dict(status=r[0],count=r[1])for r in db.execute('SELECT status,count(*) FROM live_outbox WHERE connection=? GROUP BY status',(connection,))]
@@ -141,6 +143,7 @@ class LiveConnections:
                     feishu_target_label=config['feishu_target_label'],orders=summary(orders),stock=summary(stock),outbox=outbox,timer_running=bool(self.timer and self.timer.is_alive()),
                     last_job=dict(id=job[0],status=job[1],started=job[2],finished=job[3],result=json.loads(job[4]) if job[4] else None) if job else None)
         result['scope_review_version']=1
+        result['sales']=summary(sales)
         if samples:
             result['order_samples']=orders['data']['records'][:8] if orders else []
             result['stock_samples']=self.inventory_rows()[:10]
@@ -172,11 +175,11 @@ class LiveConnections:
     def _sync(self, ident, config):
         results={};connection=config['connection_id']
         try:
-            for kind in ('orders','stock'):
+            for kind in ('orders','stock','sales'):
                 try:
                     batch=ozon_reader.fetch(config,kind,request=lambda *args:self._request(ident,*args))
                     current=self.config()
-                    if current.get('connection_id')!=connection or(kind=='orders'and current['lookback_days']!=config['lookback_days']):
+                    if current.get('connection_id')!=connection or(kind in ('orders','sales') and current['lookback_days']!=config['lookback_days']):
                         results[kind]={'status':'superseded'};continue
                     had_baseline=self.snapshot(connection,kind) is not None
                     self._publish(connection,kind,batch,config,had_baseline)
@@ -209,7 +212,7 @@ class LiveConnections:
                         if record['created_at']:lines.append('平台订单时间：'+record['created_at'])
                         lines.append('来源：Ozon Seller API，只读同步。未执行发货。')
                         self._enqueue(db,current_config,'order:'+connection+':'+entity,'\n'.join(lines))
-            else:
+            elif kind=='stock':
                 for record in self._stock_rows(batch,config):
                     entity=record['key'];available=record['available'];level='unknown' if available is None else 'zero' if available==0 else 'low' if available<=config['low_stock_threshold'] else 'normal'
                     old=db.execute('SELECT state,episode FROM live_seen WHERE connection=? AND kind=? AND entity=?',(connection,kind,entity)).fetchone()
@@ -255,7 +258,15 @@ class LiveConnections:
             query=args.get('query','').lower();rows=[r for r in order_rows if (not args.get('status') or r['status']==args['status']) and query in canonical(r).lower()]
             return dict(mode='live',orders=rows,total=len(rows),data_source='ozon_api' if orders else 'not_connected',observed_at=orders['observed_at'] if orders else None,scope_confirmed=config['orders_scope_confirmed'],stale=not self._fresh(orders,config))
         if name=='commerce_products_list':return dict(mode='live',products=product_rows,data_source='ozon_api' if stock else 'not_connected',stock_basis=config['stock_basis'],stale=not self._fresh(stock,config))
-        return dict(mode='live',currency='USD',timezone='Asia/Shanghai',rate_note='尚无经过核对的销售额和汇率；订单为同步窗口内发货单，库存按已核对口径展示。',sales=None,orders=len(order_rows) if selected and orders else None,pending=sum(r['status'] in PENDING for r in order_rows) if selected and orders else None,stock_alerts=sum(p['available']<=p['threshold']for p in product_rows if p['available'] is not None) if selected and stock and config['stock_basis']!='unconfirmed' and self._fresh(stock,config) else None,platforms=[],updated_at=now(),data_source='ozon_api' if orders or stock else 'not_connected',orders_label='同步发货单',pending_label='待处理发货单')
+        sales=self.snapshot(connection,'sales') if selected else None
+        report=dict(mode='live',currency='',timezone='Asia/Shanghai',rate_note='下单金额为 Ozon revenue 原始值，接口未返回币种，不做汇率折算；发货单与销售分析范围不同。库存按履约方式汇总，执行口径仍单独确认。',sales=None,orders=len(order_rows) if selected and orders else None,pending=sum(r['status'] in PENDING for r in order_rows) if selected and orders else None,stock_alerts=sum(p['available']<=p['threshold']for p in product_rows if p['available'] is not None) if selected and stock and config['stock_basis']!='unconfirmed' and self._fresh(stock,config) else None,platforms=[],updated_at=now(),data_source='ozon_api' if orders or stock or sales else 'not_connected',orders_label='同步发货单',pending_label='待处理发货单',sales_label='下单金额（平台口径）',sales_summary=None,
+                    inventory=inventory_summary(stock,self._fresh(stock,config)) if selected else None)
+        if sales:
+            data=sales['data'];amount=float(data['amount'])
+            report.update(sales=amount,sales_exact=data['amount'],platforms=[dict(id='ozon',name='Ozon',amount=amount)],
+                          sales_summary={key:data[key] for key in ('date_from','date_to','ordered_units','records','metric','metric_label','definition_url','currency_status','upstream_timestamp')})
+            report['sales_summary'].update(stale=not self._fresh(sales,config),observed_at=sales['observed_at'],source_sha256=sales['sha256'])
+        return report
 
     def alerts(self):
         config=self.config();connection=config.get('connection_id','');orders=self.snapshot(connection,'orders');stock=self.snapshot(connection,'stock')
@@ -285,7 +296,8 @@ class LiveConnections:
 
     def export_evidence(self):
         config=self.config();connection=config.get('connection_id','')
-        snapshots={kind:self.snapshot(connection,kind) for kind in ('orders','stock')}
+        snapshots={kind:self.snapshot(connection,kind) for kind in ('orders','stock','sales')}
+        if snapshots['sales'] is None:snapshots.pop('sales')
         with self.core.db() as db:
             deliveries=[dict(id=r[0],status=r[1],created_at=r[2],updated_at=r[3],receipt=json.loads(r[4]) if r[4] else None) for r in db.execute('SELECT id,status,created,updated,receipt FROM live_outbox WHERE connection=? ORDER BY created',(connection,))]
         document=dict(schema='ozon-live-evidence-v1',exported_at=now(),scope={'market':'RU','modes':config['fulfillment_modes'],'orders_reviewed':config['orders_scope_confirmed'],'stock_basis':config['stock_basis']},snapshots=snapshots,delivery_receipts=deliveries,

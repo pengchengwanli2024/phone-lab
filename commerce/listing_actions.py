@@ -196,6 +196,7 @@ class ListingActions:
             if confirmed is not True or a['sha256']!=expected_action_sha256:raise ValueError('listing_action_confirmation_required')
             if state['status']!='approved'or state['dispatch_started']or not state['approved_at']or not 0<=time.time()-state['approved_at']<1800:raise ValueError('listing_action_approval_required')
             if self.occupied(a):raise ValueError('listing_action_other_outcome_unresolved')
+            if self.service.listing_submissions.occupied_sku(c,a['data']['sku'],product_id=a['data']['product_id']):raise ValueError('listing_action_other_outcome_unresolved')
             if self.lock.locked():raise ValueError('listing_action_busy')
             event=self._event(a,expected_event_sha256,key,sig,dict(status='checking',error=None))
         try:
@@ -215,6 +216,8 @@ class ListingActions:
                 if self.stopping.is_set():raise ValueError('listing_action_stopped')
                 state=self.state(a)
                 if not state['approved_at']or not 0<=time.time()-state['approved_at']<1800:raise ValueError('listing_action_approval_required')
+                # The whole-card worker may have started after submit's first check.
+                if self.service.listing_submissions.occupied_sku(c,a['data']['sku'],exclude_image_action=a['id'],product_id=a['data']['product_id']):raise ValueError('listing_action_other_outcome_unresolved')
                 intent=self._event(a,expected,'intent:'+job,'dispatch_intent',dict(status='submitting',dispatch_started=True))
             started=True
             raw,receipt_sha=self.writer({'product_id':int(a['data']['product_id']),'images':a['data']['after_images']},c['ozon_client_id'],c['ozon_api_key'])

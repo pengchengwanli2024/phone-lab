@@ -8,7 +8,7 @@ Ozon、TikTok Shop、Amazon、Mercado Libre、Temu、Shopify与WooCommerce分别
 
 `commerce_store_workbench`聚合原商品工作项、导入/店铺提醒、模型/研究待办及渠道接入状态，支持从桌面或窄屏返回原工作；单一来源读取失败显示不完整。提醒“已阅”调用原接口，不改变发货、采购或平台状态。消息送达、远程访问和平台写入分别展示，当前远程网络与身份入口未启用。
 
-相关源码为`listing_workspace.py`、`workbench/src/listing-page.tsx`及`store-workbench.tsx`；不增加平台写入、消息发送、独立任务队列或新的业务真相来源。
+准备方案及日常目录源码为`listing_workspace.py`、`workbench/src/listing-page.tsx`及`store-workbench.tsx`；其普通保存/查询不执行平台写入或消息发送。单商品整卡执行使用下述独立确认入口，沿用原账本。
 
 「多平台接入」为 TikTok Shop、Amazon、Mercado Libre 与 Temu 提供独立的多店铺配置、明确请求的读取作业和私有证据快照。原有 Ozon 连接继续使用「Ozon与飞书」，其配置和通知开关不迁入本模块。
 
@@ -33,6 +33,18 @@ Ozon 俄罗斯的`commerce_listing_release_bind/refresh`接收用户另行提交
 `commerce_listing_directory`按当前数据模式分页读取原保存方案，日常运营可回到准确的商品/平台/店铺/市场，刷新后保留目标。`commerce_listing_reconcile`仅核对现有快照：店铺标识须绑定原接入、市场与配置版本一致、SKU精确且唯一、快照完整并在有效期内。Ozon沿用原库存读取；其它接入复用已有商品或库存投影。缺少、重复、陈旧或未支持的资源分别返回状态，不自动同步或推断发布成功。标题、同币种价格和币种列出差异；数量保留来源范围，不直接等同可售库存。示例商品不读取真实店铺经营快照。
 
 `commerce_listing_review`以准确方案、来源、配置与快照版本保存本地核对声明，复用原`org_artifacts`，并发冲突需刷新后确认。记录可表示已逐项核对或仍需补充；新方案、快照或失效条件会使旧声明过期。声明不批准平台规则、资质或提交，也不替代发布回读。Shopify与WooCommerce均保留准备方向，当前核对不为未接入平台伪造快照。
+
+### Ozon 单商品整卡导入 / 更新
+
+当前 Ozon/RU 桌面上架页通过 `submission_available` / `submission_supported` 声明整卡能力，旧服务不展示不可用控件。可选 `ozon.publication` 保存明确的包装深宽高、含包装重量、mm/g 单位、适用 VAT 及依据、描述对应的文本属性；留空或零只作为待补资料，不推算税率或实物规格。类型属性 8229、当前类目与字典证据、描述映射、原 S6 负责人签收、本地申请已阅及全部原门禁分别校验。
+
+`commerce_listing_submission_get/probe/prepare` 沿用原 `org_artifacts` 与 `live_snapshots/live_http`。只读核对准确 SKU 的商品、完整简单属性和标准图库，固定平台前值、完整请求及各自 SHA。当前适配刻意限定每次一个商品、1–10 张标准 HTTPS 图片和 mm/g 包装；这不是平台全部能力或上限。现有商品保留平台返回的其他简单属性、条码与原价；复合属性、特殊媒体、既有商品身份丢失或类目/类型改变会拒绝执行。计划数量不写入库存。
+
+`commerce_listing_submission_submit` 需准确计划及事件 SHA、姓名或标识和独立的明确执行确认，界面展示实际 JSON 与前后差异。执行前再次读取平台前值与门禁，持久记录发送意图，再至多发送一次 `/v3/product/import` HTTP 正文；无自动重试。当前店铺同 SKU 的未知整卡或图库动作互相阻塞。已返回的真实任务编号写入原发布事件，沿用原任务/商品回读；受理、导入完成、审核与可售分别表达，不将 HTTP 200、任务编号或负责人声明标成商品已可售。
+
+仅能撤销尚未发送的本地计划，不取消平台任务。连接超时、异常回复或发送后中断保持结果未知，重启/刷新不重发。原账号换新密钥后可继续只读核对，不能重用旧计划写入。未知结果需用户在 Ozon 后台核对原任务后绑定引用、取得新鲜成功导入与准确商品/属性/包装观测，并另行逐项声明实际图片与税率等。`finish` 明确标记 `owner_platform_attestation_not_transport_proof`；导出区分系统收到任务与未知提交后的本人声明，不冒充传输成功证明、独立认证或原请求已被平台完整采用。
+
+官方依据：[Seller API 商品导入及更新流程](https://dev.ozon.ru/start/294-Avtomaticheskii-import-i-obnovlenie-tovarov-v-Seller-API)、[ImportProductsV3 参考](https://docs.ozon.ru/api/seller/#operation/ProductAPI_ImportProductsV3)。合成回归不代表实际商品完成上架；真实包装、税率、权利资料、负责人签收及针对准确商品的写入授权仍须分别完成。
 
 ## 使用
 

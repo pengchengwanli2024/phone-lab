@@ -1,0 +1,40 @@
+.intel-geo-stage{position:absolute;inset:0;overflow:hidden;background:#040a15;color:#e9f2ff;isolation:isolate;outline:none;border-radius:inherit}
+.intel-geo-stage:focus-visible{outline:2px solid var(--ui-color-brand);outline-offset:-3px}
+.intel-geo-render{position:absolute;inset:0;overflow:hidden}
+.intel-geo-render[hidden]{display:none}
+.intel-geo-render canvas{display:block;outline:none}
+.intel-geo-toolbar{position:absolute;z-index:3;left:12px;right:52px;top:12px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;pointer-events:none}
+[data-ui-appearance] .intel-root .intel-geo-toolbar .ui-button{pointer-events:auto;min-height:32px;padding:5px 10px;font-size:11px;color:#d3e4f8;background:#0b1728e8;border:1px solid #7893b43d;border-radius:7px;box-shadow:none}
+[data-ui-appearance] .intel-root .intel-geo-toolbar .ui-button[aria-pressed=true]{background:#245d9cdd;color:#fff;border-color:#8cbdff88}
+.intel-geo-toolbar-divider{flex:1}
+.intel-geo-compass{position:absolute;z-index:2;top:16px;right:18px;text-align:center;font:10px var(--ui-font-family);color:#9bb2ce;pointer-events:none}
+.intel-geo-compass span{display:block;margin:4px auto;width:0;height:0;border-inline:4px solid transparent;border-bottom:10px solid #c2dafa}
+.intel-geo-tooltip{position:absolute;z-index:5;width:max-content;max-width:210px;pointer-events:none;background:#081422ee;border:1px solid #7aa8d45e;border-radius:7px;padding:8px 11px;box-shadow:0 4px 18px #0005;color:#eef6ff;font-size:12px;line-height:1.6}
+.intel-geo-tooltip strong,.intel-geo-tooltip small{display:block}.intel-geo-tooltip small{color:#adc2d9;font-size:10px}
+.intel-geo-loading{position:absolute;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse,#142840,#040a15 70%);z-index:1;color:#a7bdd8;font-size:13px;pointer-events:none}
+.intel-geo-loading[hidden],.intel-geo-error[hidden],.intel-geo-tooltip[hidden]{display:none}
+.intel-geo-error{position:absolute;z-index:4;left:12px;right:12px;top:64px;background:#24212aeb;color:#ffe2b6;border:1px solid #be9a6166;padding:10px;font-size:12px;line-height:1.5;border-radius:7px}
+.intel-geo-caption{position:absolute;bottom:9px;left:12px;right:12px;display:flex;gap:12px;justify-content:space-between;align-items:end;color:#8fa5bd;font-size:10px;pointer-events:none;z-index:2;text-shadow:0 1px 3px #000}
+.intel-geo-caption small{font-size:9px;text-align:right}
+.intel-map-canvas.has-webgl>#intel-map-svg{visibility:hidden}
+.intel-map-canvas>#intel-cluster-popup{position:absolute;z-index:5;left:0;right:0;bottom:0}
+.intel-map-canvas:has(.intel-geo-stage) .intel-cluster-popup{background:var(--ui-color-surface);color:var(--ui-color-text)}
+.intel-geo-stage:is([data-ready=failed],[data-ready=lost]){background:transparent;pointer-events:none}
+.intel-geo-stage:is([data-ready=failed],[data-ready=lost]) .intel-geo-render,.intel-geo-stage:is([data-ready=failed],[data-ready=lost]) .intel-geo-caption,.intel-geo-stage:is([data-ready=failed],[data-ready=lost]) .intel-geo-compass{display:none}
+.intel-geo-stage:is([data-ready=failed],[data-ready=lost]) .intel-geo-toolbar{pointer-events:auto}
+@media(min-width:1100px){.intel-dashboard .intel-workspace.with-map{height:clamp(500px,40vw,620px)}}
+@media(max-width:1099px){.intel-dashboard .intel-map-canvas:has(.intel-geo-stage){min-height:400px}}
+@media(max-width:600px){
+ .intel-geo-toolbar{left:8px;top:8px;right:35px;gap:3px}
+ [data-ui-appearance] .intel-root .intel-geo-toolbar .ui-button{min-height:40px;padding:5px 7px;font-size:10px}
+ .intel-geo-toolbar-divider{display:none}.intel-geo-compass{right:10px;top:15px}
+ .intel-dashboard .intel-map-canvas:has(.intel-geo-stage){min-height:390px}
+ .intel-geo-caption{left:8px;right:8px;gap:4px;font-size:9px}.intel-geo-caption small{max-width:105px}
+}
+
+.intel-geo-retry{position:absolute;z-index:5;top:120px;left:12px;pointer-events:auto}.intel-geo-retry[hidden]{display:none}
+@media(max-width:600px){[data-ui-appearance] .intel-root .intel-geo-toolbar .ui-button{min-height:44px}}
+
+.intel-geo-stage .scene-nav-info{display:none}
+
+.intel-live-popup header{display:flex;align-items:center;justify-content:space-between;gap:12px}.intel-live-popup p{margin:4px 0}.intel-live-popup small{display:block;color:var(--ui-color-muted);font-size:11px}.intel-live-popup>button{padding-block:6px}

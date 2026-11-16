@@ -1,0 +1,24 @@
+{
+  "name": "@phone-lab/intel-map",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check"
+  },
+  "dependencies": {
+    "globe.gl": "2.45.0",
+    "maplibre-gl": "6.18.0",
+    "@deck.gl/core": "9.4.0",
+    "@deck.gl/layers": "9.4.0",
+    "@deck.gl/maplibre": "9.4.0",
+    "three": "0.183.2",
+    "world-atlas": "2.0.2",
+    "topojson-client": "3.1.0",
+    "d3-geo": "3.1.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

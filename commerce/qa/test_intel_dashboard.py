@@ -55,6 +55,16 @@ class IntelDashboardTests(unittest.TestCase):
         self.assertIn('洪水', result['markers'][0]['display']['zh_title'])
         self.assertEqual(result['markers'][0]['title'], 'Green flood alert in Mexico')
 
+    def test_gpu_marker_budget_keeps_old_default_and_validates_cap(self):
+        self.collect('usgs', feed(300))
+        self.assertEqual(len(self.call('search', {'include_map': True})['markers']), 250)
+        result = self.call('search', {'include_map': True, 'map_limit': 5000})
+        self.assertEqual(len(result['markers']), 300)
+        self.assertFalse(result['map_stats']['truncated'])
+        for invalid in (0, 5001, True, '5000'):
+            with self.assertRaises(ValueError):
+                self.call('search', {'map_limit': invalid})
+
     def test_map_link_filters_list_and_panels_but_default_map_only_does_not(self):
         self.collect('usgs', feed(2))
         outside = {'west': 100, 'east': 150, 'south': 0, 'north': 60}

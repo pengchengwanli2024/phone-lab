@@ -21,7 +21,7 @@ function fixture(overrides={},options={}){
       return nodes.get(selector)||null;},getElementById(id){return this.querySelector('#'+id)}};
   const ui={icon:()=>'',badge:label=>`<span>${esc(label)}</span>`,alert:text=>`<div role="alert">${text}</div>`,
     field:(label,control)=>`<label>${label}${control}</label>`,input:props=>`<input ${attrs(props)}>`,
-    select:props=>`<select ${attrs(props)}></select>`,button:({label,attrs:a})=>`<button ${attrs(a)}>${label}</button>`};
+    select:props=>`<select ${attrs(props)}></select>`,button:({label,action,attrs:a})=>`<button ${attrs({...(action?{'data-action':action}:{}),...a})}>${label}</button>`};
   const window={CommerceUI:ui,CommerceSocial:()=>({view:()=>'',aside:()=>'',enter(){}}),addEventListener(type,fn){windowEvents.set(type,[...(windowEvents.get(type)||[]),fn])}};
   let liveOptions;if(options.live)window.CommerceIntelLive=opts=>{liveOptions=opts;return {enter:async()=>{},read:async()=>{},source:()=>null,ribbon:()=>'',panel:()=>'',mapMarkers:()=>'',popup:()=>'',dismiss(){},hasSelection:()=>false}};
   vm.runInNewContext(source,{window,document,location:{hash:''},Date,URL,crypto:globalThis.crypto,
@@ -275,4 +275,27 @@ test('lost capture and leaving the window release the map interaction lock',asyn
 test('a hidden map with zero width cannot start a nonfinite pan',async()=>{
   const f=await mapGestureFixture({width:0});f.dispatch('pointerdown',f.event(100));f.dispatch('pointermove',f.event(140));
   assert.equal(f.liveBlocked(),false);assert.doesNotMatch(f.viewBox(),/NaN|Infinity/);
+});
+
+
+test('global intelligence exposes the shared AI entry and binds only a currently displayed unchanged record',async()=>{
+ const f=fixture();await f.enter();
+ assert.match(f.html,/data-action="copilot-open"[^>]*>AI 助手/);
+ assert.equal(f.intel.context(),null);
+ await f.click('',{intelId:f.rows[0].id});
+ assert.match(f.html,/data-action="copilot-open"[^>]*>与 AI 讨论/);
+ assert.deepEqual(structuredClone(f.intel.context()),{kind:'intel',id:f.rows[0].id});
+ await f.click('reader-back');assert.equal(f.intel.context(),null);
+ assert.ok(f.html.includes('intel-map-svg'));assert.ok(f.calls.every(c=>!c.name.startsWith('commerce_copilot_')),'Opening a contextual entry must not send a model request');
+});
+
+
+test('the actual shared entry passes the selected public record scope and never labels it as example data',async()=>{
+ const f=fixture();await f.enter();await f.click('',{intelId:f.rows[0].id});
+ const app=await readFile(new URL('../web/app.js',import.meta.url),'utf8');
+ const start=app.indexOf('  function copilotContext(){'),end=app.indexOf('  const copilot=reactHost?',start);
+ const sandbox={state:{tab:'intelligence',demo:true},intel:f.intel,copilotEntity:null,document:{querySelector:()=>null}};
+ vm.runInNewContext(app.slice(start,end)+';this.actualContext=copilotContext;',sandbox);
+ assert.deepEqual(structuredClone(sandbox.actualContext()),{module:'intelligence',demo:false,platform:'all',store_id:'all',market:'all',entity:{kind:'intel',id:f.rows[0].id}});
+ await f.click('reader-back');assert.equal(sandbox.actualContext().entity,undefined);
 });

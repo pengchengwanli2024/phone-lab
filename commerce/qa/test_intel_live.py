@@ -45,6 +45,19 @@ class IntelLiveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'invalid_intel_map_bounds'):
             self.live.get(bounds={'west': 900, 'east': 1, 'south': 0, 'north': 10})
 
+    def test_gpu_position_budget_is_bounded_and_default_is_compatible(self):
+        now = int(time.time())
+        rows = [dict(id=f'flight-{i}', kind='flight', observed_at=now, location=dict(lon=110, lat=30)) for i in range(800)]
+        self.live._save('flights', dict(items=rows, last_success=now))
+        self.assertEqual(len(self.live.get()['sources']['flights']['items']), 600)
+        result = self.live.get(limit=10000)
+        self.assertEqual(result['position_capacity'], 10000)
+        self.assertEqual(len(result['sources']['flights']['items']), 800)
+        self.assertFalse(result['sources']['flights']['truncated'])
+        for invalid in (0, 10001, True, '10000', 2.5):
+            with self.assertRaisesRegex(ValueError, 'invalid_intel_live_limit'):
+                self.live.get(limit=invalid)
+
     def test_failed_refresh_keeps_last_good_snapshot_and_does_not_fake_success(self):
         self.live._save('flights', {'items': [], 'observed_at': int(time.time()), 'last_success': time.time()})
         with patch('intel_live.fetch_json', side_effect=ValueError('upstream_http_429')):

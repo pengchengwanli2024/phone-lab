@@ -67,7 +67,7 @@ def project(resource,payload):
 def validate_ozon(value):
     """Optional typed extension; old listing payloads remain byte-for-byte shaped."""
     try:
-        if type(value)is not dict or set(value)!={'type_id','attributes'}:raise ValueError()
+        if type(value)is not dict or set(value)-{'publication'}!={'type_id','attributes'}:raise ValueError()
         ident(value['type_id'],True)
         if type(value['attributes'])is not list or len(value['attributes'])>500:raise ValueError()
         seen=set();out=[]
@@ -83,5 +83,9 @@ def validate_ozon(value):
                 if type(v)is not dict or set(v)!={'dictionary_value_id','value'}:raise ValueError()
                 ident(v['dictionary_value_id'],True);text(v['value'],5000)
             out.append(dict(id=key,values=values,source_ref=row['source_ref'].strip()))
-        return dict(type_id=value['type_id'],attributes=out)
+        extra={}
+        if 'publication'in value:
+            from listing_submission_protocol import validate_publication
+            extra['publication']=validate_publication(value['publication'])
+        return dict(type_id=value['type_id'],attributes=out,**extra)
     except (ValueError,ConnectionIssue):raise ValueError('listing_invalid_ozon')from None

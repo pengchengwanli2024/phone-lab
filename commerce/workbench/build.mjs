@@ -39,6 +39,7 @@ async function tree(folder) {
 const sources = [...await tree(path.join(root,'src')), ...['build.mjs','embed.mjs','package.json','package-lock.json','tsconfig.json'].map(name=>path.join(root,name)), ...['index.html','app.js','style.css','product-workspace.html','product-workspace.bundle.js','product-workspace.bundle.css','copilot-ui.js','copilot-ui.css','research-context.js'].map(name=>path.join(web,name)), ...['tokens.json','kit.js','status.js','primitives.css'].map(name=>path.resolve(root,'../ui',name)),...['catalog.json','contract.json','build_contract.py'].map(name=>path.resolve(root,'../a2ui',name))];
 const digest = async file => createHash('sha256').update(await readFile(file)).digest('hex');
 sources.push(...['skills_ui.js','skills_ui_build.py','ui/build.py','ui/skill-input.js','ui/workspace.css'].map(name=>path.resolve(root,'..',name)));
+sources.push(path.join(web,'intel-map.bundle.js'),path.join(web,'intel-map.bundle.css'),path.join(web,'intel-map.sources.json'));
 const manifest = { sources: {}, outputs: {} };
 for (const file of sources.sort()) manifest.sources[path.relative(path.resolve(root,'..'),file)] = await digest(file);
 for (const name of ['workbench.bundle.js','workbench.bundle.css']) manifest.outputs['web/'+name] = await digest(path.join(web,name));

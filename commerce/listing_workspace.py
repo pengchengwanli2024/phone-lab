@@ -152,9 +152,10 @@ class ListingWorkspace:
         owner=self.service.owner_reviews.state(target)
         owner_current=owner['current']and snapshot['delivery_review']['professional_gate']=='PASS'
         check('professional_gate','平台规则与资质专业核查',owner_current,'blocked')
-        check('platform_adapter','平台提交与发布后回读适配',False,'blocked')
         platform_schema=self.service.listing_schema.evaluate(target,payload,snapshot['case']['scope'].get('synthetic')is True)
         check('platform_schema','平台类目与属性结构',platform_schema['status']=='limited_check_passed','blocked')
+        adapter=target['platform']=='ozon'and target['store_ref']=='ozon-live'and target['market']=='RU'and not self.service.listing_submissions.check_payload(target,payload,snapshot['case']['scope'].get('synthetic')is True)
+        checks.insert(-1,dict(id='platform_adapter',label='平台提交与发布后回读适配',status='prepared'if adapter else'blocked'))
         preview=dict(schema='commerce-listing-preparation-v1',target=target,payload=payload,
                      source_sha256=snapshot['source_sha256'],saved_source_sha256=envelope['source_sha256'] if envelope else None,
                      revision=saved['revision'],checks=checks,delivery_package_sha256=snapshot['delivery_review']['package_sha256'],
@@ -170,7 +171,7 @@ class ListingWorkspace:
                 'missing':[r['id'] for r in checks if r['status']!='prepared'],
                 'preview_sha256':digest(canonical(preview)),'external_execution_allowed':False,
                 'saved_targets':self.saved_targets(case_id,snapshot['source_sha256']),
-                'owner_review_available':True,'rules_independently_verified':False,'synthetic':snapshot['case']['scope'].get('synthetic') is True}
+                'submission_available':True,'owner_review_available':True,'rules_independently_verified':False,'synthetic':snapshot['case']['scope'].get('synthetic') is True}
 
     def save(self,case_id,platform,store_ref,market,payload,expected_revision,expected_source_sha256):
         payload=validate_payload(payload);target,scope=self.scope(case_id,platform,store_ref,market)

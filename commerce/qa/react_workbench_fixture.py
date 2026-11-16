@@ -65,6 +65,9 @@ marker.write_text(json.dumps({'case_id': case_id}))
 if os.environ.get('COMMERCE_QA_OWNER_REVIEW')=='1':
     from fixture_owner_review import install as install_owner_review
     install_owner_review(app)
+if os.environ.get('COMMERCE_QA_SUBMISSION')=='1':
+    from fixture_listing_submission import install as install_submission
+    install_submission(app)
 if os.environ.get('COMMERCE_QA_LISTING_ACTIONS')=='1':
     from fixture_listing_actions import install as install_listing_actions
     install_listing_actions(app)
@@ -120,6 +123,7 @@ print('Synthetic React acceptance server ready on loopback', flush=True)
 try:
     server.CommerceHTTPServer(('127.0.0.1', server.PORT), server.Handler).serve_forever()
 finally:
+    app.listing_submissions.stop()
     app.listing_releases.stop()
     app.listing_schema.stop()
     app.agent_runtime.stop()

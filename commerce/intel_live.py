@@ -143,7 +143,7 @@ def parse_quote(data, symbol, name):
 def definitions(schema, string):
     return [
         ('commerce_intel_live_get', '只读共享航空器、船舶与行情快照，含观测时间、陈旧/失败/缺少密钥状态；不发起采集',
-         schema({'bounds': {'type': 'object'}, 'query': {'type': 'string', 'maxLength': 64}})),
+         schema({'bounds': {'type': 'object'}, 'query': {'type': 'string', 'maxLength': 64}, 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 10000}})),
         ('commerce_intel_live_refresh', '明确刷新公开位置和行情；后台有界执行、跨客户端共用限频，旧观测不冒充实时结果',
          schema({'source': {'type': 'string', 'enum': ['all', *SOURCES]}, 'evaluation': {'type': 'boolean'},
                  'evaluation_session': {'type': 'string', 'enum': ['start', 'stop']},
@@ -181,7 +181,9 @@ class IntelLive:
         with self.core.db() as db:
             db.execute('INSERT OR REPLACE INTO intel_live_snapshots VALUES (?,?)', (source, json.dumps(value, ensure_ascii=False, allow_nan=False)))
 
-    def get(self, bounds=None, query=''):
+    def get(self, bounds=None, query='', limit=600):
+        if type(limit) is not int or not 1 <= limit <= 10000:
+            raise ValueError('invalid_intel_live_limit')
         bounds = validate_bounds(bounds)
         if not isinstance(query, str) or len(query) > 64:
             raise ValueError('invalid_intel_live_query')
@@ -210,7 +212,7 @@ class IntelLive:
                                 else 'empty' if raw.get('last_success') else 'never_received')
                 result[key] = dict(name=spec['name'], provider=spec['provider'], source_url=spec['url'], status=status,
                                    availability=availability, fresh_count=len(fresh), expired_count=len(rows)-len(fresh),
-                                   items=items[:600], matched=len(items), truncated=len(items) > 600, observed_at=raw.get('observed_at'),
+                                   items=items[:limit], matched=len(items), truncated=len(items) > limit, observed_at=raw.get('observed_at'),
                                    last_success=raw.get('last_success'), last_attempt=raw.get('last_attempt'), error=raw.get('error'),
                                    unavailable=raw.get('unavailable', []), next_refresh=raw.get('next_refresh', 0),
                                    partial=raw.get('partial', False),
@@ -221,7 +223,7 @@ class IntelLive:
                     active = config['OPENSKY_USE_CASE'] == 'local_development' and not config['OPENSKY_LICENSE_CONFIRMED'] and now < self._evaluation_until
                     result[key]['evaluation_session'] = dict(active=active, until=self._evaluation_until or None,
                                                             ended=bool(self._evaluation_until and now >= self._evaluation_until))
-        return dict(sources=result, generated_at=int(now), coverage='接收站覆盖范围；位置不代表航线、目的地或运营异常',
+        return dict(sources=result, generated_at=int(now), position_capacity=10000, position_limit=limit, coverage='接收站覆盖范围；位置不代表航线、目的地或运营异常',
                     attribution='航空器：The OpenSky Network；船舶：AISStream；行情：Yahoo Finance / CoinPaprika')
 
     def refresh(self, source='all', evaluation=False, evaluation_session=None, minutes=60):

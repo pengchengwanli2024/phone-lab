@@ -44,6 +44,7 @@ from product_catalog import ProductCatalog, definitions as catalog_definitions
 from catalog_sync import CatalogSync, definitions as catalog_sync_definitions
 from listing_actions import ListingActions, definitions as listing_actions_definitions
 from owner_review import OwnerReviews, definitions as owner_review_definitions
+from listing_submissions import ListingSubmissions, definitions as listing_submission_definitions
 from cost_scenarios import CostScenarios, definitions as cost_scenarios_definitions
 from listing_workspace import ListingWorkspace, definitions as listing_definitions
 from listing_reconciliation import ListingReconciliation, definitions as listing_reconciliation_definitions
@@ -139,7 +140,7 @@ TOOLS=[
  ('commerce_intel_article_list','读取所选记录已留存的正文版本',schema({'item_id':S},['item_id'])),
  ('commerce_intel_article_translate','通过已配置 Hermes 翻译所选正文；分段保留来源绑定，机器译文待校对',schema({'article_id':S},['article_id'])),
  ('commerce_intel_sources','查看全球公开信息源的覆盖、采集时间、失败和陈旧状态',schema()),
- ('commerce_intel_search','分页检索当前快照或本机积累；支持收藏和未查看，不是全网历史搜索',schema({**INTEL_QUERY,'limit':{'type':'string','enum':['20','50','100']},'cursor':{'type':'string','maxLength':400},'include_map':{'type':'boolean'},'include_panels':{'type':'boolean'},'map_layers':{'type':'array','items':{'type':'string'},'maxItems':10},'bounds':{'type':'object'},'link_map':{'type':'boolean'}})),
+ ('commerce_intel_search','分页检索当前快照或本机积累；支持收藏和未查看，不是全网历史搜索',schema({**INTEL_QUERY,'limit':{'type':'string','enum':['20','50','100']},'cursor':{'type':'string','maxLength':400},'include_map':{'type':'boolean'},'map_limit':{'type':'integer','minimum':1,'maximum':5000},'include_panels':{'type':'boolean'},'map_layers':{'type':'array','items':{'type':'string'},'maxItems':10},'bounds':{'type':'object'},'link_map':{'type':'boolean'}})),
  ('commerce_intel_item_get','读取公开来源记录、采集凭据与本地版本摘要；不标记为已查看',schema({'item_id':S},['item_id'])),
  ('commerce_intel_item_update','收藏或按明确版本标记已查看；不表示事实已核实',schema({'item_id':S,'action':{'type':'string','enum':['viewed','unviewed','bookmark','unbookmark']},'record_sha256':S},['item_id','action'])),
  ('commerce_intel_review_create','按已展示的来源版本创建共享核查任务，同版本重复调用复用任务；不会执行店铺操作',schema({'item_id':S,'record_sha256':S},['item_id','record_sha256'])),
@@ -180,6 +181,7 @@ TOOLS.extend(catalog_definitions(schema,S))
 TOOLS.extend(catalog_sync_definitions(schema,S))
 TOOLS.extend(listing_actions_definitions(schema,S))
 TOOLS.extend(owner_review_definitions(schema,S))
+TOOLS.extend(listing_submission_definitions(schema,S))
 TOOLS.extend(cost_scenarios_definitions(schema,S))
 TOOLS.extend(listing_definitions(schema,S))
 TOOLS.extend(listing_reconciliation_definitions(schema,S))
@@ -274,6 +276,7 @@ class Commerce:
         self.listing_schema=ListingSchema(self)
         self.listing_releases=ListingReleases(self)
         self.owner_reviews=OwnerReviews(self)
+        self.listing_submissions=ListingSubmissions(self)
         self.order_imports=OrderImports(self)
         self.workflow_plans=WorkflowPlans(self)
         self.memory=LayeredMemory(self)
@@ -366,7 +369,10 @@ class Commerce:
         if name=='commerce_organization_brief':return self.organization.brief(**args)
         if name=='commerce_organization_handoff':return self.organization.handoff(**args)
         if name=='commerce_organization_capture':return self.organization.capture(args.get('case_id'))
-        if name=='commerce_runtime_status':return {**self.autonomy.status(),'capability_runtime':self.capability_lifecycle.status()}
+        if name=='commerce_runtime_status':
+            status=self.autonomy.status();work=self.listing_submissions.current
+            active=bool(work and work['status']=='running')
+            return {**status,'requested_local_work':status['requested_local_work']+int(active),'capability_runtime':self.capability_lifecycle.status(),'listing_submission_work':dict(kind=work['kind'],status=work['status'])if work else None}
         if name=='commerce_runtime_configure':return self.autonomy.configure(**args)
         if name in ('commerce_task_result','commerce_task_cancel','commerce_task_retry','commerce_task_execute','commerce_task_continue'):
             extension_run=self.capability_tasks.find(args['task_id'])
@@ -380,6 +386,7 @@ class Commerce:
         if name=='commerce_task_retry':return self.autonomy.retry(**args)
         if name.startswith('commerce_listing_schema_'):return self.listing_schema.invoke(name,args)
         if name.startswith('commerce_owner_review_'):return self.owner_reviews.invoke(name,args)
+        if name.startswith('commerce_listing_submission_'):return self.listing_submissions.invoke(name,args)
         if name.startswith('commerce_listing_release_'):return self.listing_releases.invoke(name,args)
         if name.startswith('commerce_listing_action_'):return self.listing_actions.invoke(name,args)
         if name in {d[0]for d in listing_reconciliation_definitions(schema,S)}:return self.listing_reconciliation.invoke(name,args)

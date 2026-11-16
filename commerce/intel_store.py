@@ -181,10 +181,12 @@ class IntelligenceStore:
                 seen.add(row['url']); hits.append(row)
         return hits
 
-    def search(self, query='', source='all', category='all', country='', hours='all', limit='100', scope='latest', view='all', cursor='', include_map=False, map_layers=None, bounds=None, link_map=False, include_panels=False):
+    def search(self, query='', source='all', category='all', country='', hours='all', limit='100', scope='latest', view='all', cursor='', include_map=False, map_layers=None, bounds=None, link_map=False, include_panels=False, map_limit=250):
         filters = self.filters(query, source, category, country, hours, scope, view)
         if limit not in ('20', '50', '100') or not isinstance(cursor, str) or len(cursor) > 400 or any(type(v) is not bool for v in (include_map, link_map, include_panels)):
             raise ValueError('invalid_intel_filter')
+        if type(map_limit) is not int or not 1 <= map_limit <= 5000:
+            raise ValueError('invalid_intel_map_limit')
         layers, bounds = validate_layers(map_layers), validate_bounds(bounds)
         coverage = {}
         hits = self.matches(self.rows(scope), filters, self.core, coverage)
@@ -208,8 +210,8 @@ class IntelligenceStore:
         next_cursor = base64.urlsafe_b64encode(canonical({'o': offset + size, 'f': signature, 'r': revision}).encode()).decode().rstrip('=') if offset + size < len(hits) else None
         mapped = [r for r in hits if r.get('location')]
         visible = [r for r in mapped if layer_for(r) in layers]
-        markers = [{k: r.get(k) for k in ('id', 'record_sha256', 'title', 'source', 'category', 'country', 'country_code', 'publisher_alert', 'published', 'location', 'is_viewed', 'is_bookmarked')} for r in visible[:250]] if include_map else []
-        result = {'items': selected, 'total': len(hits), 'returned': len(selected), 'offset': offset, 'next_cursor': next_cursor, 'query': query, 'filters': filters, 'search_scope': scope, 'scope': 'latest_successful_source_snapshots_not_whole_web_or_history' if scope == 'latest' else 'locally_collected_archive_not_whole_web_or_precollection_history', 'deduplication': 'exact_source_identity_and_url_only', 'store_impact': 'not_assessed', 'stats': {'unviewed': sum(not r['is_viewed'] for r in hits), 'bookmarked': sum(r['is_bookmarked'] for r in hits), 'by_source': dict(Counter(r['source'] for r in hits)), 'geolocated': len(mapped)}, 'markers': markers, 'marker_limit': 250, 'archive': self.stats(), 'map_stats': {'by_layer': dict(Counter(layer_for(r) for r in mapped)), 'matched': len(visible), 'truncated': include_map and len(visible) > 250, 'linked': link_map}}
+        markers = [{k: r.get(k) for k in ('id', 'record_sha256', 'title', 'source', 'category', 'country', 'country_code', 'publisher_alert', 'published', 'location', 'is_viewed', 'is_bookmarked')} for r in visible[:map_limit]] if include_map else []
+        result = {'items': selected, 'total': len(hits), 'returned': len(selected), 'offset': offset, 'next_cursor': next_cursor, 'query': query, 'filters': filters, 'search_scope': scope, 'scope': 'latest_successful_source_snapshots_not_whole_web_or_history' if scope == 'latest' else 'locally_collected_archive_not_whole_web_or_precollection_history', 'deduplication': 'exact_source_identity_and_url_only', 'store_impact': 'not_assessed', 'stats': {'unviewed': sum(not r['is_viewed'] for r in hits), 'bookmarked': sum(r['is_bookmarked'] for r in hits), 'by_source': dict(Counter(r['source'] for r in hits)), 'geolocated': len(mapped)}, 'markers': markers, 'marker_capacity': 5000, 'marker_limit': map_limit, 'archive': self.stats(), 'map_stats': {'by_layer': dict(Counter(layer_for(r) for r in mapped)), 'matched': len(visible), 'truncated': include_map and len(visible) > map_limit, 'linked': link_map}}
         if include_panels:
             result['panels'] = {key: {'items': [r for r in hits if r['category'] == key][:3], 'total': sum(r['category'] == key for r in hits)} for key in PANEL_IDS}
         if coverage:

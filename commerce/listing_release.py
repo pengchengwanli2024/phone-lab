@@ -154,12 +154,13 @@ class ListingReleases:
             r=self.request(request_id);d=r['data'];t=d['target'];old=self.event_duplicate(r,key,sig)
             if old:return self.receipt(old,request_id)
             if t['platform']!='ozon'or t['store_ref']!='ozon-live'or t['market']!='RU':raise ValueError('listing_release_readback_not_supported')
-            if self.binding(t,d['synthetic'])!=d['connection_binding']:raise ValueError('listing_release_connection_changed')
+            if self.binding(t,d['synthetic'])!=d['connection_binding']:self.read_credentials(r)
             sku=d['frozen']['payload']['fields']['sku']
             if not sku:raise ValueError('listing_release_sku_required')
             prior=db.execute("SELECT payload FROM org_artifacts WHERE json_extract(payload,'$.action')='bind'AND json_extract(payload,'$.detail.connection_binding')=?AND json_extract(payload,'$.state.external.task_id')=?AND json_extract(payload,'$.detail.sku')=?",(d['connection_binding'],task_id,sku)).fetchall()
             if any(json.loads(row[0])['request_id']!=request_id for row in prior):raise ValueError('listing_release_external_reference_in_use')
             h=self.head(r);self.cas(h,expected_event_sha256);s=self.state(h)
+            if self.service.listing_submissions.summary(request_id)and self.service.listing_submissions.summary(request_id)['state'].get('task_id'):raise ValueError('listing_submission_reference_locked')
             if s['decision']=='withdrawn':raise ValueError('listing_release_withdrawn')
             s.update(external=dict(task_id=task_id,source_ref=source),observation=None,read={'status':'not_requested','error':None})
             return {**self._write(r,h,s,'bind',key,sig,dict(connection_binding=d['connection_binding'],sku=sku)),'request_id':request_id}
@@ -173,11 +174,19 @@ class ListingReleases:
         if self.binding(t,False)!=d['connection_binding']:raise ValueError('listing_release_connection_changed')
         return c
 
+    def read_credentials(self,r):
+        try:return self.credentials(r)
+        except ValueError as exc:
+            if str(exc)!='listing_release_connection_changed':raise
+            c=self.live.config();sub=self.service.listing_submissions.summary(r['id'])
+            if not sub or not sub['state']['dispatch_started']or sub['store_identity']!=self.service.listing_submissions.store(c)or not c.get('ozon_api_key'):raise
+            return c
+
     def refresh(self,request_id,expected_event_sha256,idempotency_key):
         key=self.key('read',idempotency_key);sig=digest(canonical([request_id,expected_event_sha256]));r=self.request(request_id)
         old=self.event_duplicate(r,key,sig)
         if old:return self.receipt(old,request_id)
-        self.credentials(r)
+        self.read_credentials(r)
         if self.stopping.is_set():raise ValueError('listing_release_stopped')
         if not self.lock.acquire(blocking=False):raise ValueError('listing_release_read_busy')
         launched=False
@@ -185,7 +194,7 @@ class ListingReleases:
             with self.live.config_lock,self.core.atomic():
                 r=self.request(request_id);old=self.event_duplicate(r,key,sig)
                 if old:return self.receipt(old,request_id)
-                c=self.credentials(r);h=self.head(r);self.cas(h,expected_event_sha256);s=self.state(h)
+                c=self.read_credentials(r);h=self.head(r);self.cas(h,expected_event_sha256);s=self.state(h)
                 if not s['external']:raise ValueError('listing_release_external_reference_required')
                 job=dict(id=uuid.uuid4().hex,request_id=request_id,task_id=s['external']['task_id'])
                 s['read']=dict(id=job['id'],status='running',error=None)
@@ -217,12 +226,14 @@ class ListingReleases:
         buffers=[];observation=None;error=None
         try:
             sku=r['data']['frozen']['payload']['fields']['sku']
-            self.credentials(r)
+            self.read_credentials(r)
+            if self.service.listing_schema.connection(self.live.config())!=self.service.listing_schema.connection(c):raise ValueError('listing_release_connection_changed')
             source=self.fetch(job,IMPORT_PATH,{'task_id':int(job['task_id'])},c,lambda p:import_projection(p,sku));buffers.append(source)
             imported=source['projection'];observation=dict(status=imported['status'],import_confirmed=False,external_task_id=job['task_id'])
             if imported['status']=='awaiting_product_readback':
                 product=imported['record']['product_id']
-                self.credentials(r)
+                self.read_credentials(r)
+                if self.service.listing_schema.connection(self.live.config())!=self.service.listing_schema.connection(c):raise ValueError('listing_release_connection_changed')
                 source=self.fetch(job,PRODUCT_PATH,{'product_id':[int(product)]},c,lambda p:product_projection(p,sku,product));buffers.append(source)
                 record=source['projection']['record'];flags=record['statuses']if record else{}
                 observation.update(status=source['projection']['status'],import_confirmed=source['projection']['status']=='product_observed'and flags.get('is_created')is True and flags.get('is_failed')is False)
@@ -231,7 +242,7 @@ class ListingReleases:
         try:
             with self.live.config_lock,self.core.atomic()as db:
                 r=self.request(r['id']);h=self.head(r);s=self.state(h);now=datetime.now(timezone.utc).isoformat()
-                if self.binding(r['data']['target'],r['data']['synthetic'])!=r['data']['connection_binding']:error='listing_release_connection_changed';buffers=[]
+                if self.service.listing_schema.connection(self.live.config())!=self.service.listing_schema.connection(c):error='listing_release_connection_changed';buffers=[]
                 evidence=[]
                 for data in buffers:
                     data={**data,'scope':dict(request_id=r['id'],task_id=job['task_id'],sku=r['data']['frozen']['payload']['fields']['sku'])}
@@ -275,7 +286,13 @@ class ListingReleases:
         history=[]
         for row in rows:
             item=self.intact(row);event=item['data'];history.append(dict(id=item['id'],sha256=item['sha256'],at=item['created_at'],action=event['action'],decision=event['state']['decision'],note=event['state']['note'],detail=event['detail']))
-        return dict(id=r['id'],sha256=r['sha256'],event_sha256=h['sha256']if h else'',created_at=r['created_at'],target=d['target'],frozen=d['frozen'],note=d['note'],
+        submission=self.service.listing_submissions.summary(r['id'])
+        if submission and submission['state']['dispatch_started']and s['decision']!='withdrawn':status=submission['state']['status']
+        extra={'system_submission':submission}if submission else{}
+        if submission:
+            try:self.read_credentials(r);extra['readback_connection_current']=True
+            except ValueError:extra['readback_connection_current']=False
+        return dict(**extra,id=r['id'],sha256=r['sha256'],event_sha256=h['sha256']if h else'',created_at=r['created_at'],target=d['target'],frozen=d['frozen'],note=d['note'],
             current=current,connection_current=self.binding(d['target'],d['synthetic'])==d['connection_binding'],missing=missing,status=status,decision=s['decision'],review_note=s['note'],
             external=s['external'],read=read,observation=observation,import_record=import_record,product_record=product_record,differences=differences,history=history,synthetic=d['synthetic'],
             last_observation_fresh=fresh,
@@ -289,7 +306,7 @@ class ListingReleases:
         if selected and selected['data']['target']!=target:raise ValueError('listing_release_scope_mismatch')
         return dict(target=target,request=self.public(selected,plan)if selected else None,
             requests=[dict(id=r['id'],sha256=r['sha256'],created_at=r['created_at'],revision=r['data']['frozen']['revision'],current=r['data']['preview_sha256']==plan['preview_sha256'])for r in requests],
-            current_preview_sha256=plan['preview_sha256'],export_formats=['json','html'],image_preview_supported=True,external_execution_allowed=False)
+            current_preview_sha256=plan['preview_sha256'],export_formats=['json','html'],image_preview_supported=True,submission_supported=True,external_execution_allowed=False)
 
     def summary(self,target,plan):
         head=self.org.artifact(target['case_id'],self.kind(target))
@@ -298,7 +315,9 @@ class ListingReleases:
         r=self.request(head['id']);s=self.state(self.head(r));current=r['data']['preview_sha256']==plan['preview_sha256']
         read=s['read']['status']
         if read=='running'and(not self.current or self.current['id']!=s['read']['id']):read='interrupted'
-        return dict(request_id=r['id'],current=current,decision=s['decision'],read_status=read,observation_status=s['observation']['status']if s['observation']else None,platform_submission_verified=False)
+        submission=self.service.listing_submissions.summary(r['id'])
+        extra={'submission_status':submission['state']['status']}if submission else{}
+        return dict(**extra,request_id=r['id'],current=current,decision=s['decision'],read_status=read,observation_status=s['observation']['status']if s['observation']else None,platform_submission_verified=False)
 
     def image(self,request_id,expected_request_sha256,index):
         from listing_review_media import read
@@ -312,7 +331,7 @@ class ListingReleases:
             r=self.request(request_id);h=self.head(r);self.cas(h,expected_event_sha256)
             value=self.get(**r['data']['target'],request_id=request_id)
             package=dict(schema='commerce-private-listing-release-package-v1',request=value['request'],
-                contains_private_business_data=True,platform_import_format=False,application_submission='not_performed_by_this_system',external_execution_allowed=False)
+                contains_private_business_data=True,platform_import_format=False,application_submission=('platform_task_received'if (value['request'].get('external')or{}).get('origin')=='system_explicit_single_submission'else'operator_attested_after_unknown_dispatch'if value['request']['system_submission']['state']['status']=='owner_confirmed'else'dispatch_outcome_unknown')if value['request'].get('system_submission',{}).get('state',{}).get('dispatch_started')else'not_performed_by_this_system',external_execution_allowed=False)
             if format=='html':
                 from listing_review_report import render
                 from listing_review_media import for_export

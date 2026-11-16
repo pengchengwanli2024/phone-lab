@@ -4,8 +4,21 @@ The global-intelligence land outline (`web/intel-land.txt`, inlined in `web/app.
 Natural Earth `ne_110m_land.geojson` (the `nvkelso/natural-earth-vector` repository).
 Natural Earth publishes this data in the public domain:
 https://www.naturalearthdata.com/about/terms-of-use/ . Made with Natural Earth.
-World Monitor was a product/protocol reference only; none of its AGPL source,
-asset catalog or branding is copied into this implementation.
+World Monitor's public `GlobeMap` and `DeckGLMap` implementation informed the
+persistent renderer lifecycle, camera transitions and GPU-layer architecture.
+Its AGPL application code and branding are not bundled; the map adapter is an
+independent implementation using the same public graphics stack.
+
+The self-contained map package is pinned in `workbench/map/package-lock.json`:
+globe.gl / Three.js (MIT), MapLibre GL JS (BSD-3-Clause), deck.gl (MIT), and
+world-atlas / topojson-client / d3-geo (ISC). Full notices for the actual bundle
+and worker are retained in [workbench/map/THIRD_PARTY_LICENSES.txt](workbench/map/THIRD_PARTY_LICENSES.txt).
+The local earth-day texture is from the MIT `three-globe` npm package's
+`example/img/earth-day.jpg` (NASA Blue Marble). Country geometry is the
+world-atlas Natural Earth 110m dataset (public domain). These are static
+reference assets, not live imagery. Chinese names use the existing CLDR-based
+catalogue and the local adapter's abbreviated-name mappings. Borders follow
+Natural Earth and do not assert a political boundary policy.
 
 The following MIT-licensed projects informed this implementation. Full license
 texts are retained alongside this notice. No account data, credentials, current

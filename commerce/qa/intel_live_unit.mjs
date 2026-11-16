@@ -31,6 +31,12 @@ test('missing AIS credentials show a configuration path rather than fabricated v
   assert.match(f.controller.panel(),/AISSTREAM_API_KEY/);assert.match(f.controller.panel(),/待配置/);
   assert.ok(f.calls.every(c=>c.name==='commerce_intel_live_get'));
 });
+test('expired browser login is distinct from an unavailable observation snapshot',async()=>{
+  const expired=fixture({api:async()=>{throw Error('authentication_required')}});await expired.controller.read();
+  assert.match(expired.controller.panel(),/登录连接已过期.*本机工作台入口重新打开/);
+  const unavailable=fixture({api:async()=>{throw Error('request_failed')}});await unavailable.controller.read();
+  assert.match(unavailable.controller.panel(),/快照暂时无法读取/);
+});
 test('background polling pauses while a user is editing a field',async()=>{
   const f=fixture();await f.controller.read();f.document.activeElement={matches:()=>true};await f.timers[0]();
   assert.equal(f.calls.length,1);
@@ -84,4 +90,10 @@ test('out of view is distinct from a missing or expired sample',async()=>{
 test('unknown quote change has no direction color and FX retains four decimals',async()=>{
   const f=fixture();Object.assign(f.state.sources.markets.items[0],{change_percent:null,symbol:'CNY=X',price:7.1234});
   await f.controller.read();assert.match(f.controller.ribbon(),/7.1234/);assert.doesNotMatch(f.controller.ribbon(),/is-up|is-down/);
+});
+
+test('GPU-capable servers negotiate a bounded position budget while older servers keep the old contract',async()=>{
+ const f=fixture();f.state.position_capacity=10000;f.state.position_limit=600;
+ await f.controller.read();assert.equal(f.calls.length,2);assert.equal(f.calls[0].args.limit,undefined);assert.equal(f.calls[1].args.limit,10000);
+ await f.controller.read();assert.equal(f.calls.at(-1).args.limit,10000);
 });

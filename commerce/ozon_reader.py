@@ -28,6 +28,7 @@ ENDPOINTS = {'FBS': '/v4/posting/fbs/list', 'realFBS': '/v4/posting/fbs/list',
              'catalog_attributes':'/v4/product/info/attributes',
              'catalog_description':'/v1/product/info/description'}
 ENDPOINTS['listing_pictures_readback']='/v2/product/pictures/info'
+ENDPOINTS['sales']='/v1/analytics/data'
 
 
 class ConnectionIssue(ValueError):
@@ -197,6 +198,9 @@ def stock_projection(row):
 
 
 def fetch(config, kind, request=post, current=None):
+    if kind == 'sales':
+        from operating_statistics import fetch_sales
+        return fetch_sales(config, request, current)
     current=current or datetime.now(timezone.utc); start=time.monotonic()
     modes=config['fulfillment_modes'] if kind=='orders' else ['stock']
     # FBS and realFBS share one endpoint. The response must later be verified

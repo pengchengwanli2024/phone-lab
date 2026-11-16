@@ -2,9 +2,10 @@ import {useEffect,useRef,useState} from 'react';
 import {api,errorText} from './api';
 import {Badge,Button,Empty,ErrorNotice,Panel} from './ui';
 import type {ListingTarget} from './listing-observation';
+import {PublicationFields,type Publication} from './listing-publication-fields';
 
 export type OzonAttribute={id:number;values:{dictionary_value_id:number;value:string}[];source_ref:string};
-export type OzonPayload={type_id:number;attributes:OzonAttribute[]};
+export type OzonPayload={type_id:number;attributes:OzonAttribute[];publication?:Publication};
 type Category={category_id:number;type_id:number;label:string;path:string;disabled:boolean};
 type Attribute={id:number;name:string;description:string;type:string;is_required:boolean;is_collection:boolean;dictionary_id:number;max_value_count:number;complex_id:number};
 type Metadata={sha256:string|null;fresh:boolean;observed_at:string|null};
@@ -20,9 +21,9 @@ const labels:Record<string,string>={scope_not_supported:'先关联 Ozon 俄罗�
 const issues:Record<string,string>={required:'必填',source_required:'缺少产品资料依据',complex_not_assessed:'复合属性仍需专门核对',too_many_values:'超出允许值数量',dictionary_value_not_current:'字典值或标签尚未由当前资料确认',unexpected_dictionary_id:'该属性不使用字典 ID',empty_value:'值为空',invalid_integer:'需要整数',invalid_number:'需要有效数值',invalid_boolean:'需要 true 或 false',type_not_assessed:'此字段类型尚未适配',unknown_attribute:'当前类型没有此属性'};
 function failure(e:unknown){const c=e instanceof Error?e.message:'';return ({listing_schema_refresh_tree_first:'先读取当前类目目录，再读取所选类型属性。',listing_schema_dictionary_unavailable:'先读取对应属性，并确认它使用字典。',listing_schema_demo_no_network:'示例模式只使用合成资料，不调用实际店铺。',listing_schema_refresh_busy:'已有资料读取在进行，等待当前回执。',listing_schema_integrity_failed:'已留存资料校验失败，请重新读取。',listing_schema_connection_changed:'店铺连接已变化，本次结果未采用。',ozon_auth_or_permission:'当前接入无此资料的读取权限。',ozon_network_error:'Ozon 资料读取连接失败，已保留旧资料。',ozon_rate_limited:'Ozon 已限流，请稍后再读取。'}as Record<string,string>)[c]||errorText(e);}
 
-export function ListingSchemaPanel({target,payload,active,previewSha,dirty,busy,onChange,onSave}:{
-  target:ListingTarget;payload:{fields:{category_id:string};ozon?:OzonPayload};active:boolean;previewSha:string;dirty:boolean;busy:boolean;
-  onChange:(category:string,value:OzonPayload)=>void;onSave:()=>void;
+export function ListingSchemaPanel({target,payload,active,previewSha,dirty,busy,onChange,onSave,publicationSupported=false}:{
+  target:ListingTarget;payload:{fields:{category_id:string;description?:string};ozon?:OzonPayload};active:boolean;previewSha:string;dirty:boolean;busy:boolean;
+  publicationSupported?:boolean;onChange:(category:string,value:OzonPayload)=>void;onSave:()=>void;
 }){
   const [data,setData]=useState<SchemaView|null>(null),[error,setError]=useState(''),[reading,setReading]=useState(false),[query,setQuery]=useState(''),[selected,setSelected]=useState(''),[optional,setOptional]=useState(false);
   const [attributeId,setAttributeId]=useState(0),[cursor,setCursor]=useState(0),[poll,setPoll]=useState(false);
@@ -47,9 +48,9 @@ export function ListingSchemaPanel({target,payload,active,previewSha,dirty,busy,
   function apply(){const option=data?.categories.items.find(c=>`${c.category_id}:${c.type_id}`===selected);if(!option||option.disabled)return;
     if(String(option.category_id)===payload.fields.category_id&&option.type_id===typ)return;
     if(payload.ozon?.attributes.length&&!window.confirm('更换类目或类型会移除原类型的 Ozon 属性输入，通用商品资料保留。继续更换？'))return;
-    onChange(String(option.category_id),{type_id:option.type_id,attributes:[]});
+    onChange(String(option.category_id),{...payload.ozon,type_id:option.type_id,attributes:[],...(payload.ozon?.publication?{publication:{...payload.ozon.publication,description_attribute_id:0}}:{})});
   }
-  function update(schema:Attribute,row:OzonAttribute|null){const old=payload.ozon?.attributes||[];onChange(payload.fields.category_id,{type_id:typ,attributes:row?[...old.filter(r=>r.id!==schema.id),row]:old.filter(r=>r.id!==schema.id)});}
+  function update(schema:Attribute,row:OzonAttribute|null){const old=payload.ozon?.attributes||[];onChange(payload.fields.category_id,{...payload.ozon,type_id:typ,attributes:row?[...old.filter(r=>r.id!==schema.id),row]:old.filter(r=>r.id!==schema.id)});}
   const pending=reading||data?.refresh?.status==='running';
   const scopeReady=target.store_ref==='ozon-live'&&target.market==='RU';
   return <div className="r-listing-observation" id="listing-platform-schema" tabIndex={-1}><Panel title="Ozon 类目与平台属性" action={<Button disabled={busy||pending} onClick={()=>{setError('');void load();}}>检查当前输入</Button>}>
@@ -84,6 +85,7 @@ export function ListingSchemaPanel({target,payload,active,previewSha,dirty,busy,
         })}
         <div className="r-form-actions"><Button primary disabled={busy||!dirty} onClick={onSave}>保存类目与属性</Button></div>
       </section></div>
+      {publicationSupported&&typ>0&&<PublicationFields value={payload.ozon||{type_id:typ,attributes:[]}} metadata={data?.attributes.items||[]} description={payload.fields.description||''} disabled={busy||!!pending} onChange={value=>onChange(payload.fields.category_id,value)} onCopyDescription={id=>{const schema=data?.attributes.items.find(r=>r.id===id);if(schema)update(schema,{id,source_ref:payload.ozon?.attributes.find(a=>a.id===id)?.source_ref||'',values:[{dictionary_value_id:0,value:payload.fields.description||''}]});}}/>}
       <p className="r-footnote">这里只检查类目与简单属性结构。包装尺寸、图片、运费、类目资质及平台规则仍需各自核验；未提交平台。</p>
     </>}
   </Panel></div>;

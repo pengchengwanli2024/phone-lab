@@ -12,7 +12,7 @@ LABELS={'blocked':'发布检查未关闭','outdated':'原方案已变化','needs
         'not_requested':'尚未读取','running':'正在读取','succeeded':'本次读取已完成','failed':'本次读取失败','interrupted':'读取中断',
         'prepared':'资料已填','missing':'待补充','stale':'已变化','same':'相同','different':'有差异','unknown':'未知',
         'missing_input':'方案待填','not_comparable':'口径不可比较','product_observed':'已回读对应商品，发布状态仍需核对',
-        'awaiting_product_id':'导入已受理，等待有效商品 ID'}
+        'awaiting_product_id':'导入已受理，等待有效商品 ID','checking':'正在复核平台前值','submitting':'已开始单次提交','accepted':'平台已返回任务','imported_needs_review':'导入完成，审核与可售待核对','import_rejected':'导入被拒绝','owner_confirmed':'负责人核对完成（本人声明）'}
 FIELDS={'sku':'SKU','title':'商品标题','description':'商品描述','category_id':'目标类目 ID','price':'售价（原币）','currency':'币种','quantity':'计划上架数量'}
 
 def text(value):
@@ -45,6 +45,8 @@ def product_overview(payload,media):
     attrs=payload.get('attributes')or[]
     if attrs:body+=section('产品参数',table(['参数','值','依据'],[(a['name'],a['value'],a['source_ref'])for a in attrs],'产品参数与依据'))
     ozon=payload.get('ozon')or{}
+    pub=ozon.get('publication')
+    if pub:body+=section('整卡发布包装与税率（申请固定值）',pairs([('包装深度（mm）',pub['depth']),('包装宽度（mm）',pub['width']),('包装高度（mm）',pub['height']),('含包装重量（g）',pub['weight']),('包装规格依据',pub['source_ref']),('适用 VAT（平台小数）',pub['vat']),('税率依据',pub['vat_source_ref']),('描述属性 ID',pub['description_attribute_id'])]))
     if ozon.get('attributes'):body+=section('平台规格参数（申请固定值）',pairs([('商品类型 ID',ozon.get('type_id'))])+table(['属性编号','值','依据'],[(a['id'],'、'.join(v.get('value')or('词典值 '+str(v.get('dictionary_value_id','未提供')))for v in a['values']),a.get('source_ref'))for a in ozon['attributes']],'平台规格参数与依据'))
     return body
 
@@ -55,15 +57,18 @@ def render(package,media=None):
     if not r['current']:body+='<p class="review-warning">原方案已变化。本文件保留该历史申请的固定内容，不采用最新编辑替换旧版本。</p>'
     if not r['connection_current']:body+='<p class="review-warning">原店铺连接已变化，旧引用不能自动用于当前连接。</p>'
     body+=product_overview(p,media)
-    body+=section('申请范围与状态',pairs([('平台',target['platform']),('店铺标识',target['store_ref']),('市场',target['market']),('商品工作项',target['case_id']),('保存修订',f['revision']),('本地申请状态',label(r['status'])),('本地审阅决定',label(r['decision'])),('申请创建时刻',r['created_at']),('本系统已执行整卡平台提交',False),('平台发布已核实',r['platform_submission_verified'])]))
+    body+=section('申请范围与状态',pairs([('平台',target['platform']),('店铺标识',target['store_ref']),('市场',target['market']),('商品工作项',target['case_id']),('保存修订',f['revision']),('本地申请状态',label(r['status'])),('本地审阅决定',label(r['decision'])),('申请创建时刻',r['created_at']),('本系统整卡提交记录',{'not_performed_by_this_system':'未执行','platform_task_received':'已发送并收到平台任务，非可售确认','operator_attested_after_unknown_dispatch':'未知提交后由负责人核对声明，非传输证明','dispatch_outcome_unknown':'已尝试，结果未知，禁止重发'}.get(package['application_submission'],'未知')),('平台发布已核实',r['platform_submission_verified'])]))
     checks=f['checks'];professional=next((x for x in checks if x['id']=='professional_gate'),None)
     owner=f.get('owner_review')
     gate='尚未通过'if not professional or professional['status']!='prepared'else'经营负责人签收（非独立认证）'if owner and owner.get('current')else'固定版本记为资料已填，独立核查依据仍需另核'
     body+=section('发布前检查（申请固定版本）','<p>平台规则与资质专业核查：<strong>'+e(gate)+'</strong></p>'+table(['检查','记录状态'],[(x['label'],label(x['status']))for x in checks],'固定版本发布前检查')+'<p>资料已填不代表事实、规则、资质或素材使用权已独立核实。</p>')
     if owner:
         body+=section('负责人核查记录（申请固定版本）',table(['项目','记录'],[('签收方式','经营负责人声明，不属于独立认证'),('核对人',owner['reviewer']),('记录时间',owner['reviewed_at']),('记录状态',owner['status']),('记录 SHA256',owner['review_sha256'])],'负责人核查版本')+table(['核查项','结论','依据','说明'],[(owner['requirements'][k],{'confirmed':'已逐项核对','pending':'待核对','not_applicable':'不适用','rejected':'需修改'}.get(v['status'],v['status']),v['source_ref'],v['note'])for k,v in owner['checks'].items()],'负责人逐项核查依据')+'<p>此记录不授权平台写入；资料变化后须重新核对。</p>')
+    submission=r.get('system_submission')
+    if submission:
+        body+=section('本系统整卡提交记录',pairs([('记录状态',label(submission['state']['status'])),('单次提交已开始',submission['state']['dispatch_started']),('平台任务',submission['state']['task_id']),('执行人',submission['state']['operator']),('计划 SHA256',submission['plan_sha256']),('请求 SHA256',submission['body_sha256'])])+'<details><summary>准确提交请求（含原属性保留项）</summary><pre>'+e(json.dumps(submission['body'],ensure_ascii=False,indent=2))+'</pre></details><p>平台任务受理、导入完成、审核通过与可售分别核对；此记录不表示商品已可售。</p>')
     observation=r.get('observation');external=r.get('external');read=r['read']
-    receipt=pairs([('读取状态',label(read['status'])),('读取错误',read.get('error')),('另行提交的外部任务',external.get('task_id')if external else None),('外部提交依据',external.get('source_ref')if external else None)])
+    receipt=pairs([('读取状态',label(read['status'])),('读取错误',read.get('error')),('平台任务编号',external.get('task_id')if external else None),('外部提交依据',external.get('source_ref')if external else None)])
     if observation:
         receipt+=pairs([('平台观测状态',label(observation['status'])),('观测时刻',observation['observed_at']),('导出核对时观测仍在有效期内',r['last_observation_fresh']),('导入条目已核对',observation['import_confirmed'])])
         imported=r.get('import_record');product=r.get('product_record')

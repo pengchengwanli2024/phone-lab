@@ -57,6 +57,65 @@ class Dialogue(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'context_changed'):
             self.app.agent_runtime.apply(run['id'],'P1',run['result_sha256'])
 
+    def test_selected_intelligence_record_can_be_read_without_an_unrelated_search(self):
+        from agent_runtime.policy import check_call,tool_menu
+        ident='a'*24
+        scope={'context':{'module':'intelligence','demo':False,'entity':{'kind':'intel','id':ident}}}
+        call={'tool':'commerce_intel_item_get','arguments':{'item_id':ident}}
+        self.assertEqual(check_call('workspace',scope,call,set()),('commerce_intel_item_get',{'item_id':ident}))
+        menu=tool_menu('workspace',scope)
+        self.assertIn({'tool':'commerce_intel_item_get','arguments':{'item_id':ident}},menu)
+        for entity in ({'kind':'intel','id':'b'*24},{'kind':'case','id':ident}):
+            with self.assertRaisesRegex(ValueError,'outside_read_scope'):
+                check_call('workspace',{'context':{**scope['context'],'entity':entity}},call,set())
+        with self.assertRaisesRegex(ValueError,'outside_scope'):
+            check_call('workspace',{'context':{**scope['context'],'module':'orders'}},call,set())
+
+    def test_live_intelligence_reads_are_bounded_read_only_and_secret_free(self):
+        from agent_runtime.policy import check_call,project,tool_menu
+        scope={'context':{'module':'intelligence','demo':False}}
+        self.assertIn('commerce_intel_live_get',[t['tool'] for t in tool_menu('workspace',scope)])
+        name,args=check_call('workspace',scope,{'tool':'commerce_intel_live_get','arguments':{}},set())
+        self.assertEqual(name,'commerce_intel_live_get');self.assertEqual(args,{'limit':20})
+        for bad in ({'limit':10000},{'query':'x'*65},{'bounds':{'west':190,'east':200,'south':0,'north':20}}):
+            with self.assertRaises(ValueError):
+                check_call('workspace',scope,{'tool':name,'arguments':bad},set())
+        with self.assertRaisesRegex(ValueError,'outside_scope'):
+            check_call('workspace',scope,{'tool':'commerce_intel_live_refresh','arguments':{}},set())
+        sample={'generated_at':123,'coverage':'receiver coverage','secret':'PRIVATE_SENTINEL','sources':{'vessels':{'status':'ready','matched':1000,'observed_at':120,'credentials':'PRIVATE_SENTINEL','items':[{'id':str(i),'kind':'vessel','name':'PUBLIC','observed_at':120,'location':{'lat':1,'lon':2},'secret':'PRIVATE_SENTINEL'}for i in range(50)]}}}
+        value=project(name,sample)
+        self.assertEqual(value['sources']['vessels']['matched'],1000)
+        self.assertEqual(len(value['sources']['vessels']['items']),20)
+        self.assertEqual(value['sources']['vessels']['observed_at'],120)
+        self.assertNotIn('PRIVATE_SENTINEL',str(value))
+        self.assertFalse(value['facts_independently_verified'])
+
+    def test_intelligence_times_are_formatted_without_model_epoch_arithmetic(self):
+        from agent_runtime.policy import project
+        stamp=1794789585
+        live=project('commerce_intel_live_get',{'generated_at':stamp,'sources':{'vessels':{'observed_at':stamp,'last_success':stamp,'items':[{'observed_at':stamp}]}}})
+        self.assertEqual(live['generated_at_utc'],'2026-11-16 00:39:45 UTC')
+        source=live['sources']['vessels']
+        self.assertEqual(source['observed_at_beijing'],'2026-11-16 08:39:45 +08:00')
+        self.assertEqual(source['last_success_utc'],live['generated_at_utc'])
+        self.assertEqual(source['items'][0]['observed_at_utc'],live['generated_at_utc'])
+        item=project('commerce_intel_item_get',{'published':stamp})
+        self.assertEqual(item['published_beijing'],source['observed_at_beijing'])
+        for invalid in (None,True,float('inf'),float('nan'),10**30):
+            self.assertNotIn('published_utc',project('commerce_intel_item_get',{'published':invalid}))
+
+    def test_live_projection_fits_runtime_budget_with_all_three_sources(self):
+        from agent_runtime.policy import canonical,project
+        row={'id':'public','name':'公开名称'*100,'source_url':'https://example.test/'+('x'*180),'observed_at':1794789585}
+        raw={'generated_at':1794789585,'sources':{key:{'matched':5000,'observed_at':1794789585,'items':[row]*20} for key in ('flights','vessels','markets')}}
+        value=project('commerce_intel_live_get',raw)
+        self.assertLessEqual(len(canonical(value)),14000)
+        for source in value['sources'].values():
+            self.assertEqual(source['matched'],5000)
+            self.assertGreater(source['shown_to_model'],0)
+            self.assertLess(source['shown_to_model'],20)
+            self.assertTrue(source['truncated'])
+
     def test_workspace_read_scope_and_privacy_projection(self):
         from agent_runtime.policy import check_call,project
         scope={'context':{'module':'orders','demo':True,'platform':'ozon'}}

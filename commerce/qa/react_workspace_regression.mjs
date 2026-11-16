@@ -16,6 +16,7 @@ import { listingSchemaChecks } from './listing_schema_checks.mjs';
 import { listingReleaseChecks } from './listing_release_checks.mjs';
 import { costScenarioChecks } from './cost_scenario_checks.mjs';
 import { listingActionsChecks } from './listing_actions_checks.mjs';
+import { listingSubmissionChecks } from './listing_submission_checks.mjs';
 import { ownerReviewChecks } from './owner_review_checks.mjs';
 
 const commerce = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -94,7 +95,7 @@ try {
   page.on('request', request => { const body = request.postData(); if (body?.includes('commerce_intel_')) intelTraffic.push(JSON.parse(body)); });
   await page.goto(origin + '/login?token=synthetic-workbench-preview');
   await page.goto(origin + `/workspace?host=harness&tab=workspace&case_id=${caseId}&demo=true`);
-  if (process.env.QA_OWNER_ONLY === '1') {await ownerReviewChecks({page,origin,output,invoke,checks});} else {
+  if (process.env.QA_SUBMISSION_ONLY === '1') {await listingSubmissionChecks({page,origin,output,invoke,checks});} else if (process.env.QA_OWNER_ONLY === '1') {await ownerReviewChecks({page,origin,output,invoke,checks});} else {
   if (process.env.QA_LISTING === '1') await listingWorkspaceChecks({page,origin,caseId,output,invoke,checks});
   if (process.env.QA_LISTING_REVIEW === '1') await listingReviewChecks({page,origin,caseId,output,invoke,checks});
   if (process.env.COMMERCE_QA_LISTING_SCHEMA === '1') await listingSchemaChecks({page,origin,caseId,output,invoke,checks});

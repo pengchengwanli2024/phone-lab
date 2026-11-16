@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { trapDialogFocus } from './dialog-focus';
 export function Icon({ name }: { name: string }) { return <span className="r-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: window.CommerceUI.icon(name) }} />; }
 export function Button({ primary, icon, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { primary?: boolean; icon?: string }) {
   return <button {...props} type={props.type || 'button'} className={`ui-button ${primary ? 'primary' : ''} ${props.className || ''}`}>{icon && <Icon name={icon} />}{children}</button>;
@@ -17,7 +18,7 @@ export function FieldDiff(props: Parameters<Window['CommerceUI']['fieldDiff']>[0
 export function Dialog({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { const previous = document.activeElement as HTMLElement | null; ref.current?.showModal(); return () => { ref.current?.close(); previous?.focus(); }; }, []);
-  return <dialog ref={ref} className="r-dialog dialog" onCancel={e => { e.preventDefault(); close(); }} onClick={e => {
+  return <dialog ref={ref} className="r-dialog dialog" onKeyDown={trapDialogFocus} onCancel={e => { e.preventDefault(); close(); }} onClick={e => {
     if (e.target !== e.currentTarget) return;
     const bounds = e.currentTarget.getBoundingClientRect();
     // The dialog itself also receives clicks on its inner padding.

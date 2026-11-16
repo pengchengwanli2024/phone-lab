@@ -7,6 +7,12 @@ from agent_runtime.policy import canonical
 def filters(context):return {k:context.get(k,False if k=='demo' else 'all') for k in ('demo','platform','store_id','market')}
 
 
+def selected_intel(context):
+    entity=context.get('entity',{})
+    ident=entity.get('id')
+    return ident if context['module'] in ('intelligence','research') and entity.get('kind')=='intel' and isinstance(ident,str) and re.fullmatch(r'[a-f0-9]{24}',ident) else None
+
+
 def menu(context):
     out=[{'tool':'commerce_runtime_status','arguments':{}},{'tool':'commerce_live_status','arguments':{}},{'tool':'commerce_channel_status','arguments':{}}]
     out.append({'tool':'commerce_project_memory_search','arguments':{'query':'at most 100 characters; empty reads current scoped memory'}})
@@ -17,7 +23,8 @@ def menu(context):
     if module in ('orders','overview'):out.append({'tool':'commerce_orders_list','arguments':filters(context)})
     if module in ('products','operations','overview'):out.append({'tool':'commerce_products_list','arguments':filters(context)})
     out.extend([{'tool':'commerce_skills_search','arguments':{'query':'at most 100 characters'}},{'tool':'commerce_skills_get','arguments':{'skill_id':'one ID returned by skill search in this run'}}])
-    if module in ('intelligence','research'):out.extend([{'tool':'commerce_intel_search','arguments':{'query':'at most 100 characters','source':'all'}},{'tool':'commerce_intel_item_get','arguments':{'item_id':'one ID returned in this run'}}])
+    if module in ('intelligence','research'):out.extend([{'tool':'commerce_intel_search','arguments':{'query':'at most 100 characters','source':'all'}},{'tool':'commerce_intel_item_get','arguments':{'item_id':selected_intel(context) or 'one ID returned in this run'}}])
+    if module=='intelligence':out.append({'tool':'commerce_intel_live_get','arguments':{'query':'optional callsign, MMSI or vessel name; empty reads current local snapshots'}})
     if context.get('calculator') and isinstance(context.get('input'),dict):out.append({'tool':'commerce_'+context['calculator'],'arguments':{'input':context['input']}})
     return out
 
@@ -47,7 +54,7 @@ def check(context,name,args,seen):
         if set(args)!={'skill_id'} or not isinstance(args['skill_id'],str) or args['skill_id'] not in seen or not re.fullmatch('sealeap-[a-z0-9-]+',args['skill_id']):raise ValueError('agent_skill_outside_read_scope')
     elif name.startswith('commerce_intel_'):
         from agent_runtime.policy import check_call
-        return check_call('intelligence',{},dict(tool=name,arguments=args),seen)
+        return check_call('intelligence',{'item_id':selected_intel(context)},dict(tool=name,arguments=args),seen)
     elif name in ('commerce_unit_economics','commerce_restock_plan'):
         if name!='commerce_'+context.get('calculator','') or canonical(args)!=canonical({'input':context.get('input')}):raise ValueError('agent_calculation_input_changed')
     else:raise ValueError('agent_tool_outside_scope')
