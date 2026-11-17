@@ -15,7 +15,8 @@ def fake_model(payload,cancelled):
     if 'clarify' in question or '哪些资料' in question:
         d={'phase':'answer','answer':'请补充已核对的资料，不推测数值。','questions':['请明确本次币种和采购成本。'],'evidence_refs':[],'proposals':[]}
     elif not payload['observations']:
-        d={'phase':'inspect','calls':[payload['tools'][0]]}
+        tool=next(t for t in payload['tools']if t['tool']=='commerce_runtime_status')
+        d={'phase':'inspect','calls':[{'tool':tool['tool'],'arguments':{}}]}
     else:
         d={'phase':'answer','answer':'已读取当前允许的依据。可以继续审阅本地简报建议；这不是经营操作完成。','questions':[],'evidence_refs':['R1'],'proposals':[{'operation':'report','reason':'生成当前模式的本地简报'}] if 'report' in question else []}
     return {'decision':d,'provider':'synthetic-no-network','model':'synthetic'}

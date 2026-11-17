@@ -41,6 +41,16 @@ class RuntimeCase(unittest.TestCase):
         test_input=extra.pop('test_input',{});ext=self.save(**extra);test=self.call('test',extension_id=ext['id'],input=test_input,idempotency_key='test-'+ext['id']);self.assertEqual(self.drain(test)['status'],'succeeded')
         return self.call('enable',extension_id=ext['id'],expected_version=ext['version'],enabled=True)
 class Runtime(RuntimeCase):
+    def test_success_and_enable_readiness_are_published_atomically(self):
+        ext=self.save();run=self.call('test',extension_id=ext['id'],idempotency_key='atomic-test');observed=[]
+        original=self.app._store
+        def observe(db,value):
+            if value['test'] and value['status']=='succeeded':observed.append(self.app._entry(db,ext['id'])['test_status'])
+            return original(db,value)
+        with patch.object(self.app,'_store',side_effect=observe):self.app._process(run['id'])
+        self.assertEqual(observed,['passed'])
+        self.assertTrue(self.call('enable',extension_id=ext['id'],expected_version=ext['version'],enabled=True)['enabled'])
+
     def test_versioned_test_enable_run_and_core_task_identity(self):
         ext=self.ready();run=self.call('run',extension_id=ext['id'],idempotency_key='one');self.assertEqual(run['status'],'queued')
         result=self.drain(run);self.assertEqual(result['status'],'succeeded');self.assertEqual(result['output']['mode'],'unconfigured')

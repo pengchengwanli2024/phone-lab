@@ -13,6 +13,7 @@
   "files": [
     "index.js",
     "host-worker.js",
+    "invoke-body.js",
     "client.js",
     "cordis.patch.yml"
   ],
@@ -26,7 +27,8 @@
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-sidebar",
-        "@deepseek-ai/dsh-client-ui-sidebar-right"
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-file-actions"
       ]
     }
   }

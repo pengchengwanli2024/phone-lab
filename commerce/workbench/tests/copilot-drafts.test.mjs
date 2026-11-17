@@ -104,3 +104,13 @@ test('closing during composition does not leave the reopened composer unable to 
   assert.equal(s.calls.filter(([name]) => name === 'commerce_copilot_send').length, 1);
   s.controller.dispose();
 });
+
+test('a long editor never sends a different conversation draft after an external switch', async()=>{
+  const storage=store(),s=mount(storage);await flush();await s.controller.openThread('draft-test-thread');await flush();s.input('VISIBLE A QUESTION');await flush();
+  const target={dataset:{copilotAction:'expand-editor'},closest:selector=>selector==='[data-copilot-action]'?target:null};s.emit('click',{target,preventDefault(){}});
+  await s.controller.openThread('other-draft-thread');await flush();s.input('UNSENT B QUESTION');await flush();
+  s.emit('keydown',{target:{id:'copilot-expanded-message',dataset:{copilotDraftKey:'draft-test-thread'}},key:'Enter',ctrlKey:true,preventDefault(){}});await flush();await flush();
+  assert.equal(s.calls.filter(([name])=>name==='commerce_copilot_send').length,0);
+  assert.equal(storage.values.get('commerce-copilot-draft-v1:other-draft-thread'),'UNSENT B QUESTION');
+  assert.equal(storage.values.get('commerce-copilot-draft-v1:draft-test-thread'),'VISIBLE A QUESTION');s.controller.dispose();
+});

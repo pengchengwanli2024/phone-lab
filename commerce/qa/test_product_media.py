@@ -167,6 +167,7 @@ class ProductMediaTests(unittest.TestCase):
         p2 = self.app.creative.create(deepcopy(BRIEF), 'another')
         with self.assertRaisesRegex(ValueError, 'asset_not_found'):
             self.app.creative.asset(p2['id'],self.asset['id'])
+        req = self.call('request_attach', request_id=req['id'], expected_revision=self.p['revision'], asset_ids=[self.asset['id']])
         perf = self.call('performance_save', project_id=self.pid, payload={'period_start': '2026-11-01T00:00:00+08:00',
             'period_end': '2026-11-02T00:00:00+08:00', 'source_ref': 'synthetic:report', 'request_id': req['id'],
             'impressions': 0, 'clicks': 0, 'orders': 0}, idempotency_key='metrics')

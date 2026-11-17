@@ -83,7 +83,7 @@ class Integrity(unittest.TestCase):
    {'parentOrderMap':{'parentOrderSn':'SYN-'+str(n)}}for n in range(count)]}})
 
  def test_expanded_record_limit_for_all_four_protocols_preserves_snapshot(self):
-  for i,provider in enumerate(api.CATALOG):
+  for i,provider in enumerate(('amazon','tiktok','mercado','temu')):
    with self.subTest(provider=provider):
     c=self.configured(provider,str(i+1)*32);resource='products'if provider=='tiktok'else'orders'
     self.pc.request=synthetic;self.read(c,provider+'-seed',resource)

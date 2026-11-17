@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { Button, ErrorNotice, Icon } from './ui';
 import { api } from './api';
+import { requiresPhoneBrowser } from './phone-browser';
 
 type FleetDevice = {
   id: string; kind: 'android' | 'ios'; label: string; model: string;
@@ -48,7 +49,28 @@ function pointFromFrame(event: ReactPointerEvent<HTMLDivElement>): Point | null 
 const keys: [string, string][] = [['返回', 'back'], ['主页', 'home'], ['最近任务', 'recents'], ['回车', 'enter'], ['删除', 'delete'], ['唤醒', 'wakeup']];
 const iosKeys: [string, string][] = [['返回', 'back'], ['主页', 'home']];
 
+function PhoneBrowserHandoff() {
+  const [opening, setOpening] = useState(false), [notice, setNotice] = useState(''), [error, setError] = useState('');
+  async function open() {
+    if (opening) return;
+    setOpening(true); setNotice(''); setError('');
+    try {
+      const result = await api<{ opened: boolean }>('commerce_phone_open');
+      if (result.opened === true) setNotice('已请求在本机浏览器打开手机管理，请在浏览器核对设备连接。');
+      else setError('浏览器打开尚未确认，请重试或从本机工作台入口打开手机管理。');
+    } catch { setError('手机管理入口暂未打开，请稍后重试或从本机工作台入口打开。'); }
+    finally { setOpening(false); }
+  }
+  return <section className="r-phone-fleet-empty" aria-label="本机浏览器手机管理">
+    <Icon name="phone" /><strong>在本机浏览器管理手机</strong>
+    <p>打开本机浏览器查看手机画面，并按需开始控制。</p>
+    <Button primary disabled={opening} onClick={() => void open()}>{opening ? '正在打开…' : '在浏览器打开手机管理'}</Button>
+    <ErrorNotice>{error}</ErrorNotice>{notice && <p role="status">{notice}</p>}
+  </section>;
+}
+
 export function PhoneFleetPanel({ close, page = false, embedded = false, active = true }: { close: () => void; page?: boolean; embedded?: boolean; active?: boolean }) {
+  const browserHandoff = requiresPhoneBrowser(window.location.protocol);
   const dialog = useRef<HTMLDialogElement>(null);
   const [status, setStatus] = useState<FleetStatus | null>(null);
   const [error, setError] = useState('');
@@ -83,6 +105,7 @@ export function PhoneFleetPanel({ close, page = false, embedded = false, active 
     return () => document.removeEventListener('visibilitychange', update);
   }, []);
   useEffect(() => {
+    if (browserHandoff) return;
     let active = true; let timer = 0;
     const load = async () => {
       try {
@@ -111,12 +134,12 @@ export function PhoneFleetPanel({ close, page = false, embedded = false, active 
     };
     void load();
     return () => { active = false; window.clearTimeout(timer); };
-  }, [selected]);
+  }, [selected, browserHandoff]);
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || browserHandoff) return;
     const timer = window.setInterval(() => setTick(value => value + 1), 6000);
     return () => window.clearInterval(timer);
-  }, [visible]);
+  }, [visible, browserHandoff]);
   useEffect(() => {
     setLive(Boolean(device && device.kind === 'android' && device.online));
     setLiveKey(value => value + 1);
@@ -182,24 +205,25 @@ export function PhoneFleetPanel({ close, page = false, embedded = false, active 
       setActionError(text(failure instanceof Error ? failure.message : 'phone_request_failed'));
     } finally { setBusy(false); }
   }
-  async function send(payload: Record<string, unknown>): Promise<void> {
-    if (!device) return;
+  async function send(payload: Record<string, unknown>): Promise<boolean> {
+    if (!device) return false;
     setBusy(true); setActionError('');
     try {
       await request('/phone/fleet/input', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: device.id, ...payload }),
       });
+      return true;
     } catch (failure) {
       setActionError(text(failure instanceof Error ? failure.message : 'phone_request_failed'));
+      return false;
     } finally { setBusy(false); }
   }
   async function submitText(event: FormEvent): Promise<void> {
     event.preventDefault();
     const value = draft.trim();
     if (!value) return;
-    await send({ action: 'text', text: value });
-    setDraft('');
+    if (await send({ action: 'text', text: value })) setDraft(current => current === draft ? '' : current);
   }
   function down(event: ReactPointerEvent<HTMLDivElement>): void {
     if (!device?.controlling || event.button !== 0) {
@@ -242,15 +266,15 @@ export function PhoneFleetPanel({ close, page = false, embedded = false, active 
   return <dialog ref={dialog} open={page || undefined} className={'r-phone-dialog' + (page ? ' r-phone-page-dialog' : '') + (embedded ? ' is-embedded' : '')} aria-label="多手机画面与控制" onClick={event => { if (!page && event.target === event.currentTarget) void closePanel(); }} onCancel={event => { event.preventDefault(); if (!page) void closePanel(); }} onClose={() => { if (!page && !controlling.current) closeRef.current(); }}>
     <div className="r-phone-shell">
       <header className="r-phone-head">
-        <div className="r-phone-title"><span className="r-phone-title-icon"><Icon name="phone" /></span><div><Title>{selected ? device?.label || '手机' : '手机墙'}</Title><small>{selected ? (device?.kind === 'ios' ? (device?.controllable ? 'iPhone · WDA 控制' : 'iPhone · 本机只读预览') : 'Android · 本机直连') : status ? '自动发现 · 当前 ' + count + ' 台 · 画面不录制、不落盘' : '设备状态' + (error ? '暂未读到' : '读取中') + ' · 画面不录制、不落盘'}</small></div></div>
+        <div className="r-phone-title"><span className="r-phone-title-icon"><Icon name="phone" /></span><div><Title>{selected ? device?.label || '手机' : '手机墙'}</Title><small>{browserHandoff ? '手机画面与控制在本机浏览器中使用' : selected ? (device?.kind === 'ios' ? (device?.controllable ? 'iPhone · WDA 控制' : 'iPhone · 本机只读预览') : 'Android · 本机直连') : status ? '自动发现 · 当前 ' + count + ' 台 · 画面不录制、不落盘' : '设备状态' + (error ? '暂未读到' : '读取中') + ' · 画面不录制、不落盘'}</small></div></div>
         <div className="r-phone-head-actions">
-          {!selected && <Button onClick={() => window.location.reload()} disabled={busy}>刷新</Button>}
+          {!selected && !browserHandoff && <Button onClick={() => window.location.reload()} disabled={busy}>刷新</Button>}
           {selected && <Button onClick={() => void backToWall()} disabled={busy}>全部手机</Button>}
-          <Button onClick={() => void closePanel()} disabled={busy}>{embedded ? '返回情报' : page ? '返回工作台' : '关闭'}</Button>
+          <Button onClick={() => void closePanel()} disabled={busy}>{embedded ? '返回能力与设置' : page ? '返回工作台' : '关闭'}</Button>
         </div>
       </header>
       <ErrorNotice>{actionError || ((status || selected) ? error : '')}</ErrorNotice>
-      {!selected ? <div className="r-phone-fleet-body">
+      {browserHandoff ? <PhoneBrowserHandoff /> : !selected ? <div className="r-phone-fleet-body">
         {!status ? <div className="r-phone-fleet-empty" role={error ? 'alert' : 'status'}><Icon name="phone" /><strong>{error ? '设备状态暂不可用' : '正在发现手机…'}</strong><p>{error || '正在读取本机设备连接状态。'}</p>{error && <p>设备数量尚未确认。</p>}</div> : count === 0 ? <div className="r-phone-fleet-empty"><Icon name="phone" /><strong>未发现手机</strong><p>用 USB 连接 Android 并开启 USB 调试，或让 iPhone 与本机配对。连接后会自动出现，不需要重启工作台。</p></div> : <div className="r-phone-fleet-grid">
           {status?.devices.map(item => <button key={item.id} className={'r-phone-card ' + (item.controlling ? 'is-controlling' : '')} onClick={() => { setSelected(item.id); setActionError(''); }} aria-label={'查看 ' + item.label}>
             <div className="r-phone-card-screen" style={item.width && item.height ? { aspectRatio: String(item.width / item.height) } : undefined}>

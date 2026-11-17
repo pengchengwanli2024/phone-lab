@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createInvoke } from '../src/transport.mjs';
+import { createInvoke, requestTimeout } from '../src/transport.mjs';
+
+test('bounded local speech and MCP discovery have enough response time in both clients', () => {
+  assert.equal(requestTimeout('commerce_assistant_speech'), 45000);
+  assert.equal(requestTimeout('commerce_extension_tools_discover'), 30000);
+  assert.equal(requestTimeout('commerce_copilot_send', 15000), 15000);
+});
 
 function target(embedded = false) {
   const listeners = new Set(), sent = [];

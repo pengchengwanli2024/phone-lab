@@ -10,6 +10,7 @@ class Cancelled(Exception):pass
 
 
 def invoke(payload, cancelled, route=None):
+    from generative.streaming import enabled
     if route and route.get('provider')=='compatible':
         from model_providers import inference
         try:return inference.invoke(payload,cancelled,route)
@@ -27,6 +28,9 @@ def invoke(payload, cancelled, route=None):
     process=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                              text=True,env=env,cwd=Path(__file__).parent)
     try:
+        if enabled():
+            from generative.process import receive
+            return receive(process,json.dumps({**payload,'_commerce_stream':True},ensure_ascii=False),cancelled,Cancelled)
         first=True;end=time.monotonic()+100
         while True:
             if cancelled():raise Cancelled()

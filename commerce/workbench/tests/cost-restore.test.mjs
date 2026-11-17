@@ -18,7 +18,7 @@ for (const oldSurface of [null, { surface_id: 'cost_' + 'a'.repeat(32), revision
     const state = {
       surface: oldSurface, requestedSurface: 'cost_' + 'b'.repeat(32), caseId: '',
       values: { price: '101' }, dirty: true, loaded: !!oldSurface,
-      blocked: false, unknown: false, review: null, standardReview: null,
+      blocked: false, unknown: false, review: null, standardReview: null,workspaceReview:null,scenarioWriting:false,
       operation: { current: false }, version: { current: 0 },
       api: async (name) => { calls.push(name); if (name === 'commerce_a2ui_status') return { enabled: true }; throw Error('synthetic_target_unavailable'); },
       errorText: error => error.message,

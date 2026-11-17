@@ -1,4 +1,7 @@
 // Same HTTP/MCP tools in a browser or an opaque Harness iframe. No retry of writes.
+export function requestTimeout(tool, fallback = 20000) {
+  return ({ commerce_assistant_speech: 45000, commerce_extension_tools_discover: 30000 })[tool] || fallback;
+}
 export function createInvoke({ target, fetcher, timeoutMs = 20000, nonce = '__COMMERCE_BRIDGE_NONCE__' }) {
   const pending = new Map();
   const receive = event => {
@@ -13,12 +16,12 @@ export function createInvoke({ target, fetcher, timeoutMs = 20000, nonce = '__CO
     if (target.parent !== target) {
       const id = target.crypto.randomUUID();
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => { pending.delete(id); reject(Error('request_outcome_unknown')); }, timeoutMs);
+        const timer = setTimeout(() => { pending.delete(id); reject(Error('request_outcome_unknown')); }, requestTimeout(tool, timeoutMs));
         pending.set(id, { resolve, reject, timer });
         target.parent.postMessage({ type: 'commerce:call', nonce, id, tool, arguments: args }, '*');
       });
     }
-    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs);
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), requestTimeout(tool, timeoutMs));
     try {
       const response = await fetcher('/v1/invoke', { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tool, arguments: args, client: 'browser' }) });
       const result = await response.json();

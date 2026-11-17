@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "features": [
+    {
+      "id": "engineering-cli",
+      "title": "工程工单 CLI：有界输入、命令与请求契约",
+      "files": ["commerce/engineering_cli.py", "commerce/runtime.py", "commerce/qa/test_engineering_cli.py"],
+      "writable_paths": ["commerce/engineering_cli.py"],
+      "checks": [{"kind": "python_unittest", "paths": ["commerce/qa/test_engineering_cli.py"]}]
+    },
+    {
+      "id": "shipping-packing",
+      "title": "离线装箱候选：几何约束、承重与输入边界",
+      "files": ["commerce/shipping_packing.py", "commerce/shipping_models.py", "commerce/qa/test_shipping_packing.py"],
+      "writable_paths": ["commerce/shipping_packing.py"],
+      "checks": [{"kind": "python_unittest", "paths": ["commerce/qa/test_shipping_packing.py"]}]
+    }
+  ]
+}

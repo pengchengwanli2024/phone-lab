@@ -35,7 +35,7 @@ window.CommerceUI = (() => {
   function card({title='',content='',attrs={}}){
     return `<section ${attributes({...attrs,class:`card ui-card ${attrs.class||''}`})}>${title?`<h2>${escape(title)}</h2>`:''}${content}</section>`;
   }
-  function table(headers,rows,emptyText='没有匹配的数据。未授权店铺时真实数据为空。'){
+  function table(headers,rows,emptyText='当前范围暂无记录。'){
     return `<div class="table-wrap ui-table"><table class="data-table"><thead><tr>${headers.map(h=>`<th scope="col">${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>${rows.length?'':empty(emptyText)}</div>`;
   }
   // These views accept data only. Source text never becomes markup or an action.
@@ -48,6 +48,9 @@ window.CommerceUI = (() => {
   function fieldDiff({rows=[],beforeLabel='当前参数',afterLabel='建议参数',emptyText='参数一致。'}={}){
     const value=v=>v==null||v===''?'未知':typeof v==='object'?JSON.stringify(v):String(v);
     return rows.length?`<div class="ui-field-diff">${table(['字段',beforeLabel,afterLabel],rows.map(row=>`<tr ${attributes({'data-field-id':row.key})}><th scope="row">${escape(row.label||row.key)}</th><td>${escape(value(row.before))}</td><td>${escape(value(row.after))}</td></tr>`))}</div>`:`<p class="muted ui-field-diff-empty">${escape(emptyText)}</p>`;
+  }
+  function restockSources(current){
+    return `<nav class="form-actions restock-sources" aria-label="补货资料来源">${[{id:'generic',label:'通用参数',attrs:{'data-analysis-mode':'stock'}},{id:'live',label:'Ozon 库存快照',attrs:{'data-tab':'live'}},{id:'manual',label:'手工核对资料',attrs:{'data-tab':'alerts','data-restock-source':'manual'}}].map(item=>button({label:item.label,variant:current===item.id?'primary':'secondary',attrs:{...item.attrs,'aria-current':current===item.id?'page':undefined}})).join('')}</nav>`;
   }
   function receipt(value={}){
     const outcome=['succeeded','failed','cancelled','pending'].includes(value.outcome)?value.outcome:'unknown';
@@ -127,7 +130,7 @@ window.CommerceUI = (() => {
   function chatLayout(areaWidth,preferred){
     const area=Number.isFinite(Number(areaWidth))&&Number(areaWidth)>0?Number(areaWidth):1024;
     const min=320,max=Math.max(min,Math.min(area>=1800?960:640,Math.round((area-24)*.5),area-514));
-    const saved=Number(preferred),fallback=Math.min(400,Math.round((area-24)*.3/8)*8);
+    const saved=Number(preferred),fallback=Math.min(360,Math.round((area-24)*.3/8)*8);
     return {min,max,width:Math.round(Math.max(min,Math.min(max,Number.isFinite(saved)&&saved>0?saved:fallback)))};
   }
   function observeReadingRegions(root=document){
@@ -166,5 +169,119 @@ window.CommerceUI = (() => {
     else observeReadingRegions();
   }
   applyTheme('system');
-  return Object.freeze({version:'1.4.0',applyTheme,getTheme,chatLayout,observeReadingRegions,icon,escape,attributes,legacyAttributes,button,badge,input,select,field,empty,alert,card,table,evidence,fieldDiff,receipt,tabs,navigationGroups,moduleDetails,moduleDirectory,modal,status:(code,capabilities)=>globalThis.CommerceStatus.describe(code,capabilities)});
+  return Object.freeze({version:'1.4.0',applyTheme,getTheme,chatLayout,observeReadingRegions,icon,escape,attributes,legacyAttributes,button,badge,input,select,field,empty,alert,card,table,evidence,fieldDiff,receipt,restockSources,tabs,navigationGroups,moduleDetails,moduleDirectory,modal,status:(code,capabilities)=>globalThis.CommerceStatus.describe(code,capabilities)});
+})();
+
+/* Attribute-only enhancement keeps React-owned cells and existing controls intact. */
+(()=>{
+  if(typeof MutationObserver==='undefined'||typeof ResizeObserver==='undefined'||!document.querySelectorAll)return;
+  const selector='.ui-table,.table-wrap,.r-table-wrap',observed=new Set(),rows=new WeakMap(),previewAttrs=new WeakMap();
+  const interactive='button,a,input,select,textarea,details,[contenteditable=true],[tabindex]';
+  let pending=false,detail=null;
+  const text=node=>{
+    if(node.nodeType===3)return node.textContent;
+    if(node.nodeType!==1||node.matches('svg,script,style,[hidden],[aria-hidden=true]'))return '';
+    if(node.tagName==='INPUT')return node.type==='password'?'密码字段':node.value;
+    if(node.tagName==='TEXTAREA')return node.value;
+    if(node.tagName==='SELECT')return [...node.selectedOptions].map(o=>o.textContent).join('、');
+    if(node.tagName==='BR')return '\n';
+    const value=[...node.childNodes].map(text).join('');
+    return /^(P|DIV|SMALL|PRE|DETAILS|SUMMARY)$/.test(node.tagName)?value+'\n':value;
+  };
+  const value=cell=>text(cell).replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+  function prepare(table){
+    const headers=[...(table.tHead?.rows[table.tHead.rows.length-1]?.cells||[])].flatMap(c=>Array(c.colSpan||1).fill(c.textContent.trim()));
+    if(!headers.length)return [];
+    table.setAttribute('role','table');table.tHead.setAttribute('role','rowgroup');
+    for(const row of table.tHead.rows){row.setAttribute('role','row');for(const cell of row.cells)cell.setAttribute('role','columnheader')}
+    const cells=[],carried=[];let index=0;
+    for(const body of table.tBodies){body.setAttribute('role','rowgroup');for(const row of body.rows){
+      row.setAttribute('role','row');const fields=[];let column=0;
+      for(let i=0;i<carried.length;i++)if(carried[i]?.until>index)fields.push(carried[i].field);
+      for(const cell of row.cells){
+        while(carried[column]?.until>index)column++;
+        const label=headers.slice(column,column+(cell.colSpan||1)).join(' / ')||'信息';
+        cell.dataset.uiTableLabel=label;cell.setAttribute('role','cell');
+        const field={cell,label};fields.push(field);cells.push(cell);
+        for(let i=0;i<(cell.colSpan||1);i++)carried[column+i]={until:index+(cell.rowSpan||1),field};
+        column+=cell.colSpan||1;
+      }
+      rows.set(row,[...new Set(fields)]);index++;
+    }}
+    return cells;
+  }
+  function refresh(){
+    pending=false;
+    for(const wrapper of observed)if(!wrapper.isConnected){resize.unobserve(wrapper);observed.delete(wrapper)}
+    for(const wrapper of document.querySelectorAll(selector)){
+      const table=wrapper.querySelector(':scope>table');if(!table||!wrapper.getClientRects().length)continue;
+      if(!observed.has(wrapper)){observed.add(wrapper);resize.observe(wrapper)}
+      const cells=prepare(table);if(!table.tHead?.rows.length)continue;
+      wrapper.removeAttribute('data-ui-table-mode');
+      const compact=wrapper.clientWidth<600;
+      if(compact)wrapper.dataset.uiTableMode='compact';
+      for(const cell of cells){
+        // Ignore our own tab stop when deciding whether a cell contains a business control.
+        const controls=cell.querySelector(interactive);
+        cell.toggleAttribute('data-ui-table-copy',!controls);
+        const clipped=compact&&!controls&&cell.scrollWidth>cell.clientWidth+1;
+        cell.toggleAttribute('data-ui-table-preview',clipped);
+        if(clipped){
+          if(!previewAttrs.has(cell))previewAttrs.set(cell,Object.fromEntries(['tabindex','title','aria-haspopup'].map(a=>[a,cell.getAttribute(a)])));
+          if(!cell.hasAttribute('tabindex'))cell.tabIndex=0;
+          cell.setAttribute('aria-haspopup','dialog');cell.setAttribute('title','点击或按回车查看完整信息');
+        }else if(previewAttrs.has(cell)){
+          for(const [key,old] of Object.entries(previewAttrs.get(cell)))if(old===null)cell.removeAttribute(key);else cell.setAttribute(key,old);
+          previewAttrs.delete(cell);
+        }
+      }
+    }
+  }
+  const queue=()=>{if(!pending){pending=true;requestAnimationFrame(refresh)}};
+  const resize=new ResizeObserver(queue);
+  function open(cell){
+    if(detail)return;
+    const opener=cell,table=cell.closest('table'),row=cell.closest('tr'),fields=rows.get(row)||[];
+    const record=value(row.cells[0]),heading=table?.tHead?.textContent;
+    const dialog=document.createElement('dialog');dialog.className='dialog ui-dialog ui-table-detail';
+    dialog.setAttribute('aria-labelledby','ui-table-detail-title');
+    dialog.innerHTML='<header class="dialog-head"><h2 id="ui-table-detail-title">完整信息</h2>'+window.CommerceUI.button({label:'关闭',attrs:{'data-ui-table-close':true,'aria-label':'关闭完整信息'}})+'</header>';
+    const list=document.createElement('dl');list.className='ui-table-detail-fields';
+    for(const field of fields){const item=document.createElement('div'),label=document.createElement('dt'),copy=document.createElement('dd');label.textContent=field.label;copy.textContent=value(field.cell)||'—';item.append(label,copy);list.append(item)}
+    dialog.append(list);document.body.append(dialog);detail=dialog;
+    const close=()=>{
+      dialog.close();dialog.remove();detail=null;
+      let target=opener;
+      if(!target.isConnected){
+        const replacement=[...document.querySelectorAll(selector)].map(w=>w.querySelector(':scope>table')).find(t=>t?.tHead?.textContent===heading);
+        target=[...(replacement?.tBodies[0]?.rows||[])].find(r=>value(r.cells[0])===record)?.querySelector('[data-ui-table-preview]');
+      }
+      if(target?.isConnected){
+        if(!target.hasAttribute('tabindex')){target.tabIndex=-1;target.addEventListener('blur',()=>target.removeAttribute('tabindex'),{once:true})}
+        target.focus({preventScroll:true});
+      }
+    };
+    dialog.querySelector('[data-ui-table-close]').addEventListener('click',event=>{event.stopPropagation();close()});
+    dialog.addEventListener('cancel',event=>{event.preventDefault();event.stopPropagation();close()});
+    dialog.addEventListener('keydown',event=>{
+      if(event.key!=='Tab')return;
+      const buttons=[...dialog.querySelectorAll('button')];
+      if(buttons.length===1){event.preventDefault();buttons[0].focus()}
+    });
+    dialog.showModal();dialog.querySelector('button').focus();
+  }
+  document.addEventListener('click',event=>{
+    const cell=event.target.closest?.('[data-ui-table-preview]');
+    const control=event.target.closest?.(interactive);
+    if(cell&&(!control||control===cell)){event.preventDefault();event.stopPropagation();open(cell)}
+  },true);
+  document.addEventListener('keydown',event=>{
+    const cell=event.target.closest?.('[data-ui-table-preview]');
+    if(cell&&event.target===cell&&['Enter',' '].includes(event.key)){event.preventDefault();event.stopPropagation();open(cell)}
+  },true);
+  const start=()=>{
+    new MutationObserver(records=>{if(records.some(r=>(r.target.nodeType===1?r.target:r.target.parentElement)?.closest('table')||[...r.addedNodes,...r.removedNodes].some(n=>n.nodeType===1&&(n.matches('table')||n.querySelector('table')))))queue()}).observe(document.body,{childList:true,subtree:true,characterData:true});
+    queue();
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();

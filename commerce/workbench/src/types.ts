@@ -23,7 +23,8 @@ export interface Product {
   forms: { plan: Checkpoint<{ goal: string; steps: { title: string; task_id?: string }[] }>; cost: Checkpoint<{ input: Input }> };
   calculation: Calculation; tasks: Task[];
 }
-export interface BusinessContext { module: string; demo?: boolean; platform?: string; market?: string; store_id?: string; entity?: { kind: string; id: string }; calculator?: string; input?: Input }
+export interface BusinessContext { module: string; demo?: boolean; platform?: string; market?: string; store_id?: string; store_scope?: string; entity?: { kind: string; id: string }; calculator?: string; input?: Input }
+export interface PageContext { page: string; section?: string; demo?: boolean; source?: 'live'|'local'|'unavailable'|'stale'; entity?: {kind:string;id:string;name?:string}; filters?: Record<string,string>; source_refs?: Record<string,string>; input?: Record<string,string|number|null>; errors?: string[]; intent?: 'current_page'|'original_thread' }
 export interface SharedCopilotController {
   view: () => string; open: (context?: BusinessContext, options?: { focus?: boolean }) => void;
   close: () => void; afterPaint: () => void; contextChanged: () => void; dispose: () => void;
@@ -31,14 +32,16 @@ export interface SharedCopilotController {
 }
 interface SharedCopilotOptions {
   api: (tool: string, args?: object) => Promise<unknown>; getContext: () => BusinessContext;
+  getPageContext?: () => PageContext;
   isActive: () => boolean; repaint: () => void; inline: boolean; compact: boolean;
-  modal: (title: string, body: string, actions?: string) => void; closeModal: () => void;
+  modal: (title: string, body: string, actions?: string) => void; closeModal: (focusId?: string) => void;
   toast: (text: string) => void; onWorkspace: () => void;
   onModels?: () => void; onResearch?: (taskId: string) => void; onOpenCandidate?: (caseId: string, researchTaskId?: string) => void;
   errorText: (failure: Error | { code?: string; message?: string }) => string;
 }
 export interface Run {
   id: string; status: string; result_sha256?: string; error?: string;
+  parameters?: { context?: BusinessContext; page_context?: PageContext };
   result?: { answer?: string; questions?: string[]; evidence_refs?: string[]; proposals?: { id: string; reason: string }[] };
 }
 export interface Thread {
@@ -53,9 +56,19 @@ export interface LiveStatus {
   stock?: { available: boolean; fresh: boolean; count?: number };
 }
 export type Theme = 'light' | 'dark' | 'system';
+interface RunEventObserver {
+  observe: (options: {
+    api: (tool: string, args: object) => Promise<unknown>; thread: Thread; runId: string;
+    pollMs?: number; eventThreadId?: string; eventRunId?: string;
+    onEvent?: (event: import('@ag-ui/client').BaseEvent) => void;
+    onComplete?: (thread: Thread) => void; onError?: (error: Error, thread?: Thread) => void;
+  }) => () => void;
+}
 declare global {
+  var CommerceRunEvents: RunEventObserver;
   const __LEGACY_HTML__: string;
   interface Window {
+    CommercePageContext: { clean:(value:unknown)=>PageContext|null;label:(value:PageContext)=>string;create:(options:{getBase:()=>PageContext;root?:()=>HTMLElement|null;onChange?:(value:PageContext|null)=>void})=>{snapshot:()=>PageContext|null;changed:()=>void;reset:()=>void;dispose:()=>void} };
     CommerceResearchContext: { task: (value?: string | null) => string; mergeJob: <T extends { task_id: string; revision?: string | number }>(jobs: T[], readback: T) => T[]; mergeJobs: <T extends { task_id: string; revision?: string | number }>(jobs: T[], readback: T[]) => T[] };
     CommerceCopilotDraftStorage: () => { request: (op: string, key: string, value?: string, expected?: string) => Promise<string>; dispose: () => void };
     CommerceCopilot: (options: SharedCopilotOptions) => SharedCopilotController;

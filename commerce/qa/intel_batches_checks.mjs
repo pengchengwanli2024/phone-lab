@@ -8,6 +8,7 @@ export async function intelBatchesChecks({page,output,invoke,checks}){
   if(!await f.locator('#intel-source').isVisible())await f.locator('[data-intel-action="filters"]').click();
   await f.locator('#intel-source').selectOption('fed');
   await f.locator('#intel-search button[type="submit"]:not(:disabled)').waitFor();
+  if(!await f.locator('[data-intel-action="article-plan"]').isVisible())await f.locator('#intel-aux-menu>summary').click();
   await f.locator('[data-intel-action="article-plan"]').click();
   const dialog=f.getByRole('dialog');await dialog.getByText('补齐当前范围正文',{exact:true}).waitFor();
   assert.match(await dialog.innerText(),/本次按来源均衡选择 1 条/);

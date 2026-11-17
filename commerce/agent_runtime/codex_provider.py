@@ -1,5 +1,6 @@
 """Explicit signed-in Codex CLI inference, isolated from project tools/configuration."""
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -12,9 +13,44 @@ from .model_worker import STRUCTURED_SYSTEM
 
 KNOWN_BINARIES=(Path('/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'),
                 Path('/Applications/Codex.app/Contents/Resources/codex'))
+# Finish and retain the transport outcome before the default 90s chain fuse.
+TIMEOUT_SECONDS=85
 
 
 class Cancelled(Exception):pass
+
+
+def attempt_diagnostic(path,started,reason,returncode):
+    stage='process_started';rank=0
+    stages={'thread.started':(1,'session_started'),'turn.started':(2,'model_started'),
+            'item.completed':(3,'message_received'),'turn.completed':(4,'turn_completed')}
+    with path.open('rb')as source:raw=source.read(1000000)
+    for line in raw.splitlines():
+        try:event=json.loads(line)
+        except (ValueError,UnicodeError):continue
+        if not isinstance(event,dict):continue
+        item=event.get('item')
+        if event.get('type')=='item.completed'and(not isinstance(item,dict)or item.get('type')!='agent_message'):continue
+        current=stages.get(event.get('type'))
+        if current and current[0]>rank:rank,stage=current
+    # No response text, stderr, prompts, paths, session IDs or credentials.
+    return {'provider':'codex_cli','stage':stage,'reason':reason,
+            'elapsed_seconds':round(time.monotonic()-started,3),
+            'returncode':returncode,'automatic_retry':False}
+
+
+def failure_diagnostic(error):
+    seen=set()
+    while error is not None and id(error)not in seen:
+        seen.add(id(error));value=getattr(error,'provider_diagnostic',None)
+        if (isinstance(value,dict)and value.get('provider')=='codex_cli'and
+            value.get('stage')in('process_started','session_started','model_started','message_received','turn_completed')and
+            value.get('reason')in('invalid_response','cli_exit','deadline','cancelled')and
+            type(value.get('elapsed_seconds'))in(int,float)and math.isfinite(value['elapsed_seconds'])and value['elapsed_seconds']>=0 and
+            (value.get('returncode')is None or type(value['returncode'])is int)):
+            return {key:value.get(key)for key in('provider','stage','reason','elapsed_seconds','returncode')}|{'automatic_retry':False}
+        error=error.__cause__ or error.__context__
+    return None
 
 
 def route(state):
@@ -31,7 +67,7 @@ def route(state):
     except (OSError,ValueError,TypeError):raise ValueError('agent_model_route_invalid') from None
 
 
-def schema(observations=()):
+def schema(observations=(),generative=False):
     def obj(properties):return {'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}
     string={'type':'string'}
     strings={'type':'array','items':string}
@@ -40,10 +76,15 @@ def schema(observations=()):
     call=obj({'tool':string,'arguments_json':string})
     proposal=obj({'operation':{'type':'string','enum':['report','unit_economics','restock_plan','intel_review','organization_handoff','exposure_review']},
                   'reason':string,'evidence_ref':string})
-    return obj({'decision':{'anyOf':[
+    spec=obj({'decision':{'anyOf':[
         obj({'phase':{'type':'string','enum':['inspect']},'calls':{'type':'array','items':call}}),
         obj({'phase':{'type':'string','enum':['answer']},'answer':string,'questions':strings,'evidence_refs':evidence,'proposals':{'type':'array','items':proposal}})
     ]}})
+    if generative:
+        from generative.catalog import selection_schema
+        answer=spec['properties']['decision']['anyOf'][1]
+        answer['properties']['ui']=selection_schema();answer['required'].append('ui')
+    return spec
 
 
 def command(work, config):
@@ -83,7 +124,7 @@ def decode(value):
             if not isinstance(args,dict):raise ValueError('agent_model_invalid_response')
             calls.append({'tool':call['tool'],'arguments':args})
         return {'phase':'inspect','calls':calls}
-    if decision.get('phase')!='answer' or set(decision)!={'phase','answer','questions','evidence_refs','proposals'}:raise ValueError('agent_model_invalid_response')
+    if decision.get('phase')!='answer' or set(decision)-{'ui'}!={'phase','answer','questions','evidence_refs','proposals'}:raise ValueError('agent_model_invalid_response')
     # Full semantic limits, evidence and operation allowlists remain in AgentRuntime.
     return decision
 
@@ -150,15 +191,30 @@ def invoke_json(payload, cancelled, config, output_schema, instructions, *, inpu
             input_file.write(encoded);input_file.seek(0)
             process=subprocess.Popen(command(work,config)+attachments,stdin=input_file,stdout=output,stderr=errors,
                                      env=env,cwd=work,start_new_session=True)
+            from generative.streaming import enabled,mode
+            from generative.codex_events import MessageEvents
+            event_stream=MessageEvents();read_at=0
+            if enabled():mode('provider_events')
+            def receive_events():
+                nonlocal read_at
+                if not enabled():return
+                with (work/'events.jsonl').open('rb') as reader:
+                    reader.seek(read_at);chunk=reader.read(1000001);read_at+=len(chunk)
+                event_stream.feed(chunk)
             try:
-                end=time.monotonic()+100
+                started=time.monotonic();end=started+TIMEOUT_SECONDS;reason='invalid_response'
                 while process.poll() is None:
-                    if cancelled():raise Cancelled()
-                    if time.monotonic()>end:raise ValueError('agent_provider_outcome_unknown')
+                    receive_events()
+                    if cancelled():reason='cancelled';raise Cancelled()
+                    if time.monotonic()>end:reason='deadline';raise ValueError('agent_provider_outcome_unknown')
                     if output.tell()>1000000 or errors.tell()>1000000:raise ValueError('agent_model_response_too_large')
                     time.sleep(.1)
-                if cancelled():raise Cancelled()
-                if process.returncode:raise ValueError('agent_provider_failed_no_automatic_retry')
+                if cancelled():reason='cancelled';raise Cancelled()
+                receive_events()
+                if process.returncode:
+                    reason='cli_exit'
+                    diagnostic=attempt_diagnostic(work/'events.jsonl',started,reason,process.returncode)
+                    raise ValueError('agent_provider_outcome_unknown'if diagnostic['stage']in('model_started','message_received')else'agent_provider_failed_no_automatic_retry')
                 output.seek(0);events=output.read(1000001).decode('utf-8');check_events(events)
                 response=work/'answer.json'
                 if not response.is_file():raise ValueError('agent_model_invalid_response')
@@ -166,9 +222,12 @@ def invoke_json(payload, cancelled, config, output_schema, instructions, *, inpu
                 try:value=json.loads(response.read_text())
                 except ValueError:raise ValueError('agent_model_invalid_json') from None
                 return {'data':value,'receipt':native_receipt(events,config['model'])} if with_receipt else value
+            except BaseException as error:
+                error.provider_diagnostic=attempt_diagnostic(work/'events.jsonl',started,reason,process.poll())
+                raise
             finally:stop(process)
 
 
 def invoke(payload, cancelled, config):
-    value=invoke_json(payload,cancelled,config,schema(payload.get('observations',[])),STRUCTURED_SYSTEM)
+    value=invoke_json(payload,cancelled,config,schema(payload.get('observations',[]),generative=bool(payload.get('ui_catalog'))),STRUCTURED_SYSTEM)
     return {'decision':decode(value),'provider':'codex_cli','model':config['model']}

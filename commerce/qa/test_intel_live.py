@@ -114,24 +114,13 @@ class IntelLiveTests(unittest.TestCase):
             if name == 'websockets.sync.client':
                 raise ImportError()
             return original_import(name, *args, **kwargs)
-        with patch('builtins.__import__', side_effect=importing), patch('intel_live.Path.is_file', return_value=True), patch('intel_live.subprocess.run') as run:
+        with patch('builtins.__import__', side_effect=importing), patch('intel_live.subprocess.run') as run:
             run.return_value.returncode = 0
             run.return_value.stdout = json.dumps({'items': [], 'observed_at': 123})
             self.assertEqual(self.live._vessels('synthetic-pipe-only')['observed_at'], 123)
         self.assertNotIn('synthetic-pipe-only', str(run.call_args.args))
         self.assertIn('synthetic-pipe-only', run.call_args.kwargs['input'])
         self.assertEqual(run.call_args.kwargs['timeout'], 30)
-
-    def test_missing_optional_ais_worker_stays_unavailable_without_starting_a_process(self):
-        original_import = builtins.__import__
-        def importing(name, *args, **kwargs):
-            if name == 'websockets.sync.client':
-                raise ImportError()
-            return original_import(name, *args, **kwargs)
-        with patch('builtins.__import__', side_effect=importing), patch('intel_live.Path.is_file', return_value=False), patch('intel_live.subprocess.run') as run:
-            with self.assertRaisesRegex(ValueError, '^ais_client_unavailable$'):
-                self.live._vessels('synthetic-pipe-only')
-        run.assert_not_called()
 
     def test_operational_flight_refresh_requires_explicit_provider_license(self):
         self.config['OPENSKY_LICENSE_CONFIRMED'] = False

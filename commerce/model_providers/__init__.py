@@ -60,7 +60,8 @@ class ModelRegistry:
         except ValueError:default={'id':'project-default','label':'项目默认 · 配置待修复','engine':'builtin','enabled':False,'selectable':False,'revision':'0','test_status':'invalid_configuration','model':''}
         with self.core.db() as db:models=[self._public(self._record(db,r[0])) for r in db.execute('SELECT id FROM model_profiles ORDER BY updated DESC')]
         automatic=self.auto_profile()
-        return {'models':([automatic] if automatic else [])+[default,*models],
+        from model_accounts import profiles
+        return {'models':([automatic] if automatic else [])+[default,*models,*profiles(self)],
                 'default_model_id':'project-auto' if automatic else 'project-default',
                 'selection_scope':'conversation','credentials_via_private_setup_only':True}
 
@@ -143,7 +144,7 @@ class ModelRegistry:
 
     def select(self,thread_id,model_id,expected_revision):
         with self.core.db() as db:
-            db.execute('BEGIN IMMEDIATE')
+            if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
             if not db.execute('SELECT 1 FROM copilot_threads WHERE id=?',(thread_id,)).fetchone():raise ValueError('copilot_thread_not_found')
             selected=self.selection(db,thread_id)
             if selected['revision']!=expected_revision:raise ValueError('model_selection_changed')
@@ -163,6 +164,9 @@ class ModelRegistry:
             return {'provider':'host_auto','model':'auto','profile_id':'project-auto',
                     'profile_revision':item['revision'],'label':'智能选择'}
         if model_id=='project-default':return self.default_snapshot()
+        if model_id in ('account-openai','account-deepseek'):
+            from model_accounts import snapshot
+            return snapshot(self,model_id)
         row=self._record(db,model_id)
         if not self._public(row)['selectable']:raise ValueError('model_not_ready')
         return self._snapshot(row)

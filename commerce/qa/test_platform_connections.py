@@ -24,6 +24,7 @@ def config(provider='amazon',ident='a'*32):
  value={'store_id':ident,'platform':provider,'label':'Synthetic store','region':api.CATALOG[provider]['regions'][0],
         'market':'US','enabled':True,'scope_reviewed':True}
  value.update({k:'synthetic-'+k for k in api.CATALOG[provider]['secrets']})
+ value.update({'shop_domain':'synthetic.myshopify.com'}if provider=='shopify'else{'store_url':'https://synthetic.example.com'}if provider=='woocommerce'else{})
  value.update({'marketplace_id':'SYNTHETICUS'}if provider=='amazon'else {'seller_id':'123'}if provider=='mercado'else{})
  return value
 
@@ -33,6 +34,10 @@ def response(value):return api.encoded(value).encode(),None
 
 def synthetic(request):
  path=urlparse(request.full_url).path;q=parse_qs(urlparse(request.full_url).query)
+ if path=='/admin/api/2026-10/graphql.json':return response({'data':{'shop':{'currencyCode':'USD'},'productVariants':{'nodes':[{'id':'gid://shopify/ProductVariant/1','sku':'SYN-SKU','price':'12.34','product':{'id':'gid://shopify/Product/1','title':'Synthetic','status':'DRAFT'}}],'pageInfo':{'hasNextPage':False,'endCursor':None}}}})
+ if path=='/wp-json/wc/v3/settings/general/woocommerce_currency':return response({'value':'USD'})
+ if path=='/wp-json/wc/v3/products':return response([{'id':1,'type':'simple','sku':'SYN-SKU','name':'Synthetic','status':'draft','manage_stock':False,'regular_price':'12.34'}])
+ if path=='/wp-json/wc/v3/orders':return response([{'id':1,'status':'pending','currency':'USD','total':'12.34','date_created_gmt':'2026-11-01T00:00:00'}])
  if path=='/users/me':return response({'id':123,'email':'PRIVATE_BUYER_SENTINEL'})
  if path.endswith('/items/search'):return response({'results':['SYN1'],'paging':{'total':1}})
  if path=='/items':return response([{'code':200,'body':{'id':'SYN1','seller_id':123,'title':'Synthetic','available_quantity':50,'currency_id':'USD','price':'12.34'}}])

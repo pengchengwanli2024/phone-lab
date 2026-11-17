@@ -1,0 +1,19 @@
+{
+  "schema": "commerce-generative-catalog-v1",
+  "version": 1,
+  "components": {
+    "Evidence": {"label": "来源依据", "tools": ["*"], "field_prefix": "evidence"},
+    "QuoteComparison": {"label": "供应报价", "tools": ["commerce_workspace_get", "commerce_workspace_quote_compare"], "field_prefix": "supply_quote"},
+    "DeliveryReview": {"label": "商品交付审阅", "tools": ["commerce_workspace_get"], "field_prefix": "delivery"},
+    "ListingReview": {"label": "上架资料审阅", "tools": ["commerce_listing_get"], "field_prefix": "listing"},
+    "SkillReadiness": {"label": "技能执行条件", "tools": ["commerce_skills_readiness"], "field_prefix": "skill"},
+    "CostSummary": {"label": "成本与贡献测算", "tools": ["commerce_workspace_get", "commerce_unit_economics"], "field_prefix": "unit_economics", "form_catalog": "../a2ui/contract.json"},
+    "FieldDiff": {"label": "页面输入差异", "tools": ["commerce_current_page"], "field_prefix": "page_input"},
+    "Questions": {"label": "需要补充", "slot": "questions", "field_prefix": "question"},
+    "ProposalReview": {"label": "建议与审阅", "slot": "proposals", "field_prefix": "proposal"},
+    "Receipt": {"label": "原任务回执", "slot": "receipt", "field_prefix": "receipt"}
+  },
+  "limits": {"components": 12, "preview_answer_chars": 5000, "journal_events": 512},
+  "model_values_allowed": false,
+  "model_actions_allowed": false
+}

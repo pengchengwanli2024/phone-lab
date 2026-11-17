@@ -32,8 +32,8 @@ class OwnerReviews:
     @staticmethod
     def kind(target):return 'compliance_owner_'+digest(canonical(target))[:24]
     def snapshot(self,target):
-        target,scope=self.service.listings.scope(**target);case,_,_,source=self.workspace.sources(target['case_id']);config=self.service.live.config()
-        saved=self.service.form_drafts.get(scope);envelope=saved['payload']or{};payload=envelope.get('data')
+        target,scope=self.service.listings.scope(**target);case,_,facts,source=self.workspace.sources(target['case_id']);config=self.service.live.config()
+        saved=self.service.form_drafts.get(scope);envelope=saved['payload']or{};payload,base_current=self.service.listings.saved_payload(target,envelope,source,facts=facts)
         supported=target['platform']=='ozon'and target['store_ref']=='ozon-live'and target['market']=='RU'and case['scope'].get('platform')=='ozon'and case['scope'].get('market')=='RU'
         head=self.org.artifact(target['case_id'],'delivery_review');content=self.workspace.content_for_case(case);draft=content[0]if content else None
         receipt=None
@@ -43,7 +43,7 @@ class OwnerReviews:
         checkpoints={name:self.service.form_drafts.get(self.workspace.form_scope(target['case_id'],name))for name in ('cost','content')}
         schema=self.service.listing_schema.evaluate(target,payload,case['scope'].get('synthetic')is True)if payload else None
         binding=dict(platform_schema_sha256=digest(canonical(schema)),policy=POLICY,target=target,source_sha256=source,listing_revision=saved['revision'],saved_source_sha256=envelope.get('source_sha256'),payload_sha256=digest(canonical(payload)),connection_binding=digest(canonical([config.get('connection_id'),config.get('ozon_client_id'),config.get('ozon_api_key')])),delivery_sha256=head['sha256']if head else None,content_draft_id=draft['id']if draft else None,content_draft_sha256=draft['draft']['draft_sha256']if draft else None,checkpoints={k:dict(revision=v['revision'],sha256=digest(canonical(v['payload'])))for k,v in checkpoints.items()})
-        checks=[dict(id='scope',label='当前 Ozon 店铺、市场与商品范围',ready=supported),dict(id='saved',label='店铺方案已保存',ready=bool(saved['revision']and payload)),dict(id='source',label='保存方案与当前商品来源一致',ready=envelope.get('source_sha256')==source),dict(id='delivery',label='当前本地交付审阅与有效回执',ready=delivery)]
+        checks=[dict(id='scope',label='当前 Ozon 店铺、市场与商品范围',ready=supported),dict(id='saved',label='店铺方案已保存',ready=bool(saved['revision']and payload)),dict(id='source',label='保存方案与当前商品来源一致',ready=envelope.get('source_sha256')==source and base_current),dict(id='delivery',label='当前本地交付审阅与有效回执',ready=delivery)]
         return dict(target=target,binding=binding,binding_sha256=digest(canonical(binding)),product=payload,synthetic=case['scope'].get('synthetic')is True,supported=supported,automatic_checks=checks)
     def state(self,target):
         value=self.snapshot(target);head=self.org.artifact(value['target']['case_id'],self.kind(value['target']))

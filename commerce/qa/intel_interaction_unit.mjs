@@ -293,8 +293,9 @@ test('global intelligence exposes the shared AI entry and binds only a currently
 test('the actual shared entry passes the selected public record scope and never labels it as example data',async()=>{
  const f=fixture();await f.enter();await f.click('',{intelId:f.rows[0].id});
  const app=await readFile(new URL('../web/app.js',import.meta.url),'utf8');
- const start=app.indexOf('  function copilotContext(){'),end=app.indexOf('  const copilot=reactHost?',start);
- const sandbox={state:{tab:'intelligence',demo:true},intel:f.intel,copilotEntity:null,document:{querySelector:()=>null}};
+ const start=app.indexOf('  function copilotContext(){'),end=app.indexOf('  let copilot;',start);
+ assert.ok(start>=0&&end>start,'shared context function must be present before the shared assistant setup');
+ const sandbox={state:{tab:'intelligence',demo:true},intel:f.intel,copilotEntity:null,shipping:{isOpen:()=>false},document:{querySelector:()=>null}};
  vm.runInNewContext(app.slice(start,end)+';this.actualContext=copilotContext;',sandbox);
  assert.deepEqual(structuredClone(sandbox.actualContext()),{module:'intelligence',demo:false,platform:'all',store_id:'all',market:'all',entity:{kind:'intel',id:f.rows[0].id}});
  await f.click('reader-back');assert.equal(sandbox.actualContext().entity,undefined);

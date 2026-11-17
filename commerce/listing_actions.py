@@ -20,7 +20,7 @@ def definitions(schema,string):
     selected={'case_id':string};event={'action_id':string,'expected_event_sha256':{'type':'string'},'idempotency_key':string}
     return [
         ('commerce_listing_action_get','只读准确现有商品图库、人工图片变更审核和一次执行状态；可指定历史动作，不批准或提交',schema({**selected,'action_id':string},['case_id'])),
-        ('commerce_listing_action_directory','只读当前店铺的图片动作与恢复入口；分页保留未知和历史状态，不回读或重放提交',schema({'demo':{'type':'boolean'},'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':50}})),
+        ('commerce_listing_action_directory','只读当前店铺的图片动作与恢复入口；分页保留未知和历史状态，不回读或重放提交',schema({'demo':{'type':'boolean'},'store_scope':string,'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':50}})),
         ('commerce_listing_action_refresh','明确只读获取当前商品图库；不改店铺',schema(selected,['case_id'])),
         ('commerce_listing_action_prepare','固定现有商品标准图库前后数组与来源版本，生成待核对动作；不改价库存或创建商品',schema({**selected,'expected_source_sha256':string,'expected_gallery_sha256':string,'image_urls':{'type':'array','items':string,'minItems':1,'maxItems':20},'idempotency_key':string},[*selected,'expected_source_sha256','expected_gallery_sha256','image_urls','idempotency_key'])),
         ('commerce_listing_action_review','按准确图片变更版本记录操作者核对/退回；owner_manual仅是本人本次声明，不是独立专业认证，批准必须来自用户明确核对',schema({**event,'checks':{'type':'object'},'decision':{'type':'string','enum':['save','approved','rejected']},'reviewer':{'type':'string','maxLength':160},'review_mode':{'type':'string','enum':['','owner_manual']},'confirmed':{'type':'boolean'}},[*event,'checks','decision','reviewer','review_mode','confirmed'])),
@@ -133,10 +133,14 @@ class ListingActions:
         try:self._current(a);current=True
         except ValueError:current=False
         return dict(id=a['id'],sha256=a['sha256'],event_sha256=h['sha256']if h else'',created_at=a['created_at'],**a['data'],state=state,current=current,approval_fresh=bool(state['approved_at']and 0<=time.time()-state['approved_at']<1800))
-    def directory(self,demo=False,offset=0,limit=25):
+    def directory(self,demo=False,offset=0,limit=25,store_scope='all'):
+        catalog=self.service.store_scopes.selection(store_scope,demo)
         if type(demo)is not bool or type(offset)is not int or offset<0 or type(limit)is not int or not 1<=limit<=50:raise ValueError('listing_action_invalid_page')
         c=self.live.config();configured=bool(c.get('ozon_client_id')and c.get('ozon_api_key'))
         if demo or not configured:return dict(items=[],total=0,offset=offset,next_offset=None,complete=demo,configured=configured if not demo else False,status='demo_no_shop_read'if demo else'not_configured',external_execution_allowed=False)
+        from store_scopes import source_id
+        live_scope=catalog['mapping'].get(source_id('live','ozon','RU',c.get('connection_id',''),demo))
+        if store_scope!='all'and(store_scope=='unassigned'or store_scope!=live_scope):return dict(items=[],total=0,offset=offset,next_offset=None,complete=True,configured=True,status='different_store_scope',external_execution_allowed=False)
         query=" FROM org_artifacts a JOIN org_cases c ON c.id=a.case_id WHERE a.kind='listing_image_action'AND json_extract(a.payload,'$.store_identity')=?AND c.connection=?AND COALESCE(json_extract(c.scope,'$.synthetic'),0)=0"
         params=(self.store_identity(c),c.get('connection_id',''))
         with self.core.db()as db:

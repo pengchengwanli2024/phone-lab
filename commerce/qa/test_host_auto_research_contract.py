@@ -138,7 +138,7 @@ class AutoResearchContract(unittest.TestCase):
                 self.assertIn('commerce_runtime_status',[t['tool'] for t in context['tools']])
                 decision={'phase':'inspect','calls':[{'tool':'commerce_runtime_status','arguments_json':'{}'}]}
                 self.app.host_execution.register('dsh','synthetic-dsh','synthetic-dsh')
-            else:decision={'phase':'answer','answer':'已读取本机运行状态，未进行外部操作。','questions':[],'evidence_refs':['R1'],'proposals':[]}
+            else:decision={'phase':'answer','answer':'已读取本机运行状态，未进行外部操作。','questions':[],'evidence_refs':['R1'],'proposals':[],'ui':[]}
             return {'data':{'decision':decision},'receipt':{'session_id':'synthetic-'+lease['attempt_id'],'provider':route['provider'],'model':route['model'],'finish_reason':'completed','tools_used':[]}}
         self.execute(native)
         run=self.app.agent_runtime.get(sent['latest_run']['id'])
@@ -205,7 +205,7 @@ class AutoResearchContract(unittest.TestCase):
         def reply(lease,cancelled):
             seen.append(deepcopy(lease['request']['payload']));route=lease['request']['route']
             return {'data':{'decision':{'phase':'answer','answer':'不客气。','questions':[],
-                    'evidence_refs':[],'proposals':[]}},'receipt':{
+                    'evidence_refs':[],'proposals':[],'ui':[]}},'receipt':{
                     'session_id':'synthetic-'+lease['attempt_id'],'provider':route['provider'],
                     'model':route['model'],'finish_reason':'completed','tools_used':[]}}
         self.execute(reply)

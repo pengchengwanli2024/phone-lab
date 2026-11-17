@@ -217,7 +217,7 @@ class HostExecution:
         return job, row[0], payload
 
     def request(self, task_id, run_id, phase, payload, output_schema, instructions):
-        allowed=('planning','analyzing') if task_id else ('dialogue_1','dialogue_2','dialogue_3')
+        allowed=('planning','analyzing') if task_id else ('dialogue_1','dialogue_2','dialogue_3','dialogue_4')
         if phase not in allowed: raise ValueError('host_invalid_phase')
         content = {'payload': payload, 'output_schema': output_schema, 'instructions': instructions}
         if len(canonical(content).encode()) > 100000: raise ValueError('host_request_too_large')
@@ -425,7 +425,7 @@ class HostExecution:
         from agent_runtime.codex_provider import schema,decode
         from agent_runtime.model_worker import STRUCTURED_SYSTEM
         generated=self.generate({'task_id':None,'run_id':run_id},'dialogue_'+str(turn),payload,
-                                schema(payload.get('observations',[])),STRUCTURED_SYSTEM,cancelled)
+                                schema(payload.get('observations',[]),generative=bool(payload.get('ui_catalog'))),STRUCTURED_SYSTEM,cancelled)
         return {'decision':decode(generated['data']),'provider':'host_native:'+generated['host_id'],'model':generated['model']}
 
     def generate(self, job, phase, payload, output_schema, instructions, cancelled):

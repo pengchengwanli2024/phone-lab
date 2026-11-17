@@ -3,6 +3,7 @@
 .adoption-grid .ui-field,.adoption-form .ui-field { min-width: 0; display: grid; gap: 6px; }
 .adoption-form input,.adoption-form select,.adoption-form textarea { width: 100%; box-sizing: border-box; }
 .adoption-form textarea { min-height: 100px; resize: vertical; }
+.adoption-form textarea[rows] { min-height: calc(var(--ui-control-height) * 1.5); }
 .adoption-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
 .adoption-notice { color: var(--ui-color-muted); line-height: 1.6; overflow-wrap: anywhere; }
 .adoption-list { display: grid; gap: 12px; padding: 0; list-style: none; }

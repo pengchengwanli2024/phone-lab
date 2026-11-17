@@ -57,6 +57,30 @@ class ProductMediaMCP(unittest.TestCase):
                 self.assertEqual(request['spec']['image_delivery']['aspect_ratio'],'3:4')
                 self.assertFalse(request['external_generation_submitted'])
 
+    def test_preflight_is_read_only_on_all_three_actual_mcp_clients(self):
+        pid=self.fixture['project_id'];p=self.call('commerce_creative_get',{'project_id':pid})
+        p=self.call('commerce_media_direction_save',{'project_id':pid,'expected_revision':p['revision'],
+            'reference_asset_ids':[self.fixture['reference_id']],
+            'analysis':{k:'Synthetic reviewed design.' for k in
+                ('layout','elements','style','colors','typography','selling_points','shots','rhythm','adaptation','avoid')}})
+        request=self.call('commerce_media_request_create',{'project_id':pid,'expected_revision':p['revision'],
+            'kind':'showcase_video','idempotency_key':'preflight-mcp'})
+        before=self.call('commerce_creative_get',{'project_id':pid})
+        reports=[]
+        for client in ('codex','hermes','harness'):
+            with self.subTest(client=client),self.mcp(client) as process:
+                descriptor=next(t for t in self.rpc(process,'tools/list',{})['result']['tools'] if t['name']=='commerce_media_request_preflight')
+                self.assertTrue(descriptor['annotations']['readOnlyHint'])
+                self.assertFalse(descriptor['annotations']['openWorldHint'])
+                result=self.rpc(process,'tools/call',{'name':'commerce_media_request_preflight','arguments':{
+                    'request_id':request['id'],'expected_revision':p['revision'],'asset_ids':[self.fixture['asset_id']]*5}})['result']
+                self.assertFalse(result.get('isError'),result)
+                report=result['structuredContent'];reports.append(report)
+                self.assertTrue(report['can_render']);self.assertEqual(report['summary']['still_duration_ms'],30000)
+                self.assertIsNone(report['semantic_motion_verified'])
+        self.assertEqual(reports[0],reports[1]);self.assertEqual(reports[1],reports[2])
+        self.assertEqual(self.call('commerce_creative_get',{'project_id':pid}),before)
+
     def test_three_clients_share_catalog_and_media_effects_without_duplicate_writes(self):
         pid=self.fixture['project_id'];metric_id=None
         for client in ('codex','hermes','harness'):

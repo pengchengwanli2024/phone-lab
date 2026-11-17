@@ -44,9 +44,9 @@ class ProductWorkspace:
         from delivery_review import DeliveryReview
         self.delivery = DeliveryReview(self)
 
-    def label(self,case):
+    def label(self,case,*,facts=None):
         if not case['scope'].get('label'):
-            for source in self.facts(case):
+            for source in self.facts(case) if facts is None else facts:
                 doc=self.service.business.source(source['id'])
                 if doc['fresh']and doc['document']['origin_ref']=='private-export:ozon-'+case['id']:
                     title=next((r['value']for r in doc['document']['records']if r['key']=='title'),None)
@@ -54,23 +54,34 @@ class ProductWorkspace:
         return case['scope'].get('label') or case['scope'].get('sku') or '未命名商品'
 
     def listing(self):
-        return {'items': [{'id': c['id'], 'name': self.label(c), 'platform': c['scope'].get('platform'),
+        cases=self.org.cases()
+        # Reuse source metadata within this one read. Scanning every source and
+        # draft for every product can exceed the native bridge's response limit.
+        modes={c['scope'].get('synthetic') is True for c in cases if not c['scope'].get('label')}
+        facts={}
+        for mode in modes:
+            for source in self.service.business.listing(mode)['sources']:
+                if source['kind']=='facts':
+                    key=(mode,source['scope']['subject_ref'],source['scope']['platform'])
+                    facts.setdefault(key,[]).append(source)
+        return {'items': [{'id': c['id'], 'name': self.label(c,facts=facts.get((c['scope'].get('synthetic') is True,c['id'],c['scope'].get('platform')),[])), 'platform': c['scope'].get('platform'),
                            'market': c['scope'].get('market'), 'candidate': c['scope'].get('origin') == 'research_candidate_not_inventory',
-                           'synthetic': c['scope'].get('synthetic') is True} for c in self.org.cases()],
+                           'synthetic': c['scope'].get('synthetic') is True} for c in cases],
                 'external_execution_allowed': False}
 
-    def facts(self, case):
+    def facts(self, case, *, _sources=None):
         # An explicit subject identity is required. Similar titles and SKU strings
         # never join imported facts from another object or connection.
         mode = case['scope'].get('synthetic') is True
-        return [s for s in self.service.business.listing(mode)['sources']
+        sources=self.service.business.listing(mode)['sources'] if _sources is None else _sources
+        return [s for s in sources
                 if s['kind'] == 'facts' and s['scope']['subject_ref'] == case['id']
                 and s['scope']['platform'] == case['scope'].get('platform')]
 
-    def sources(self, case_id):
+    def sources(self, case_id, *, _fact_sources=None):
         case = self.org.case(case_id)
         artifacts = {kind: self.org.artifact(case_id, kind) for kind in ('research', 'supply', 'economics', 'images')}
-        facts = self.facts(case)
+        facts = self.facts(case, _sources=_fact_sources)
         source = {'case': case, 'artifacts': {k: {'id': v['id'], 'sha256': v['sha256'], 'intact': v['intact']}
                                             if v else None for k, v in artifacts.items()},
                   'facts': [{k: s[k] for k in ('id', 'version', 'sha256')} for s in facts]}
@@ -105,7 +116,9 @@ class ProductWorkspace:
         with self.core.db() as db:
             for row in db.execute('SELECT * FROM tasks ORDER BY rowid DESC'):
                 payload = json.loads(row[2]); scope = payload.get('input', {})
-                if scope.get('organization_case') == case_id:
+                nested=scope.get('scope') if isinstance(scope.get('scope'),dict) else {}
+                task_case=scope.get('organization_case') or nested.get('case_id')
+                if task_case == case_id:
                     tasks.append(self.core.present(row))
                 if len(tasks) >= 100:
                     break
@@ -119,6 +132,8 @@ class ProductWorkspace:
                 'content_sources': sources, 'content_drafts': content, 'supply_quotes':self.supply.listing(case_id),
                 'read_scope': 'selected_case_only', 'facts_independently_verified': False,
                 'external_execution_allowed': False, **study}
+        if hasattr(self.service,'catalog'):
+            result['product_card']=self.service.catalog._identity_projection(case,self.service.catalog._catalog_context())
         result['delivery_review']=self.delivery.from_snapshot(result)
         return result
 
@@ -129,7 +144,7 @@ class ProductWorkspace:
         if not isinstance(payload, dict):
             raise ValueError('workspace_invalid_form')
         if form == 'view':
-            if set(payload) != {'tab'} or payload['tab'] not in ('overview', 'research', 'cost', 'content', 'review', 'tasks', 'media'):
+            if set(payload) != {'tab'} or payload['tab'] not in ('overview', 'evidence', 'research', 'cost', 'content', 'review', 'tasks', 'media'):
                 raise ValueError('workspace_invalid_view')
         elif form == 'plan':
             tasks = {t['id'] for t in self.get(case_id)['tasks']}
@@ -231,8 +246,18 @@ class ProductWorkspace:
             # not the version that the first submission just created.
             parents = [d for d in self.get(case_id)['content_drafts'] if d['created_at'] < saved['saved_at']]
             key = 'workspace-content:' + digest(canonical([case_id, expected_source_sha256, expected_revision]))
+            citations = {k: {'source_id': source_id, 'key': k} for k in payload['fields']}
+            source = self.service.business.source(source_id)
+            physical_keys = {r['key'] for r in source['document']['records']}
+            if 'description' in payload['fields'] and 'description' not in physical_keys:
+                from business_workflows.store import citation_fact, MISSING_FACT
+                if citation_fact('listing', 'description', source, 'attributes.4191') is not MISSING_FACT:
+                    citations['description']['key'] = 'attributes.4191'
+                    # Preserve prior immutable drafts made by the old citation
+                    # contract; a repeated fixed submission has its own stable ID.
+                    key = 'workspace-content-physical-v1:' + digest(canonical([case_id, expected_source_sha256, expected_revision]))
             result = self.service.business.draft('listing', [source_id],
-                {'fields': payload['fields'], 'citations': {k: {'source_id': source_id, 'key': k} for k in payload['fields']}},
+                {'fields': payload['fields'], 'citations': citations},
                 key, parents[0]['id'] if parents else None)
             self.org.case(case_id)
             return result

@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 from phone_bridge import ADB_CANDIDATES, FFMPEG_CANDIDATES, PhoneBridge, binary, jpeg_size, png_size
+from phone_frame_policy import FrameCapturePolicy
 from phone_wda import WdaClient, WdaManager, XCTESTRUN, ready as wda_ready
 
 PROJECT = Path(__file__).resolve().parent.parent
@@ -28,6 +29,7 @@ CONFIG = PROJECT / '.local' / 'control-monitor' / 'config.json'
 MAX_DEVICES = 12
 DISCOVER_SECONDS = 30.0
 SNAPSHOT_SECONDS = 1.2
+FRAME_MAX_AGE_SECONDS = 15.0
 XCRUN = '/opt/homebrew/bin/xcrun' if Path('/opt/homebrew/bin/xcrun').is_file() else (shutil.which('xcrun') or 'xcrun')
 IOS_LOCK = threading.Lock()
 NAME = re.compile(r'[^\w .()+-]', re.UNICODE)
@@ -40,6 +42,11 @@ def _clean(value, limit=60):
 
 def _device_id(prefix, secret):
     return prefix + hashlib.sha256(str(secret).encode()).hexdigest()[:15]
+
+
+def _fresh_frame(cached, seconds):
+    # A wall-clock rollback cannot make a cached observation fresh indefinitely.
+    return bool(cached and 0 <= time.time() - cached[0] < seconds)
 
 
 def _primary_serial():
@@ -105,6 +112,7 @@ class PhoneFleet:
         self._snap = {}      # id -> (at, mime, body)
         self._snap_locks = {}
         self._snap_running = set()
+        self._capture_policy = FrameCapturePolicy()
         self._models = {}
         self._snap_ok = {}
         self._empty_since = {'android': 0.0, 'ios': 0.0}
@@ -185,6 +193,10 @@ class PhoneFleet:
                 continue
             if connection.get('pairingState') != 'paired':
                 continue
+            # CoreDevice retains paired phones after unplugging. Pairing alone
+            # is not a live developer transport for screenshots or WDA.
+            if connection.get('tunnelState') != 'connected':
+                continue
             udid = str(props.get('udid') or '')
             if not re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', udid):
                 continue
@@ -223,14 +235,17 @@ class PhoneFleet:
     def _refresh(self):
         now = time.time()
         with self._lock:
+            if self._stop_event.is_set():
+                return
             if now - self._discovered_at < DISCOVER_SECONDS:
                 return
         android = self._android_devices()
         ios = self._ios_devices()
         android = self._grace('android', android, bool(self._android), now)
         ios = self._grace('ios', ios, bool(self._ios), now)
-        warm = []
         with self._lock:
+            if self._stop_event.is_set():
+                return
             if android is None and ios is None:
                 self._discovered_at = now
                 return
@@ -247,6 +262,7 @@ class PhoneFleet:
                         self._snap.pop(ident, None)
                         self._snap_ok.pop(ident, None)
                         self._snap_locks.pop(ident, None)
+                        self._capture_policy.forget(ident)
                         threading.Thread(target=bridge.stop, daemon=True).start()
                 for ident, (serial, model) in wanted.items():
                     bridge = self._android.get(ident)
@@ -254,7 +270,6 @@ class PhoneFleet:
                         lease = 'android' if serial == self._primary else 'android-' + ident
                         bridge = PhoneBridge(serial=serial, lease_key=lease)
                         self._android[ident] = bridge
-                        warm.append(ident)
                     self._meta[ident] = {'kind': 'android', 'label': model, 'model': model}
                     self._snap_locks.setdefault(ident, threading.Lock())
             if ios is not None:
@@ -269,14 +284,11 @@ class PhoneFleet:
                         self._snap.pop(ident, None)
                         self._snap_ok.pop(ident, None)
                         self._snap_locks.pop(ident, None)
+                        self._capture_policy.forget(ident)
                 for ident, device in wanted.items():
-                    if ident not in self._ios:
-                        warm.append(ident)
                     self._ios[ident] = device
                     self._meta[ident] = {'kind': 'ios', 'label': device.model, 'model': device.model}
                     self._snap_locks.setdefault(ident, threading.Lock())
-        for ident in warm:
-            self._warm(ident)
 
     # -- status ------------------------------------------------------------
     def status(self):
@@ -286,6 +298,8 @@ class PhoneFleet:
             android = dict(self._android)
             ios = dict(self._ios)
             snaps = {key: value[0] for key, value in self._snap.items()}
+            delayed = {key for key in metas if self._snap_ok.get(key) is False
+                       or (key in self._snap and not _fresh_frame(self._snap[key], FRAME_MAX_AGE_SECONDS))}
         devices = []
         for ident, meta in metas.items():
             if meta['kind'] == 'android':
@@ -305,7 +319,8 @@ class PhoneFleet:
                     'height': row.get('height') or 0, 'controlling': bool(row.get('controlling')),
                     'control_remaining': row.get('control_remaining') or 0,
                     'capabilities': row.get('capabilities') or {},
-                    'error': row.get('error') or '', 'frame_at': snaps.get(ident, 0),
+                    'error': row.get('error') or ('phone_frame_unavailable' if ident in delayed else ''),
+                    'frame_at': snaps.get(ident, 0),
                     'controllable': True, 'control_reason': '',
                 })
             else:
@@ -326,7 +341,8 @@ class PhoneFleet:
                     'online': online, 'mode': 'snapshot', 'quality': '', 'width': width, 'height': height,
                     'controlling': controlling, 'control_remaining': remaining,
                     'capabilities': {'tap': True, 'swipe': True, 'key': True, 'text': 'ascii', 'multi_touch': False},
-                    'error': '' if size else ('' if self._snap_ok.get(ident, True) else 'phone_frame_unavailable'), 'frame_at': snaps.get(ident, 0), 'controllable': XCTESTRUN.is_file(),
+                    'error': 'phone_frame_unavailable' if ident in delayed else '',
+                    'frame_at': snaps.get(ident, 0), 'controllable': XCTESTRUN.is_file(),
                     'control_reason': '' if XCTESTRUN.is_file() else 'wda_unavailable',
                 })
         devices.sort(key=lambda row: (0 if row['kind'] == 'android' else 1, row['label'].lower(), row['id']))
@@ -337,21 +353,21 @@ class PhoneFleet:
         }
 
     # -- snapshots ---------------------------------------------------------
-    def _snapshot_locked(self, ident):
+    def _snapshot_locked(self, ident, generation):
         with self._lock:
             meta = self._meta.get(ident)
             bridge = self._android.get(ident)
             ios = self._ios.get(ident)
             cached = self._snap.get(ident)
             lock = self._snap_locks.get(ident)
-        if meta is None or lock is None:
+        if meta is None or lock is None or lock is not generation or self._stop_event.is_set():
             return None, None
-        if cached and time.time() - cached[0] < SNAPSHOT_SECONDS:
+        if _fresh_frame(cached, SNAPSHOT_SECONDS):
             return cached[1], cached[2]
         if not lock.acquire(blocking=False):
-            return (cached[1], cached[2]) if cached else (None, None)
+            return (cached[1], cached[2]) if _fresh_frame(cached, FRAME_MAX_AGE_SECONDS) else (None, None)
         try:
-            if cached and time.time() - cached[0] < SNAPSHOT_SECONDS:
+            if _fresh_frame(cached, SNAPSHOT_SECONDS):
                 return cached[1], cached[2]
             if meta['kind'] == 'android' and bridge is not None:
                 mime, body = bridge.snapshot()
@@ -361,12 +377,15 @@ class PhoneFleet:
                 mime, body = None, None
             if mime and body:
                 with self._lock:
+                    # Removal/reconnection and stop invalidate this capture's
+                    # generation, even when the old subprocess finishes later.
+                    if self._stop_event.is_set() or self._snap_locks.get(ident) is not lock:
+                        return None, None
                     self._snap[ident] = (time.time(), mime, body)
-                    if meta['kind'] == 'ios':
-                        self._snap_ok[ident] = True
+                    self._snap_ok[ident] = True
                 return mime, body
-            if meta['kind'] == 'ios':
-                with self._lock:
+            with self._lock:
+                if self._snap_locks.get(ident) is lock and not self._stop_event.is_set():
                     self._snap_ok[ident] = False
             return None, None
         finally:
@@ -374,26 +393,48 @@ class PhoneFleet:
 
     def _warm(self, ident):
         with self._lock:
-            if ident in self._snap_running:
+            if self._stop_event.is_set() or ident not in self._meta or ident in self._snap_running:
+                return
+            ticket = self._capture_policy.begin(ident)
+            if ticket is None:
                 return
             self._snap_running.add(ident)
+            generation = self._snap_locks.get(ident)
         def work():
+            success = False
             try:
-                self._snapshot_locked(ident)
+                mime, body = self._snapshot_locked(ident, generation)
+                success = bool(mime and body)
+            except Exception:
+                # Capture errors may contain private device details. Keep only
+                # the existing public failure code, never raw subprocess text.
+                with self._lock:
+                    if self._snap_locks.get(ident) is generation and not self._stop_event.is_set():
+                        self._snap_ok[ident] = False
             finally:
                 with self._lock:
+                    self._capture_policy.finish(ticket, success=success)
                     self._snap_running.discard(ident)
-        threading.Thread(target=work, name='phone-fleet-snapshot', daemon=True).start()
+        try:
+            threading.Thread(target=work, name='phone-fleet-snapshot', daemon=True).start()
+        except RuntimeError:
+            with self._lock:
+                self._capture_policy.finish(ticket, success=False)
+                self._snap_running.discard(ident)
+                if self._snap_locks.get(ident) is generation and not self._stop_event.is_set():
+                    self._snap_ok[ident] = False
 
     def snapshot(self, ident):
         self._refresh()
         ident = str(ident or '')
         with self._lock:
+            if self._stop_event.is_set() or ident not in self._meta:
+                return None, None
             cached = self._snap.get(ident)
-        if cached and time.time() - cached[0] < 2.0:
+        if _fresh_frame(cached, 2.0):
             return cached[1], cached[2]
         self._warm(ident)
-        if cached:
+        if _fresh_frame(cached, FRAME_MAX_AGE_SECONDS):
             return cached[1], cached[2]
         return None, None
 
@@ -542,6 +583,7 @@ class PhoneFleet:
     def stop(self):
         self._stop_event.set()
         with self._lock:
+            self._capture_policy.close()
             ios_controls = list(self._ios_controls)
             bridges = list(self._android.values())
             self._android.clear()
@@ -549,6 +591,7 @@ class PhoneFleet:
             self._meta.clear()
             self._snap.clear()
             self._snap_ok.clear()
+            self._snap_locks.clear()
         for ident in ios_controls:
             self._end_ios(ident)
         try:

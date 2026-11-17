@@ -42,17 +42,17 @@ test('bound cost assistant uses the original product conversation scope, not a d
 test('another product cannot supply the assistant scope', () => {
   assert.throws(() => productScope({ module: 'operations', entity: { kind: 'case', id: 'case-a' } }, { case: { id: 'case-b', scope: {} } }), /workspace_source_changed/);
 });
-test('seven destinations retain every old route exactly once, including cost deep links', () => {
+test('integrated destinations retain every old route exactly once, including cost deep links', () => {
   const routes = navigation.flatMap(destination => destination.items);
-  assert.equal(destinationFor('listing').id,'workspace'); assert.equal(destinationFor('store-ops').id,'orders'); assert.equal(businessModule('listing'),'organization'); assert.equal(businessModule('store-ops'),'orders');
-  assert.equal(navigation.length, 7); assert.equal(routes.length, 28); assert.equal(new Set(routes).size, 28);
-  assert.equal(destinationFor('order-imports').id, 'orders'); assert.equal(businessModule('order-imports'), 'orders');
-  assert.equal(destinationFor('workflow').id, 'workspace'); assert.equal(businessModule('workflow'), 'organization');
+  assert.equal(destinationFor('listing').id,'store-ops'); assert.equal(destinationFor('store-ops').id,'store-ops'); assert.equal(businessModule('listing'),'organization'); assert.equal(businessModule('store-ops'),'orders');
+  assert.equal(navigation.length, 6); assert.equal(new Set(routes).size, routes.length); for(const id of ['overview','workspace','pilots','research','insights','operations','workflow','listing','store-ops','orders','order-imports','products','restock','support','alerts','live','platforms','creative','intelligence','exposure','phones','tasks','organization','agent','skills','models','connections','memory'])assert.ok(routes.includes(id),id);
+  assert.equal(destinationFor('order-imports').id, 'store-ops'); assert.equal(businessModule('order-imports'), 'orders');
+  assert.equal(destinationFor('workflow').id, 'store-ops'); assert.equal(businessModule('workflow'), 'organization');
   assert.equal(destinationFor('memory').id, 'skills'); assert.equal(businessModule('memory'), 'connections');
-  assert.equal(destinationFor('support').id, 'orders'); assert.equal(destinationFor('live').id, 'orders');
+  assert.equal(destinationFor('support').id, 'store-ops'); assert.equal(destinationFor('live').id, 'store-ops');
   assert.equal(destinationFor('models').id, 'skills'); assert.equal(businessModule('models'), 'connections');
-  assert.equal(destinationFor('connections').id, 'skills'); assert.equal(destinationFor('old:operations').id, 'workspace');
-  assert.equal(destinationFor('restock').id, 'orders');
-  assert.equal(destinationFor('phones').id, 'intelligence');
+  assert.equal(destinationFor('connections').id, 'skills'); assert.equal(destinationFor('old:operations').id, 'store-ops');
+  assert.equal(destinationFor('restock').id, 'store-ops');
+  assert.equal(destinationFor('phones').id, 'skills'); assert.equal(businessModule('phones'),'intelligence', 'moving the entry preserves stored device conversation scopes'); assert.equal(destinationFor('tools').id,'skills');
   assert.equal(businessModule('restock'), 'operations'); assert.equal(businessModule('workspace'), 'organization');
 });

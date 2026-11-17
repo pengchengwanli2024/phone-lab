@@ -87,6 +87,19 @@ class Live(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'live_orders_window_changed_sync_first'):self.app.configure({'orders_scope_confirmed':True})
         self.assertEqual(after['ozon_api_key'],config['ozon_api_key']);self.assertNotIn('expected_stock_sha256',after)
 
+    def test_readonly_refresh_keeps_scope_and_inventory_unconfirmed(self):
+        self.configure();self.publish('orders');self.publish('stock')
+        result=self.app.configure({'sync_enabled':True})
+        self.assertTrue(result['sync_enabled'])
+        self.assertFalse(result['orders_scope_confirmed'])
+        self.assertEqual(result['stock_basis'],'unconfirmed')
+        self.assertIsNone(self.app.inventory_rows()[0]['available'])
+        self.publish('orders',posting='SYN-NEW-READONLY')
+        with patch('feishu_sender.send')as send:
+            self.assertEqual(self.app.dispatch()['status'],'disabled')
+            send.assert_not_called()
+        with self.app.core.db()as db:self.assertEqual(db.execute('SELECT count(*)FROM live_outbox').fetchone()[0],0)
+
     def test_initial_sync_and_duplicate_orders_do_not_spam(self):
         self.enable()
         with self.app.core.db()as db:self.assertEqual(db.execute("SELECT count(*) FROM live_outbox WHERE event_key LIKE 'order:%'").fetchone()[0],0)

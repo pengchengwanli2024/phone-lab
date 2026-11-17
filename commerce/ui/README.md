@@ -10,9 +10,9 @@
 - `workspace.css`：所有现有工作面的共享构图层；统一页面节奏、表单/结果、证据/回执和窄屏布局，不包含业务执行逻辑。由同一构建放入旧界面、商品编辑器、React及私有向导，始终在模块样式后加载。
 - `skill-input.js`：技能任务表单与高级 JSON 共用原输入；模式扩展字段往返保留，不增加执行权限。
 - `primitives.css`：同一组基础组件的样式、焦点、禁用、错误、只读及窄屏触控状态；兼容现有的语义 class。
-- `build.py`：把库与 tokens 放入既有 `web/app.js`、`style.css` 的标记区块，保留其它业务模块。`python3 commerce/ui/build.py --check` 检查漂移。构建无第三方依赖，不下载组件或连接外部服务。
+- `build.py`：把库与 tokens 放入既有 `web/app.js`、`style.css` 的标记区块，保留其它业务模块。`python3 commerce/ui/build.py --check` 检查漂移。构建复用项目已有的本地依赖；首次安装需按项目锁文件准备依赖，生产界面不在运行时从CDN加载组件。
 
-Harness 和浏览器继续读取同一份内联产物，避免 opaque iframe 下额外脚本请求、宿主路由和重复框架实例的差异。现有运行窗口重新打开电商工作台后会读取最新产物；单个宿主实例的旧工具缓存按其原生机制刷新。
+Harness 和浏览器继续读取同一份内联产物，避免 opaque iframe 下额外脚本请求、宿主路由和重复框架实例的差异。工作台将内嵌业务页面在构建时压缩，作为 `workbench.html` 尾部的非执行数据块放在主界面脚本之后；`COMMERCE_EMBEDDED_DOCUMENTS_*` 区块由 `workbench/build.mjs` 生成，不手改。首屏可以先渲染，进入模块时等待 HTML 解析完整，再用原生 gzip 解压并缓存；保留旧直接压缩字符串的读取兼容。模块加载失败提供可重试状态，切换页面继续保留原 iframe 与未保存输入。现有运行窗口重新打开电商工作台后会读取最新产物；单个宿主实例的旧工具缓存按其原生机制刷新。
 
 ## 组件与状态
 
@@ -77,3 +77,12 @@ ARIA 和 data 属性的布尔值使用明确的 `true` / `false` 字符串；原
 
 
 分组导航、依据驱动的下一步、专业页面来源边界及视图接续规则见[工作台导航与任务接续](../WORKSPACE_NAVIGATION.md)。`web/workspace-ui.js` / `.css` 和 `ui/next-actions.js` 经同一构建进入共享产物；新模块沿用统一目录、按钮、状态与跳转方法。
+
+Web 交互与内联资源的隔离回归：`node commerce/qa/modern_web_regression.mjs`。使用已安装的 Playwright/Chrome；`COMMERCE_PYTHON` 指定具备项目依赖的解释器，`QA_OUTPUT_DIR` 指定私有证据目录。检查输入法提交、弹窗焦点与拖动关闭、帮助文字、模块标题、内联体积、商品草稿保留和桌面/窄屏业务路由；合成环境不操作日常资料。
+
+
+HTTP 交付只对成功的 HTML 响应协商 gzip；`Accept-Encoding` 明确拒绝时发送原表示，JSON/API与认证错误保持原表示。响应保留原 CSP、私有缓存策略，长度按实际编码字节计算。压缩缓存有界，不引入静态资源地址或客户端专属接口。`python3 -m unittest discover -s commerce/qa -p test_ui_http_delivery.py` 验证协商、逐字节解压一致及认证边界。
+
+`workbench/source-inputs.mjs` 同时登记生成产物的直接依赖和 Web/UI 规范源，防止业务模块源码更新后仍误认为旧 manifest 是当前候选。统一构建后继续执行 `build.py --check`；manifest 不能代替实际输入 SHA 与并行构建锁核对。发布扫描也须检查数据块解压后的静态源码。
+
+扩展回归同时验证分段响应下工作台先于尾部数据渲染、内嵌页到达后的解码、关联订单的范围/来源版本拒绝与恢复，以及知识检索/旧任务表单的输入法保护。中文输入法确认不会触发自定义 Enter 保存；普通 Enter 和明确按钮仍按原流程执行。无障碍自动检查与截图工具结果不能代替真实读屏、真机或宿主验收。

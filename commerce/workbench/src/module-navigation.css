@@ -1,0 +1,8 @@
+/* Match the existing tabs; only overflow allocation changes. */
+.r-main>.r-module-navigation{position:relative;overflow:visible;gap:4px;align-items:center}
+.r-module-navigation>.r-module-link{flex:0 1 auto;min-width:0;max-width:calc(100% - 48px)}
+.r-module-navigation>.r-module-link>span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.r-module-navigation>.r-more-actions-trigger{flex:0 0 44px;width:44px;min-width:44px;margin-left:auto}
+.r-module-measure{position:absolute;display:flex;gap:4px;width:0;height:0;overflow:hidden;visibility:hidden;pointer-events:none;inset:0 auto auto 0}
+.r-module-measure>button{flex:none;max-width:none}
+@media(max-width:767px){.r-module-navigation>.ui-button{min-height:44px}}

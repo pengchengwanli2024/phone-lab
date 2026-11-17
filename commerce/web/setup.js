@@ -17,7 +17,9 @@
     const progress=job?`<p class="muted">最近同步：${esc(job.status)}${job.finished?' · '+esc(job.finished):''}</p>${job.result?Object.entries(job.result).map(([kind,value])=>UI.alert(`${kind==='orders'?'订单':'库存'}：${value.status==='success'?'完成，'+value.count+' 条'+(value.baseline_only?'；本次仅建立初始基线':''):message(value.code||value.status)}`,value.status==='success'?'info':'danger')).join(''):''}`:'';
     const orderRows=(state.order_samples||[]).map(r=>`<tr><td>${esc(r.posting_number)}</td><td>${esc(r.status)}</td><td>${r.products.map(p=>esc(p.offer_id||p.sku)+' × '+p.quantity).join('<br>')}</td><td>${esc(r.fulfillment)}</td></tr>`);
     const stockRows=(state.stock_samples||[]).map(r=>`<tr><td>${esc(r.offer_id||r.sku||r.product_id)}</td><td>${esc(r.type)}</td><td>${r.present}</td><td>${r.reserved}</td><td>${r.present>=r.reserved?r.present-r.reserved:'字段异常，需核对'}</td></tr>`);
+    const accounts=state.ozon_accounts;
     document.querySelector('#setup-root').innerHTML=[
+      card('Ozon 店铺账号',`<p>可分别保存多家店铺的私有连接，当前仅同步选中的一家。切换保留各店历史，并暂停自动同步和通知；重新核对后再启用。</p>${accounts?(accounts.accounts.length?`<div class="platform-accounts">${accounts.accounts.map(a=>`<article class="platform-account"><div class="platform-heading"><strong>${esc(a.label)}</strong>${UI.badge(a.active?'当前店铺':'已保存，未激活','gray')}</div>${UI.button({label:a.active?'当前使用':'切换到此店铺',attrs:{'data-ozon-account':a.account_id,disabled:busy||a.active}})}</article>`).join('')}</div>`:'<p>尚无已保存账号。</p>'):UI.alert('账号列表尚未读到，请刷新。','warning')}<p class="muted">新增店铺：在下面填写新的 Client ID 和对应 API Key 后保存；旧店不会被删除。仅保留当前店铺空白凭据时，才会沿用已保存的值。</p>`),
       card('第 1 步 · 选择实际履约方式',`<p>可多选。已确认首家店铺使用 OGL，可选择 OGL 保留原名称；其订单接口范围还需用本次只读返回核对，不把它自动改称 FBS 或 FBO。</p><div class="form-actions">${[['OGL','OGL'],['FBS','FBS'],['realFBS','realFBS'],['FBO','FBO']].map(([value,label])=>`<label class="review-check">${UI.input({type:'checkbox',name:'modes',value,checked:state.fulfillment_modes.includes(value)})}${label}</label>`).join('')}</div>${field('store-label','本机店铺标签','text',state.store_label)}`),
       card('第 2 步 · 保存 Ozon 只读凭据',`<p>在 Ozon 卖家后台进入「设置 → 卖家 API → 生成密钥」，为密钥命名并核对角色，选择能读取订单和商品库存的最小权限。角色名称与账号页面为准。</p><p class="muted"><a href="https://global-help.ozon.com/zh/api/intro" target="_blank" rel="noreferrer noopener">Ozon 官方授权说明</a>。不要选择修改库存、发货、价格或广告的用途。</p><div class="analysis-fields">${field('ozon-client','Client ID','password','',credentials.ozon_client_id?'已保存，留空保留':'从 Seller API 页面复制')}${field('ozon-key','API Key','password','',credentials.ozon_api_key?'已保存，留空保留':'仅在这里粘贴 API Key')}${number('lookback','订单同步窗口（天）',state.lookback_days,1,90)}${number('interval','自动同步间隔（秒）',state.interval_seconds,60,3600)}</div><div class="form-actions">${button('保存 Ozon 配置','save-ozon',true)}${button('测试只读连接并拉取数据','sync',false,!state.configured)}</div><p class="muted">初次完整同步只建立基线，不批量推送历史订单。同步覆盖所选时间窗口，不代表全部历史订单。</p>${progress}`),
       card('第 3 步 · 核对真实订单与库存',`<p>订单快照：${state.orders.count===null?'尚未取得':state.orders.count+' 条'}；库存产品快照：${state.stock.count===null?'尚未取得':state.stock.count+' 条'}。${!state.orders.fresh||!state.stock.fresh?'部分数据缺失或已过期。':''}</p>${UI.table(['发货单','平台原状态','商品 / 数量','来源模式'],orderRows,'还没有真实订单样本；接口返回完整空列表也可能是窗口内无订单。')}<p class="muted">订单范围核对：${state.orders_scope_confirmed?'已确认':'未确认'}。请核对相同时间窗口、发货单号、SKU 和数量；OGL 名称来自你的选择，接口模式仍需与后台对应。</p>${button('订单范围已经与 OGL 后台核对','confirm-orders',false,!state.orders.fresh)}<p>下面保留库存原值。请在 Ozon 后台核对同一商品与履约范围；此接口是履约方式汇总，不能当作单个仓库库存。</p>${UI.table(['SKU / offer','履约范围','原始 present','原始 reserved','候选 present − reserved'],stockRows,'还没有可核对的库存样本。')}<div class="analysis-fields">${UI.field('核对后的可售口径',UI.select({id:'stock-basis',value:state.stock_basis,options:[{value:'unconfirmed',label:'尚未核对，暂不开低库存推送'},{value:'present_minus_reserved',label:'后台可售与 present − reserved 一致'},{value:'present_is_available',label:'后台可售与 present 一致'}]}))}${number('low-threshold','低库存提醒阈值（件）',state.low_stock_threshold,0,1000000)}</div><label class="review-check">${UI.input({type:'checkbox',id:'stock-reviewed'})}我已按同一 SKU 和履约范围核对后台数量</label><div class="form-actions">${button('保存库存口径与阈值','save-stock',true,!state.stock.fresh)}</div>`),
@@ -29,6 +31,13 @@
   const value=id=>document.getElementById(id).value.trim();
   async function save(data){await api('save',data);await refresh()}
   document.addEventListener('click',async event=>{
+    const account=event.target.closest('[data-ozon-account]');
+    if(account&&!busy){
+      if([...(document.querySelectorAll('#ozon-client,#ozon-key,#feishu-hook,#feishu-sign'))].some(e=>e.value.trim())){status('先保存或清空当前凭据输入，再切换店铺。',true);return;}
+      busy=true;document.querySelectorAll('button[data-setup-action],button[data-ozon-account]').forEach(b=>b.disabled=true);
+      try{await api('activate',{account_id:account.dataset.ozonAccount,expected_revision:state.ozon_accounts.revision,idempotency_key:'ozon-switch-'+crypto.randomUUID()});testResult=null;await refresh();status('已切换当前店铺；同步和通知已暂停，请先核对资料。');}
+      catch(error){status(message(error.message),true)}finally{busy=false;paint()}return;
+    }
     const button=event.target.closest('[data-setup-action]');if(!button||busy)return;
     const action=button.dataset.setupAction;busy=true;document.querySelectorAll('button[data-setup-action]').forEach(b=>b.disabled=true);
     try{
@@ -46,6 +55,8 @@
     }catch(error){status(message(error.message),true)}
     finally{busy=false;paint()}
   });
-  fetch('/v1/invoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool:'commerce_ui_get_preferences',arguments:{},client:'browser'})}).then(r=>{if(!r.ok)throw Error('preferences_unavailable');return r.json()}).then(p=>UI.applyTheme(p.theme)).catch(()=>{});
+  let themeRevision=0;
+  async function refreshTheme(){const current=++themeRevision;try{const response=await fetch('/v1/invoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tool:'commerce_ui_get_preferences',arguments:{},client:'browser'})});if(!response.ok)return;const preference=await response.json();if(current===themeRevision)UI.applyTheme(preference.theme)}catch{}}
+  window.addEventListener('focus',refreshTheme);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshTheme()});refreshTheme();
   refresh().then(()=>status('从第 1 步开始。已经保存的密钥不会回填到页面；留空会保留原值。')).catch(error=>status(message(error.message),true));
 })();

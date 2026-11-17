@@ -54,10 +54,7 @@
 .r-mode-switcher [aria-pressed=true]{color:var(--ui-color-brand);background:var(--ui-color-brand-soft);border-color:var(--ui-color-brand)}
 .r-work-area.is-compact>.r-chat-splitter{display:none}
 .r-work-area.is-compact>.r-main,.r-work-area.is-compact>.r-shared-assistant{grid-column:1;grid-row:2;margin:8px;width:calc(100% - 16px);height:calc(100% - 16px)}
-.r-work-area.is-compact:has(.r-approved-product:not([hidden]))>.r-main{margin:0;width:100%;height:100%}
-.r-work-area.is-compact.with-assistant[data-mobile-view=chat]:not(:has(.r-approved-product:not([hidden])))>.r-main{display:none}
-.r-work-area.is-compact:has(.r-approved-product:not([hidden])){grid-template-rows:minmax(0,1fr)}
-.r-work-area.is-compact:has(.r-approved-product:not([hidden]))>.r-main{grid-row:1}
+.r-work-area.is-compact.with-assistant[data-mobile-view=chat]>.r-main{display:none}
 @media(max-width:900px){.r-app{grid-template-columns:minmax(0,1fr);grid-template-rows:56px minmax(0,1fr)}.r-sidebar{display:none}.r-app>.r-topbar,.r-app>.r-work-area{grid-column:1}.r-business-nav{display:flex}.r-topbar{padding:6px 10px}.r-top-controls{gap:6px}.r-top-controls>.badge{display:none}}
 @media(max-width:767px){
  .r-app{--r-mobile-nav-space:calc(64px + env(safe-area-inset-bottom,0px))}

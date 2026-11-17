@@ -15,6 +15,21 @@
 .business-result { scroll-margin-top: 12px; }
 .business-root td { vertical-align: top; }
 .business-root .data-table { min-width: 620px; }
+.business-root>.card{margin-bottom:0!important}
+.business-heading>.business-actions{margin:0}
+.business-source-table table{width:100%;table-layout:fixed}
+.business-source-table th:first-child{width:75%}
+.business-source-table td{overflow-wrap:anywhere}
+.business-source-table td small{white-space:normal}
+.business-source-label span{min-width:0;overflow-wrap:anywhere}
+.business-source-filter{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:12px 0}
+.business-source-filter .ui-field{min-width:0;flex:1 1 220px;margin:0}
+.business-source-filter>span{font-size:var(--ui-font-size-meta);color:var(--ui-color-muted);padding-bottom:8px}
+.business-source-table{max-height:360px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control)}
+.business-source-table .ui-table{margin:0}
+.business-source-table th{position:sticky;top:0;z-index:1;background:var(--ui-color-surface-alt)}
+.business-source-table tbody tr[hidden]{display:none!important}
+.business-source-table:focus-visible{outline:2px solid var(--ui-color-focus);outline-offset:2px}
 @media(max-width: 600px) {
  .business-heading { align-items: flex-start; }
  .business-actions { align-items: stretch; }

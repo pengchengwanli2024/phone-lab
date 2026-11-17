@@ -29,14 +29,18 @@ def token():
     return path.read_text().strip()
 
 
-def request(tool,args,client='local'):
+def request(tool,args,client='local',*,timeout=None):
+    if timeout is not None and (type(timeout) not in (int,float) or not 0<timeout<=120):raise ValueError('invalid_request_timeout')
     data=json.dumps({'tool':tool,'arguments':args,'client':client}).encode()
     req=urllib.request.Request(f'http://127.0.0.1:{PORT}/v1/invoke',data=data,headers={'Content-Type':'application/json','Authorization':'Bearer '+token()})
     try:
-        with urllib.request.urlopen(req,timeout=15)as r:return json.load(r)
+        timeout=timeout if timeout is not None else {'commerce_web_search':35,'commerce_web_read':95,'commerce_product_evidence_sourcing_search':35,'commerce_product_evidence_sourcing_preview':35,'commerce_assistant_speech':45,'commerce_extension_tools_discover':30}.get(tool,15)
+        with urllib.request.urlopen(req,timeout=timeout)as r:return json.load(r)
     except urllib.error.HTTPError as exc:
-        try:code=json.loads(exc.read(4096)).get('error','commerce_request_failed')
-        except Exception:code='commerce_request_failed'
+        try:
+            try:code=json.loads(exc.read(4096)).get('error','commerce_request_failed')
+            except Exception:code='commerce_request_failed'
+        finally:exc.close()
         raise ValueError(code)from None
 
 

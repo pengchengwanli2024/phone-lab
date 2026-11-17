@@ -9,8 +9,9 @@ import socket
 import ssl
 import threading
 from urllib.parse import urlsplit
-from product_catalog import public_url
+from product_catalog import public_url,source_reference
 from public_media_dns import resolve_public_ipv4
+from research import canonical,digest
 
 _slots=threading.BoundedSemaphore(3)
 MAX_IMAGE=5*1024*1024
@@ -68,10 +69,42 @@ def fetch(url):
     finally:c.close()
 
 
+def evidence_bytes(service,ref):
+    """Read the exact current, case-bound original; never fall back to a URL."""
+    if ref.get('id')!=digest(canonical({k:v for k,v in ref.items() if k!='id'})):
+        raise ValueError('catalog_evidence_reference_changed')
+    if (ref.get('role')!='original' or ref.get('source_kind') not in ('competitor','supplier')
+            or type(ref.get('image_index')) is not int or ref['image_index']<0
+            or ref.get('reference_only') is not True or ref.get('product_fact') is not False):
+        raise ValueError('catalog_evidence_reference_changed')
+    media=service.product_evidence.media
+    source=media.source(ref['case_id'],ref['entry_id'],ref['entry_sha256'])
+    if source['archived'] or source['kind']!=ref['source_kind'] or source['revision']!=ref['entry_revision']:
+        raise ValueError('catalog_evidence_reference_changed')
+    if ref['image_index']>=len(source['images']):raise ValueError('catalog_evidence_reference_changed')
+    image=source['images'][ref['image_index']]
+    if (image['role']!='original' or image['media_id']!=ref['media_id']
+            or public_url(source_reference(image['url']))!=ref.get('url')):
+        raise ValueError('catalog_evidence_reference_changed')
+    path,doc=media.asset(ref['case_id'],ref['entry_id'],ref['media_id'])
+    if (doc['role']!='original' or doc['source_url']!=image['url'] or doc['sha256']!=ref['sha256']
+            or ref.get('raw_sha256')!=doc['sha256'] or doc['size']!=ref.get('size')
+            or any(doc.get('media',{}).get(k)!=ref.get(k) for k in ('width','height'))):
+        raise ValueError('catalog_evidence_reference_changed')
+    raw=path.read_bytes()
+    if len(raw)!=doc['size'] or hashlib.sha256(raw).hexdigest()!=doc['sha256']:raise ValueError('evidence_image_changed')
+    # A source revision can change while the file is read. Never return bytes
+    # under a reference whose exact source head has already changed.
+    media.source(ref['case_id'],ref['entry_id'],ref['entry_sha256'])
+    return raw
+
+
 def preview(service,ref,source):
     if not _slots.acquire(blocking=False):raise ValueError('catalog_image_busy')
     try:
-        if ref.get('asset_id'):
+        if ref.get('origin')=='product_evidence':
+            raw=evidence_bytes(service,ref)
+        elif ref.get('asset_id'):
             path,meta,_=service.creative.asset(ref['project_id'],ref['asset_id'])
             raw=path.read_bytes()
             if hashlib.sha256(raw).hexdigest()!=meta['sha256']:raise ValueError('creative_asset_changed')
@@ -89,7 +122,12 @@ def preview(service,ref,source):
             media=service.creative.probe(path)
             if media['width']<=0:raise ValueError('catalog_image_format_unsupported')
         if len(raw)>MAX_IMAGE:raise ValueError('catalog_image_too_large')
-        mime='image/png' if raw.startswith(b'\x89PNG\r\n\x1a\n') else 'image/jpeg' if raw.startswith(b'\xff\xd8\xff') else None
+        mime=('image/png' if raw.startswith(b'\x89PNG\r\n\x1a\n') else 'image/jpeg' if raw.startswith(b'\xff\xd8\xff')
+              else 'image/webp' if raw.startswith(b'RIFF') and raw[8:12]==b'WEBP' else None)
         if not mime:raise ValueError('catalog_image_format_unsupported')
-        return {'content_base64':base64.b64encode(raw).decode(),'mime':mime,'sha256':hashlib.sha256(raw).hexdigest(),'source_ref':ref.get('source_ref'),'independently_verified':False}
+        result={'content_base64':base64.b64encode(raw).decode(),'mime':mime,'sha256':hashlib.sha256(raw).hexdigest(),'source_ref':source_reference(ref.get('source_ref')),'independently_verified':False}
+        if ref.get('origin')=='product_evidence':
+            result.update(reference_only=True,source_kind=ref['source_kind'],product_fact=False,
+                publication_approved=False,use_for_image_generation=False,width=ref['width'],height=ref['height'])
+        return result
     finally:_slots.release()

@@ -25,6 +25,8 @@ node_modules/
 # Credentials and signing material; only sanitized examples may be committed
 .env
 .env.*
+*.env
+*.env.rtf
 !.env.example
 !.env.sample
 *.pem
@@ -59,15 +61,3 @@ node_modules/
 /commerce/qa/agent-profile.json
 /commerce/qa/runtime-supervision.json
 /commerce/qa/*.png
-
-# Local tool output and export manifests
-/scrape/*.json
-/scrape/*.png
-/ios/*.json
-/release-local/
-
-
-# Machine-generated integration definitions and private validation artifacts
-commerce/integrations/
-commerce/workbench/node_modules/
-.commerce-state/

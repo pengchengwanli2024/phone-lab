@@ -29,6 +29,8 @@ ENDPOINTS = {'FBS': '/v4/posting/fbs/list', 'realFBS': '/v4/posting/fbs/list',
              'catalog_description':'/v1/product/info/description'}
 ENDPOINTS['listing_pictures_readback']='/v2/product/pictures/info'
 ENDPOINTS['sales']='/v1/analytics/data'
+ENDPOINTS['product_queries']='/v1/analytics/product-queries'
+ENDPOINTS['product_query_details']='/v1/analytics/product-queries/details'
 
 
 class ConnectionIssue(ValueError):

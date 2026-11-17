@@ -1,7 +1,8 @@
 """Read-only product and supply projection over existing, scoped records."""
 import json
+from pathlib import Path
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit,parse_qsl
 from research import canonical, digest
 
 
@@ -21,15 +22,123 @@ def public_url(value):
     try:
         p=urlsplit(value)
         if p.scheme!='https' or not p.hostname or p.username or p.password or p.port not in (None,443):return None
+        if any(re.search(r'(?i)(token|secret|password|passwd|api.?key|authorization|session|cookie)',key)for key,_ in parse_qsl(p.query)):return None
         return value
     except ValueError:return None
+
+
+def source_reference(value):
+    """Display-safe provenance; private originals stay in the source domain."""
+    if not isinstance(value,str)or len(value)>2000:return None
+    if (Path(value).is_absolute()or value.startswith('\\\\')or any(ord(c)<32 for c in value)
+            or re.search(r'(?i)(?:file://|/Users/|/home/|[a-z]:\\|bearer\s+|sk-[a-z0-9_-]{20,}|(?:api[_-]?key|token|password|secret)\s*[=:])',value)):return None
+    if value.startswith(('https://','http://')):return public_url(value)
+    return value or None
 
 
 class ProductCatalog:
     def __init__(self, service): self.service=service; self.workspace=service.product_workspace
 
-    def get(self, case_id):
-        case,artifacts,facts,source=self.workspace.sources(case_id)
+    @staticmethod
+    def _identifier(value):
+        if type(value) not in (str,int):return None
+        text=str(value)
+        return text if text.strip() else None
+
+    def _catalog_context(self):
+        # Read only the public account projection; neither credential values nor
+        # a label match establish store ownership. The organization still owns
+        # which exact cases are readable in the active connection.
+        accounts=self.service.ozon_accounts.listing()
+        active=next((r for r in accounts['accounts'] if r['active']),None)
+        connection=active['connection_id'] if active else ''
+        cases=self.workspace.org.cases()
+        with self.service.core.db() as db:
+            connections={r[0]:r[1] for r in db.execute('SELECT id,connection FROM org_cases WHERE connection=? OR connection=\'\'',(connection,))}
+        return {'active':active,'connection_id':connection,'cases':cases,'case_connections':connections}
+
+    def _identity(self,case,context):
+        scope=case['scope'];candidate=scope.get('origin')=='research_candidate_not_inventory'
+        platform=scope.get('platform');market=scope.get('market')
+        product_id=self._identifier(scope.get('product_id'));sku=self._identifier(scope.get('sku'))
+        connection=None if candidate else context['case_connections'].get(case['id'])
+        if not candidate and (not connection or connection!=context['connection_id']):
+            raise ValueError('catalog_store_changed')
+        account=context['active']
+        known_store=bool(not candidate and platform=='ozon' and market=='RU' and account
+                         and account['connection_id']==connection)
+        store={'kind':'research_candidate' if candidate else 'store' if known_store else 'unverified_source',
+               'label':account['label'] if known_store else None,
+               'account_id':account['account_id'] if known_store else None,
+               'connection_id':connection,'platform':platform,'market':market,
+               'store_ref':'ozon-live' if known_store else None,
+               'active':bool(known_store),'identity_verified':False}
+        basis=['candidate',case['id']] if candidate else [
+            'inventory',connection,platform,market,scope.get('synthetic') is True,
+            'product_id' if product_id else 'sku' if sku else 'case_id',product_id or sku or case['id']]
+        return {'sku':sku,'product_id':product_id,'product_key':digest(canonical(basis)),'store_identity':store}
+
+    def _scope_projection(self,case):
+        scope=case['scope']
+        return {'case_id':case['id'],'row_key':scope.get('row_key'),
+                'inventory_type':scope.get('inventory_type'),'fulfillment':scope.get('fulfillment'),
+                'sku':self._identifier(scope.get('sku')),'product_id':self._identifier(scope.get('product_id')),
+                'import_snapshot_sha256':scope.get('import_snapshot_sha256'),
+                'origin':scope.get('origin'),'synthetic':scope.get('synthetic') is True}
+
+    def _identity_projection(self,case,context):
+        identity=self._identity(case,context)
+        members=[c for c in context['cases'] if self._identity(c,context)['product_key']==identity['product_key']]
+        if not members:raise ValueError('catalog_store_changed')
+        scopes=[self._scope_projection(c) for c in members]
+        return {**identity,'case_ids':[c['id'] for c in members],'primary_case_id':members[0]['id'],
+                'source_scopes':scopes,'inventory_scopes':scopes,
+                'grouping':'read_only_product_projection_original_cases_preserved'}
+
+    def _evidence_images(self,case_id,limit):
+        """Current registered originals, without facts, capture, copying or approval.
+
+        Do not call the full dossier projection here: it reads the workspace,
+        which also reads this catalog. Bytes are checked by the owning media
+        reader when the exact reference is opened.
+        """
+        if limit<=0:return []
+        dossier=self.service.product_evidence;groups=dossier._versions(case_id)
+        with self.service.core.db() as db:
+            rows=db.execute('SELECT id,entry_id,document FROM product_evidence_images WHERE case_id=?',(case_id,)).fetchall()
+        registered={r[0]:(r[1],r[2]) for r in rows};result=[]
+        for entry_id,versions in groups.items():
+            if entry_id=='proposal':continue
+            source=dossier._view(versions)
+            if source['archived'] or source['kind'] not in ('competitor','supplier'):continue
+            for index,image in enumerate(source['images']):
+                if image['role']!='original' or not image['media_id']:continue
+                row=registered.get(image['media_id'])
+                if not row or row[0]!=entry_id:continue
+                try:doc=json.loads(row[1])
+                except (ValueError,TypeError):continue
+                if (not isinstance(doc,dict) or doc.get('document_sha256')!=digest(canonical({k:v for k,v in doc.items() if k!='document_sha256'}))
+                        or doc.get('id')!=image['media_id'] or doc.get('case_id')!=case_id or doc.get('entry_id')!=entry_id
+                        or doc.get('role')!='original' or doc.get('source_url')!=image['url']
+                        or not isinstance(doc.get('sha256'),str) or not re.fullmatch('[a-f0-9]{64}',doc['sha256'])):continue
+                media=doc.get('media') if isinstance(doc.get('media'),dict) else {}
+                if any(type(media.get(k)) is not int or media[k]<=0 for k in ('width','height')):continue
+                result.append({'origin':'product_evidence','case_id':case_id,'entry_id':entry_id,
+                    'entry_revision':source['revision'],'entry_sha256':source['sha256'],'image_index':index,
+                    'media_id':image['media_id'],'source_kind':source['kind'],'role':'original',
+                    'url':public_url(source_reference(image['url'])),'source_ref':source_reference(image['url']) or source_reference(source['url']),
+                    'source_url':public_url(source_reference(source['url'])),'source_label':source_reference(source['label']),
+                    'sha256':doc['sha256'],'raw_sha256':doc['sha256'],'size':doc.get('size'),
+                    'width':media['width'],'height':media['height'],'source_current':True,
+                    'source_review_state':source['review_state'],'rights_status':source['rights_status'],
+                    'reference_only':True,'product_fact':False,'publication_approved':False,
+                    'use_for_image_generation':False,'independently_verified':False})
+                if len(result)>=limit:return result
+        return result
+
+    def get(self, case_id, *, _fact_sources=None, _catalog_context=None):
+        case,artifacts,facts,source=self.workspace.sources(case_id,_fact_sources=_fact_sources)
+        identity=self._identity_projection(case,_catalog_context or self._catalog_context())
         research=artifacts['research'];record=(research or {}).get('payload',{}).get('record',{}) if not research or research['intact'] else {}
         fields=[{'key':k,'original':v.get('original',''),'zh':v.get('zh',''),'reviewed':v.get('reviewed',False),'kind':v.get('kind','unverified'),
                  'source_url':public_url(v.get('source_url') or record.get('source_url')), 'locator':v.get('locator','')}
@@ -91,25 +200,49 @@ class ProductCatalog:
                 projects.append({'id':pid,'name':b.get('product',{}).get('name',''),'revision':str(revision),'source_current':binding.get('source_sha256')==source})
                 for aid,kind,metadata in db.execute("SELECT id,kind,metadata FROM creative_assets WHERE project=? AND kind IN ('product_image','generated_image','image_layout_draft') ORDER BY rowid DESC LIMIT 12",(pid,)).fetchall():
                     meta=json.loads(metadata)
-                    if len(images)<20:images.insert(0,{'project_id':pid,'asset_id':aid,'origin':kind,'sha256':meta['sha256'],'source_ref':meta.get('source_ref'),'source_current':binding.get('source_sha256')==source})
+                    if len(images)<20:images.insert(0,{'project_id':pid,'asset_id':aid,'origin':kind,'sha256':meta['sha256'],'source_ref':source_reference(meta.get('source_ref')),'source_current':binding.get('source_sha256')==source})
+        # Product/creative sources keep their original order and twenty-slot
+        # budget. Evidence fills only remaining slots, explicitly as reference.
+        images.extend(self._evidence_images(case_id,20-len(images)))
         for image in images:image['id']=digest(canonical(image))
-        name=case['scope'].get('label') or values.get('title',{}).get('zh') or values.get('title',{}).get('original') or self.workspace.label(case)
+        name=case['scope'].get('label') or values.get('title',{}).get('zh') or values.get('title',{}).get('original') or self.workspace.label(case,facts=facts)
         return {'id':case_id,'name':name,'case':case,'kind':'candidate' if case['scope'].get('origin')=='research_candidate_not_inventory' else 'inventory',
                 'price':price,'currency':currency,'price_text':values.get('price',{}).get('original') or (str(offer.get('price',''))+' '+str(offer.get('currency',''))+' · 采集报价' if offer and offer.get('price') else None),
                 'source_sha256':source,'source_url':public_url(case['scope'].get('source_ref')) or public_url(record.get('source_url')),
                 'captured_at':store_observed or record.get('captured_at') or None,'fields':fields,'images':images,'suppliers':suppliers,
                 'source_facts':source_facts,'store_facts':store_facts,'projects':projects,'source_intact':not any(a and not a['intact'] for a in artifacts.values()),
-                'synthetic':case['scope'].get('synthetic') is True,'independently_verified':False,'external_execution_allowed':False}
+                'synthetic':case['scope'].get('synthetic') is True,'independently_verified':False,'external_execution_allowed':False,
+                **identity}
 
     def listing(self,query='',kind='all'):
         if not isinstance(query,str) or len(query)>200 or kind not in ('all','candidate','inventory','supply'):raise ValueError('catalog_invalid_filter')
+        # Account activation shares this lock. No list can combine cards read
+        # before and after a switch, and no read changes original case identity.
+        with self.service.live.config_lock:
+            return self._listing(query,kind)
+
+    def _listing(self,query,kind):
         result=[]
-        for case in self.workspace.org.cases():
-            d=self.get(case['id'])
-            if kind=='supply' and not d['suppliers'] or kind not in ('all','supply',d['kind']):continue
-            if query.casefold() not in canonical([d['name'],d['case']['scope'],d['fields'],d['suppliers']]).casefold():continue
-            result.append({k:d[k] for k in ('id','name','kind','price','currency','price_text','source_url','source_sha256','captured_at','synthetic','images')} | {'supplier_count':len(d['suppliers']),'platform':case['scope'].get('platform'),'market':case['scope'].get('market')})
-        return {'items':result,'independently_verified':False}
+        context=self._catalog_context();cases=context['cases']
+        # Request-local metadata only; exact case/platform filtering and current
+        # source/image validation remain in the original workspace reads.
+        sources={mode:self.service.business.listing(mode)['sources'] for mode in {c['scope'].get('synthetic') is True for c in cases}}
+        groups={}
+        for case in cases:
+            d=self.get(case['id'],_fact_sources=sources[case['scope'].get('synthetic') is True],_catalog_context=context)
+            groups.setdefault(d['product_key'],[]).append(d)
+        for members in groups.values():
+            d=members[0];case=d['case']
+            if kind=='supply' and not any(m['suppliers'] for m in members) or kind not in ('all','supply',d['kind']):continue
+            if not any(query.casefold() in canonical([m['name'],m['case']['scope'],m['fields'],m['suppliers'],m['store_identity']]).casefold() for m in members):continue
+            keys=('id','name','kind','price','currency','price_text','source_url','source_sha256','captured_at','synthetic','images',
+                  'sku','product_id','product_key','store_identity','case_ids','primary_case_id','source_scopes','inventory_scopes','grouping')
+            result.append({k:d[k] for k in keys} | {'supplier_count':len(d['suppliers']),
+                'related_supplier_count':sum(len(m['suppliers']) for m in members),
+                'platform':case['scope'].get('platform'),'market':case['scope'].get('market')})
+        return {'items':result,'independently_verified':False,'grouping':'store_product_with_original_scope_cases',
+                'source_case_count':len(cases),'product_count':sum(r['kind']=='inventory' for r in result),
+                'candidate_count':sum(r['kind']=='candidate' for r in result)}
 
     def creative(self,case_id,expected_source_sha256,idempotency_key):
         with self.service.core.atomic():
@@ -124,6 +257,7 @@ class ProductCatalog:
         if d['source_sha256']!=expected_source_sha256:raise ValueError('workspace_source_changed')
         if image_id:index=next((i for i,r in enumerate(d['images']) if r['id']==image_id),-1)
         if type(index) is not int or not 0<=index<len(d['images']):raise ValueError('catalog_image_not_found')
+        if d['images'][index].get('origin')=='product_evidence' and not image_id:raise ValueError('catalog_evidence_image_id_required')
         from catalog_media import preview
         return preview(self.service,d['images'][index],expected_source_sha256)
 
@@ -134,6 +268,8 @@ class ProductCatalog:
         d=self.get(case_id);project=self.service.creative.get(project_id)
         if project['brief'].get('product_binding',{}).get('case_id')!=case_id:raise ValueError('catalog_project_outside_scope')
         if image_id:index=next((i for i,r in enumerate(d['images']) if r['id']==image_id),-1)
+        if type(index) is not int or not 0<=index<len(d['images']):raise ValueError('catalog_image_not_found')
+        if d['images'][index].get('origin')=='product_evidence':raise ValueError('catalog_evidence_reference_only')
         image=self.image(case_id,expected_source_sha256,index,image_id)
         key=digest(canonical([case_id,d['images'][index],kind]))
         with self.service.core.atomic() as db:

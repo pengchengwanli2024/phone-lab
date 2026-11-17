@@ -9,8 +9,16 @@ import hashlib
 from commerce_core import Core, PLATFORMS
 from operations_analysis import unit_economics, restock_plan, input_schema, UNIT_FIELDS, STOCK_FIELDS
 from packing_estimate import estimate as packing_estimate, definitions as packing_definitions
+from shipping_workbench import ShippingWorkbench, definitions as shipping_definitions
 from order_imports import OrderImports, definitions as order_import_definitions
 from workflow_plan import WorkflowPlans, definitions as workflow_plan_definitions
+from operating_pipeline import OperatingPipeline, definitions as operating_pipeline_definitions
+from operating_budget import OperatingBudget, definitions as operating_budget_definitions
+from mobile_control import MobileControl, definitions as mobile_control_definitions
+from operating_control import OperatingControl, definitions as operating_control_definitions
+from media_library import MediaLibrary, definitions as media_library_definitions
+from intel_opportunities import IntelOpportunities, definitions as intel_opportunity_definitions
+from ozon_search_terms import OzonSearchTerms, definitions as ozon_search_terms_definitions
 from layered_memory import LayeredMemory, definitions as memory_definitions
 from knowledge_ranking import ranked_notes
 from research import template as collection_template, validate as collection_check, export as collection_export, digest, canonical
@@ -21,12 +29,14 @@ from intel_article_batches import ArticleBatches, definitions as article_batch_d
 from intel_reading import IntelReading, definitions as intel_reading_definitions
 from intel_dashboard import IntelDashboard, definitions as intel_dashboard_definitions
 from intel_live import IntelLive, definitions as intel_live_definitions
+from public_web import PublicWeb, definitions as public_web_definitions
 from article_review import ArticleReviews
 from collection_jobs import CollectionJobs
 from collection_registry import REGISTRY as CRAWLER_REGISTRY
 from ops_alerts import OperationsAlerts
 from campaign_plans import compare as campaign_compare
 from live_connections import LiveConnections
+from ozon_accounts import OzonAccounts
 from channel_connections import ChannelConnections, definitions as channel_definitions
 from model_providers import ModelRegistry, definitions as model_definitions
 from live_planning import LivePlanning
@@ -40,13 +50,20 @@ from extension_runtime.contracts import definitions as extension_definitions
 from capability_lifecycle import CapabilityLifecycle
 from capability_tasks import CapabilityTasks
 from capability_setup import open_setup as capability_open_setup
+from phone_management import open_in_browser as phone_open
 from product_catalog import ProductCatalog, definitions as catalog_definitions
+from product_evidence import ProductEvidence, definitions as product_evidence_definitions
+from product_evidence_media import definitions as product_evidence_media_definitions
 from catalog_sync import CatalogSync, definitions as catalog_sync_definitions
 from listing_actions import ListingActions, definitions as listing_actions_definitions
 from owner_review import OwnerReviews, definitions as owner_review_definitions
 from listing_submissions import ListingSubmissions, definitions as listing_submission_definitions
 from cost_scenarios import CostScenarios, definitions as cost_scenarios_definitions
 from listing_workspace import ListingWorkspace, definitions as listing_definitions
+from store_scopes import StoreScopes, definitions as store_scope_definitions
+from execution_history import ExecutionHistory, tools as execution_history_tools
+from order_support import OrderSupport, definitions as order_support_definitions
+from storefront_drafts import StorefrontDrafts, definitions as storefront_draft_definitions
 from listing_reconciliation import ListingReconciliation, definitions as listing_reconciliation_definitions
 from listing_schema import ListingSchema, definitions as listing_schema_definitions
 from listing_release import ListingReleases, definitions as listing_release_definitions
@@ -63,6 +80,10 @@ from social_intel.store import SocialStore, definitions as social_definitions
 from business_workflows import BusinessWorkflows, definitions as business_definitions
 from workflow_continuity import WorkflowContinuity, definitions as workflow_definitions
 from copilot import Copilot, definitions as copilot_definitions
+from assistant_team import AssistantTeams, definitions as assistant_team_definitions
+from engineering import EngineeringTeam, definitions as engineering_definitions
+from assistant_speech import SpeechReader, definitions as assistant_speech_definitions
+from tool_discovery import ToolDiscovery, definitions as tool_discovery_definitions
 from form_drafts import FormDrafts, definitions as form_draft_definitions
 from product_workspace import ProductWorkspace, definitions as workspace_definitions
 from a2ui.cost import CostSurfaces, definitions as a2ui_definitions, dispatch as a2ui_dispatch
@@ -89,6 +110,8 @@ S={'type':'string','minLength':1,'maxLength':160}
 FILTERS={'demo':{'type':'boolean'},'platform':{'type':'string','enum':['all',*PLATFORMS]},'store_id':{'type':'string','enum':['all','ozon-live',*(p+'-demo'for p in PLATFORMS)]},'market':{'type':'string','enum':['all','RU','US','MX']}}
 INTEL_QUERY={'query':{'type':'string','maxLength':100},'source':{'type':'string','enum':['all','usgs','gdacs','wto','fed','ecb','eia','hmrc','transport']},'category':{'type':'string','enum':['all','earthquake','disaster','trade','macro','energy','logistics']},'country':{'type':'string','maxLength':80},'hours':{'type':'string','enum':['all','1','6','24','48','168']},'scope':{'type':'string','enum':['latest','archive']},'view':{'type':'string','enum':['all','unviewed','bookmarked']}}
 TOOLS=[
+ ('commerce_ozon_accounts_list','只读已保存Ozon账号及当前单活连接；不返回凭据、不切换店铺、不并行同步',schema()),
+ ('commerce_ozon_account_status','只读准确Ozon账号的本地配置与快照归属；不调用平台或切换店铺',schema({'account_id':S},['account_id'])),
  ('commerce_runtime_status','读取独立运行时、公共采集计划与本地执行器状态；不等于平台已授权',schema()),
  ('commerce_runtime_configure','启停固定公开源定时采集；不会启用飞书或店铺写操作',schema({'enabled':{'type':'boolean'},'interval_seconds':{'type':'string','enum':['300','900','1800','3600']}},['enabled'])),
  ('commerce_task_execute','明确请求本地操作：简报、情报证据整理或成本/补货测算；自由描述不会作为指令执行',schema({'task_id':S,'operation':{'type':'string','enum':['report','intel_review','unit_economics','restock_plan']}},['task_id','operation'])),
@@ -149,6 +172,7 @@ TOOLS=[
  ('commerce_intel_watch_remove','移除指定的共享检索条件；保留记录和收藏',schema({'watch_id':S},['watch_id'])),
  ('commerce_intel_refresh','更新公开来源：读取固定源并导入本机多路采集快照；失败保留旧数据，90秒限频，不访问店铺',schema({'source':{'type':'string','enum':['all','usgs','gdacs','wto','fed','ecb','eia','hmrc','transport']}})),
  ('commerce_worldmonitor_status','查看 World Monitor 接入准备状态；discover=true 仅发现官方公开工具表，不调用收费数据工具',schema({'discover':{'type':'boolean'}})),
+ ('commerce_phone_open','在本机浏览器打开已鉴权手机管理；不开始控制或修改设备',schema()),
  ('commerce_ui_get_preferences','读取当前本机用户共享的界面主题偏好',schema()),
  ('commerce_ui_set_preferences','保存浅色、深色或跟随系统偏好；不改变业务数据',schema({'theme':{'type':'string','enum':['light','dark','system']}},['theme'])),
  ('commerce_ops_record','保存带来源的订单或库存观察；手工导入不等于平台同步，不发送通知',schema({'record':{'type':'object'},'demo':{'type':'boolean'}},['record'])),
@@ -178,12 +202,15 @@ TOOLS.extend(media_plugin_execution_definitions(schema,S))
 TOOLS.extend(extension_definitions(schema,S))
 TOOLS.append(('commerce_capability_open_setup','在本机浏览器打开媒体模型服务与插件的私有接入设置',schema()))
 TOOLS.extend(catalog_definitions(schema,S))
+TOOLS.extend(product_evidence_definitions(schema,S))
+TOOLS.extend(product_evidence_media_definitions(schema,S))
 TOOLS.extend(catalog_sync_definitions(schema,S))
 TOOLS.extend(listing_actions_definitions(schema,S))
 TOOLS.extend(owner_review_definitions(schema,S))
 TOOLS.extend(listing_submission_definitions(schema,S))
 TOOLS.extend(cost_scenarios_definitions(schema,S))
 TOOLS.extend(listing_definitions(schema,S))
+TOOLS.extend(storefront_draft_definitions(schema,S))
 TOOLS.extend(listing_reconciliation_definitions(schema,S))
 TOOLS.extend(listing_schema_definitions(schema,S))
 TOOLS.extend(listing_release_definitions(schema,S))
@@ -194,6 +221,7 @@ TOOLS.extend(intel_reading_definitions(schema, S))
 TOOLS.extend(article_batch_definitions(schema,S))
 TOOLS.extend(intel_dashboard_definitions(schema, S))
 TOOLS.extend(intel_live_definitions(schema, S))
+TOOLS.extend(public_web_definitions(schema,S))
 TOOLS.extend(platform_definitions(schema, S))
 TOOLS.extend(pilot_definitions(schema, S))
 TOOLS.extend(social_definitions(schema, S))
@@ -201,6 +229,9 @@ TOOLS.extend(exchange_definitions(schema, S))
 TOOLS.extend(business_definitions(schema))
 TOOLS.extend(workflow_definitions(schema,S,FILTERS))
 TOOLS.extend(copilot_definitions(schema,S))
+TOOLS.extend(assistant_team_definitions(schema,S))
+TOOLS.extend(assistant_speech_definitions(schema,S))
+TOOLS.extend(tool_discovery_definitions(schema,S))
 TOOLS.extend(form_draft_definitions(schema))
 TOOLS.extend(workspace_definitions(schema,S))
 TOOLS.extend(a2ui_definitions(schema))
@@ -211,11 +242,23 @@ TOOLS.extend(attention_definitions(schema,S))
 TOOLS.extend(followup_definitions(schema,S))
 TOOLS.extend(chain_budget_definitions(schema,S))
 TOOLS.extend(timeline_definitions(schema,S))
+TOOLS.extend(media_library_definitions(schema,S))
+TOOLS.extend(intel_opportunity_definitions(schema,S))
+TOOLS.extend(ozon_search_terms_definitions(schema,S))
 TOOLS.extend(model_definitions(schema,S))
 TOOLS.extend(packing_definitions(schema))
+TOOLS.extend(shipping_definitions(schema))
 TOOLS.extend(order_import_definitions(schema))
 TOOLS.extend(workflow_plan_definitions(schema))
+TOOLS.extend(operating_pipeline_definitions(schema,S))
+TOOLS.extend(operating_budget_definitions(schema,S))
+TOOLS.extend(mobile_control_definitions(schema,S))
+TOOLS.extend(operating_control_definitions(schema,S))
 TOOLS.extend(memory_definitions(schema))
+TOOLS.extend(store_scope_definitions(schema,S))
+TOOLS.extend(execution_history_tools(schema))
+TOOLS.extend(order_support_definitions(schema))
+TOOLS.extend(engineering_definitions(schema))
 
 
 class Commerce:
@@ -236,7 +279,10 @@ class Commerce:
         self.article_batches=ArticleBatches(self)
         with self.core.db() as db:db.execute('CREATE TABLE IF NOT EXISTS ui_preferences (id TEXT PRIMARY KEY, theme TEXT NOT NULL)')
         self.operations=OperationsAlerts(self.core)
+        self.shipping=ShippingWorkbench(self.core)
         self.live=LiveConnections(self.core,self.state)
+        self.ozon_accounts=OzonAccounts(self.live)
+        if self.ozon_accounts.journal.exists():self.ozon_accounts.recover()
         self.channels=ChannelConnections(self.core)
         self.live_plans=LivePlanning(self.live)
         self.creative=CreativeStudio(self.core,self.state)
@@ -249,6 +295,7 @@ class Commerce:
         self.social=SocialStore(self)
         self.models=ModelRegistry(self)
         self.agent_runtime=AgentRuntime(self)
+        self.public_web=PublicWeb(self.state)
         self.business=BusinessWorkflows(self)
         self.workflow=WorkflowContinuity(self)
         self.copilot=Copilot(self)
@@ -261,6 +308,10 @@ class Commerce:
         self.form_drafts=FormDrafts(self.core)
         self.product_workspace=ProductWorkspace(self)
         self.catalog=ProductCatalog(self)
+        self.media_library=MediaLibrary(self)
+        self.intel_opportunities=IntelOpportunities(self)
+        self.ozon_search_terms=OzonSearchTerms(self)
+        self.product_evidence=ProductEvidence(self)
         self.catalog_sync=CatalogSync(self)
         self.listing_actions=ListingActions(self)
         self.cost_scenarios=CostScenarios(self)
@@ -272,6 +323,7 @@ class Commerce:
         self.capability_lifecycle=CapabilityLifecycle(self)
         self.capability_tasks=CapabilityTasks(self)
         self.listings=ListingWorkspace(self)
+        self.storefront_drafts=StorefrontDrafts(self)
         self.listing_reconciliation=ListingReconciliation(self)
         self.listing_schema=ListingSchema(self)
         self.listing_releases=ListingReleases(self)
@@ -279,7 +331,18 @@ class Commerce:
         self.listing_submissions=ListingSubmissions(self)
         self.order_imports=OrderImports(self)
         self.workflow_plans=WorkflowPlans(self)
+        self.operating_pipeline=OperatingPipeline(self)
+        self.operating_budget=OperatingBudget(self.core)
+        self.mobile_control=MobileControl(self, budget_reader=lambda:self.operating_control.mobile_budget())
+        self.operating_control=OperatingControl(self)
         self.memory=LayeredMemory(self)
+        self.store_scopes=StoreScopes(self)
+        self.execution_history=ExecutionHistory(self)
+        self.order_support=OrderSupport(self)
+        self.assistant_team=AssistantTeams(self)
+        self.engineering=EngineeringTeam(self)
+        self.assistant_speech=SpeechReader(self)
+        self.tool_discovery=ToolDiscovery(self)
         self.a2ui=CostSurfaces(self.core, unit_economics, workspace=self.product_workspace)
 
     def validate(self,name,args):
@@ -329,9 +392,20 @@ class Commerce:
         self.validate(name,args)
         if client not in ['codex','hermes','harness','browser','local','test']:raise ValueError('invalid_client')
         with self.core.db() as c:c.execute('INSERT OR REPLACE INTO clients VALUES (?,?)',(client,now()))
+        if name=='commerce_ozon_accounts_list':return self.ozon_accounts.listing()
+        if name=='commerce_ozon_account_status':return self.ozon_accounts.status(**args)
+        if name in ('commerce_web_search','commerce_web_read'):return self.public_web.invoke(name,args)
         if name=='commerce_packing_estimate':return packing_estimate(args['input'])
+        if name.startswith('commerce_shipping_'):return self.shipping.invoke(name,args)
         if name.startswith('commerce_order_import_'):return self.order_imports.invoke(name,args)
         if name.startswith('commerce_workflow_plan_'):return self.workflow_plans.invoke(name,args)
+        if name.startswith('commerce_operating_pipeline_'):return self.operating_pipeline.invoke(name,args)
+        if name.startswith('commerce_operating_budget_'):return self.operating_budget.invoke(name,args)
+        if name.startswith('commerce_operating_control_'):return self.operating_control.invoke(name,args)
+        if name=='commerce_media_library_list':return self.media_library.invoke(name,args)
+        if name.startswith('commerce_intel_opportunity_'):return self.intel_opportunities.invoke(name,args)
+        if name.startswith('commerce_ozon_search_terms_'):return self.ozon_search_terms.invoke(name,args)
+        if name in ('commerce_mobile_command','commerce_mobile_receipt_get','commerce_mobile_decision_get','commerce_mobile_project'):return self.mobile_control.invoke(name,args)
         if name.startswith('commerce_memory_'):return self.memory.invoke(name,args)
         if name=='commerce_orders_list' and args.get('import_batch_id'):return self.order_imports.orders(args['import_batch_id'],args)
         if name=='commerce_model_list':return self.models.catalog()
@@ -342,21 +416,36 @@ class Commerce:
         if name=='commerce_task_timeline_get':return self.task_timeline.get(**args)
         if name=='commerce_model_open_setup':return self.models.open_setup()
         if name=='commerce_capability_open_setup':return capability_open_setup(self)
+        if name=='commerce_phone_open':return phone_open(self)
+        if name=='commerce_extension_tools_discover':return self.tool_discovery.invoke(name,args)
+        if name.startswith('commerce_assistant_team_'):return self.assistant_team.invoke(name,args)
+        if name.startswith('commerce_engineering_'):return self.engineering.invoke(name,args)
+        if name=='commerce_assistant_speech':return self.assistant_speech.invoke(name,args)
         if name.startswith('commerce_extension_'):return self.extensions.invoke(name,args)
         if name.startswith('commerce_copilot_'):return self.copilot.invoke(name,args)
         if name.startswith('commerce_market_research_'):return self.market_research.invoke(name,args)
         if name.startswith('commerce_form_draft_'):return self.form_drafts.invoke(name,args)
         if name.startswith('commerce_workspace_'):return self.product_workspace.invoke(name,args)
+        if name.startswith('commerce_product_evidence_'):return self.product_evidence.invoke(name,args)
         if name.startswith('commerce_a2ui_'):return a2ui_dispatch(self.a2ui,name,args)
         if name=='commerce_report_create':return self.workflow.report(args)
         if name=='commerce_workflow_task_create':return self.workflow.source_task(args)
         if name=='commerce_task_continue':
             extension_run=self.capability_tasks.find(args['task_id'])
+            if extension_run and extension_run.get('_task_owner')=='engineering':raise ValueError('engineering_task_use_execution_controls')
             if extension_run:raise ValueError('media_plugin_task_use_execution_controls' if extension_run.get('_task_owner')=='media_plugin' else 'extension_task_use_capability_runtime')
             return self.workflow.continue_task(args)
+        if name=='commerce_execution_history':return self.execution_history.invoke(name,args)
+        if name.startswith('commerce_order_support_'):return self.order_support.invoke(name,args)
+        if name=='commerce_business_list':return self.order_support.decorate_listing(self.business.listing(**args))
+        if name=='commerce_business_get':return self.order_support.decorate(self.business.get(**args))
+        if name=='commerce_business_draft':return self.order_support.legacy_draft(**args)
+        if name=='commerce_business_review':return self.order_support.review(**args)
+        if name=='commerce_business_export':return self.order_support.export(**args)
         if name.startswith('commerce_business_'):return self.business.invoke(name,args)
         if name.startswith('commerce_agent_'):return self.agent_runtime.invoke(name,args)
         if name.startswith('commerce_exposure_'):return self.exposure.invoke(name,args)
+        if name.startswith('commerce_storefront_draft_'):return self.storefront_drafts.invoke(name,args)
         if name.startswith('commerce_platform_'):return self.platforms.invoke(name,args)
         if name.startswith('commerce_pilot_'):return self.pilots.invoke(name,args)
         if name.startswith('commerce_social_'):return self.social.invoke(name,args)
@@ -384,6 +473,7 @@ class Commerce:
         if name=='commerce_task_execute':return self.autonomy.request(**args)
         if name=='commerce_task_result':return self.market_research.result(**args) if self.market_research.owns(args['task_id']) else self.autonomy.result(**args)
         if name=='commerce_task_retry':return self.autonomy.retry(**args)
+        if name.startswith('commerce_store_scope_'):return self.store_scopes.invoke(name,args)
         if name.startswith('commerce_listing_schema_'):return self.listing_schema.invoke(name,args)
         if name.startswith('commerce_owner_review_'):return self.owner_reviews.invoke(name,args)
         if name.startswith('commerce_listing_submission_'):return self.listing_submissions.invoke(name,args)

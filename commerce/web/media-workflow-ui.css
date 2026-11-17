@@ -11,3 +11,10 @@
 .media-readiness-heading,.media-readiness li{display:flex;align-items:center;justify-content:space-between;gap:var(--ui-space-3);flex-wrap:wrap}
 .media-readiness ul{padding:0;list-style:none;display:grid;gap:var(--ui-space-3)}
 .media-readiness small{display:block;color:var(--ui-color-muted)}
+
+/* One production entry, with secondary templates disclosed on demand. */
+.media-production-method{display:flex;align-items:center;gap:var(--ui-space-3);flex-wrap:wrap;margin-block:var(--ui-space-3)}
+.media-production-method>.ui-field{margin:0;min-width:min(100%,240px)}
+.media-production-method>.muted{flex:1;min-width:180px;font-size:var(--ui-font-size-meta)}
+.media-quick-drafts>summary{min-height:var(--ui-control-height);align-content:center}
+.media-quick-drafts>.card{margin-top:var(--ui-space-3)}

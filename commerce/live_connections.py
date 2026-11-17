@@ -114,7 +114,9 @@ class LiveConnections:
                 if not self.snapshot(new['connection_id'],'orders'):raise ValueError('establish_orders_baseline_first')
                 if not new['orders_scope_confirmed']:raise ValueError('review_orders_scope_first')
             if new['sync_enabled'] and not self.snapshot(new['connection_id'],'orders'):raise ValueError('complete_manual_sync_first')
-            if new['sync_enabled'] and not new['orders_scope_confirmed']:raise ValueError('review_orders_scope_first')
+            # A complete baseline permits owner-enabled read refresh. Scope
+            # review remains separate and is still required for notifications;
+            # refreshing snapshots never confirms inventory or executes orders.
             self._save(new)
         return self.status()
 
@@ -158,13 +160,13 @@ class LiveConnections:
             with self.core.db() as db:db.execute('INSERT INTO live_http(job,endpoint,request_sha,response_sha,error,at) VALUES (?,?,?,?,?,?)',(job,path,digest(canonical(body)),response_sha,error,now()))
 
     def start_sync(self):
-        config=self.config()
-        if not config.get('ozon_client_id') or not config.get('ozon_api_key') or not config['fulfillment_modes']:raise ValueError('configure_ozon_first')
         if not self.lock.acquire(blocking=False):
             with self.core.db() as db:row=db.execute("SELECT id FROM live_jobs WHERE status='running' ORDER BY started DESC LIMIT 1").fetchone()
             return {'id':row[0] if row else None,'status':'running'}
         ident=str(uuid.uuid4())
         try:
+            config=self.config()
+            if not config.get('ozon_client_id') or not config.get('ozon_api_key') or not config['fulfillment_modes']:raise ValueError('configure_ozon_first')
             with self.core.db() as db:db.execute('INSERT INTO live_jobs VALUES (?,?,?,?,?)',(ident,'running',now(),None,None))
             threading.Thread(target=self._sync,args=(ident,config),daemon=True,name='commerce-ozon-readonly-sync').start()
         except Exception:

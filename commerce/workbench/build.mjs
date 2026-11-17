@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inlineLegacy } from './embed.mjs';
+import { inlineLegacy, packDocument, inlineDocuments } from './embed.mjs';
+import { sourceFiles } from './source-inputs.mjs';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const web = path.resolve(root, '../web');
 execFileSync(process.env.COMMERCE_PYTHON || 'python3', [path.resolve(root, '../a2ui/build_contract.py'), '--check'], { stdio: 'inherit' });
@@ -24,22 +25,23 @@ const result = await build({
     builder.onLoad({ filter: /.*/, namespace: 'unavailable-map' }, () => ({ contents: 'throw new Error("Map components are not registered in the Commerce catalog"); export default null;', loader: 'js' }));
     builder.onLoad({ filter: /katex[\\/]dist[\\/]katex\.min\.css$/ }, () => ({ contents: '', loader: 'css' }));
   } }],
-  define: { 'process.env.NODE_ENV': '"production"', __LEGACY_HTML__: JSON.stringify(await inline('index.html', 'style.css', 'app.js')), __PRODUCT_HTML__: JSON.stringify(await inline('product-workspace.html', 'product-workspace.bundle.css', 'product-workspace.bundle.js')) },
+  define: { 'process.env.NODE_ENV': '"production"', __LEGACY_HTML__: JSON.stringify('inline:legacy'), __PRODUCT_HTML__: JSON.stringify('inline:product') },
 });
+// Write data first so an older running server can read the updated template
+// without a new resource endpoint or a server reload.
+const templatePath=path.join(web,'workbench.html');
+await writeFile(templatePath,inlineDocuments(await readFile(templatePath,'utf8'),{
+  legacy:packDocument(await inline('index.html','style.css','app.js')),
+  product:packDocument(await inline('product-workspace.html','product-workspace.bundle.css','product-workspace.bundle.js')),
+}));
 for (const output of result.outputFiles) {
   const name = output.path.endsWith('.css') ? 'workbench.bundle.css' : 'workbench.bundle.js';
   // No inline script can close its containing tag, including embedded legacy pages.
   await writeFile(path.join(web, name), output.text.replace(/<\/script/gi, '<\\/script'));
   console.log(name, Math.round(output.contents.length / 1024) + ' KiB');
 }
-async function tree(folder) {
-  const entries = await readdir(folder, { withFileTypes: true });
-  return (await Promise.all(entries.map(e => e.isDirectory() ? tree(path.join(folder,e.name)) : [path.join(folder,e.name)]))).flat();
-}
-const sources = [...await tree(path.join(root,'src')), ...['build.mjs','embed.mjs','package.json','package-lock.json','tsconfig.json'].map(name=>path.join(root,name)), ...['index.html','app.js','style.css','product-workspace.html','product-workspace.bundle.js','product-workspace.bundle.css','copilot-ui.js','copilot-ui.css','research-context.js'].map(name=>path.join(web,name)), ...['tokens.json','kit.js','status.js','primitives.css'].map(name=>path.resolve(root,'../ui',name)),...['catalog.json','contract.json','build_contract.py'].map(name=>path.resolve(root,'../a2ui',name))];
+const sources=sourceFiles;
 const digest = async file => createHash('sha256').update(await readFile(file)).digest('hex');
-sources.push(...['skills_ui.js','skills_ui_build.py','ui/build.py','ui/skill-input.js','ui/workspace.css'].map(name=>path.resolve(root,'..',name)));
-sources.push(path.join(web,'intel-map.bundle.js'),path.join(web,'intel-map.bundle.css'),path.join(web,'intel-map.sources.json'));
 const manifest = { sources: {}, outputs: {} };
 for (const file of sources.sort()) manifest.sources[path.relative(path.resolve(root,'..'),file)] = await digest(file);
 for (const name of ['workbench.bundle.js','workbench.bundle.css']) manifest.outputs['web/'+name] = await digest(path.join(web,name));

@@ -22,7 +22,7 @@ POLICY = {'mode': 'auto', 'enabled': True, 'priority': ['dsh', 'hermes', 'codex'
 
 def answer(text='你好', questions=None):
     return {'decision': {'phase': 'answer', 'answer': text, 'questions': questions or [],
-                         'evidence_refs': [], 'proposals': []}}
+                         'evidence_refs': [], 'proposals': [], 'ui': []}}
 
 
 class AutoRoutingContract(unittest.TestCase):

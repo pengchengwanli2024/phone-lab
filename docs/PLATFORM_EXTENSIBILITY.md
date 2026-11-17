@@ -1,5 +1,91 @@
 # 智能跨境运营平台 · 技能、插件与扩展规范
 
+## 2026-11-17 经营总控与复查实施契约
+
+`commerce/operating_pipeline.py`以原商品工作项、精确`case_id/platform/store_ref/market/goal`为范围，投影ProductWorkspace、原组织门禁及当前目标上架方案。`commerce_operating_pipeline_get`只读返回能力实现状态、业务验收状态、依赖、来源引用、缺项、责任岗位和可接续工具参数；不会采集、调用模型或创建经营任务。`goal=launch/operate/brand`分别选择必要阶段，上架准备不依赖尚不存在的订单或结算。完整链路目标见主需求2026-11-17补充。
+
+资料/供应/媒体原门禁PASS仅作为本地完整性/币种/哈希检查；不提升成真实市场结论、供应商、商品身份或权利验证。当前新总控不签发经营成功：`business_outcome_verified=false`。广告、客服、采购、物流监控索赔、结算和品牌的真实执行缺口保留。跨市场/平台不得沿用原门禁作为目标验证；目标规则与负责人核查从当前上架方案读取，不把Ozon/RU的case签收复制给其它站点。
+
+读取返回`snapshot_sha256`；准备动作可带`expected_snapshot_sha256`拒绝变化。`commerce_operating_pipeline_template`必须核对该SHA，输出原ExtensionRuntime兼容的只读工作流定义、scope/input/budget，不保存、测试、启用或运行。使用原`commerce_extension_save/test/enable/run`及可选interval schedule。唯一新增SAFE_BUILTIN为只读get，运行器逐次校验case、platform、store_id与market；goal固化在版本化定义中，不开放其它经营工具。每调度槽创建新的原运行/原任务，按槽去重，旧回执保留；重复旧幂等键不会产生新观察。
+
+流程自身succeeded仅表示本次诊断已读取，不能作为上架/采购/广告/发货完成。源/草稿变化需重新判断；未知平台结果优先保持unknown，不能以新草稿过期覆盖并重发。同时检查精确目标的历史申请，较新申请不能遮住旧申请的未决回执；每轮最多核查200条，超限明确保留unknown，不推断没有更早未决项。失效的可选素材关联仅形成该阶段缺项，不遮住其它经营阶段；库存快照门禁不等于采购/付款/发货就绪。输出只投影证据ID/哈希、状态和缺项，不复制原始客户资料或凭据。空闲复查不调用模型，实际外部经营动作仍沿原业务执行器、策略与授权。
+
+## 2026-11-17 工程团队实施契约
+
+用户确认：项目同时支持工程团队与经营团队，先跑通工程开发；持续运行且拥有项目记忆。当前实施范围是明确工单驱动的小型 Python 修改，复用共享服务、任务账本、模型注册与后台时钟；经营团队继续使用原有执行器和业务记忆。空闲时不调用模型，不自主发明需求。
+
+### 来源与取舍
+
+已读取用户提供两段长视频的英文自动字幕及中文解说字幕。两段长视频内容大量重叠，不作为两份独立证据。中文解说明确引用 AI Engineer 官方另一场 [All Code Is Slop (Except Mine)](https://www.youtube.com/watch?v=O_zcc6Xl12g)。原片 2:03–3:24 强调架构、静态约束与可执行检查先于文字规则；9:40–10:47 强调真实运行、功能地图和可复用驱动；15:11–16:53 明确先改进内层开发闭环，再增加外层自动化。长视频 [5:38](https://www.youtube.com/watch?v=PaPpyQocMww&t=338s)、17:28–22:10 讨论验证与技能评估，48:21 后说明其 token 环境不能直接代表一般个人预算。未在这些材料中找到“唯一创世 HR 自动创建整个组织”是其核心实现的依据。
+
+选用现有 Python/SQLite 宿主中的有界工程执行器；Noodle/pstack 作为公开设计参考。暂不增加第二套平台、向量数据库或通用任意 Shell 权限。原片的 useEffect/注释禁用是其框架特定做法，不迁移为本项目全局禁令。成功指标是可验收任务、人工复核时间、返工与逃逸缺陷、验证覆盖和已知成本；不是角色或 PR 数量。
+
+### 行为与权限
+
+- 工单由调用者明确创建，绑定 project、源码文件清单、允许写路径、固定检查、任务类型、模型快照和预算；同幂等键不同输入拒绝。工程执行账本从属于原 tasks，不复制业务事实。
+- 三个阶段为 Planner、Builder、Reviewer；模型通过现有无工具推理生成类型化计划、文件修改、审查结果。宿主校验并在私有快照写入修改；模型不能提供命令或申请额外工具。Reviewer 只作模型审查，独立性及自动检查范围明确记录。
+- 当前根目录无 Git。首版使用私有、逐文件哈希的源码快照，产出统一补丁；不初始化用户 Git、不提交推送、不自动回写原项目。只复制明确批准的源码文件，拒绝隐藏/运行数据、凭据和软链接；AGENTS.md 作为只读约束加入上下文。
+- 检查由宿主从固定 Python unittest/compile 配方构造；在已验证可用的操作系统沙盒中运行，禁止网络、读取用户私有目录及工作区外写入。沙盒不可用则 blocked，不降级为宿主裸跑。不可编辑验收文件；只有补充测试可在明确获准的新路径生成。
+- 任务状态包括 queued/running/awaiting_review/failed/unknown/cancelled/interrupted；完成模型调用或检查成功不代表补丁已采用。取消覆盖本任务模型与检查进程；重启保留已落盘回执，将在途结果标为 interrupted/unknown，需明确恢复，不自动重发。
+- 默认并发一个工程任务、最多两轮修复、五次模型调用、整体超时；额度在调用前预留。费用/Token 无真实回执时保持 unknown。全局停用阻止后续调用并取消当前工作。
+- 项目记忆分为可追溯的运行经历、明确确认且绑定源码版本的工程经验、受版本管理的操作配方。过期/撤回经验不进入新任务上下文；历史仍可查询。经营事实继续使用原 LayeredMemory，工程经验不能变成店铺授权或全局助手规则。
+- HR 先对已有失败与审查原因做确定性归类，优先建议测试/检查/API修复，再建议技能调整或新角色。输出候选，不能直接启用角色、修改权限或生成新业务任务。启用与原扩展版本/测试门禁衔接；结构验证不冒充行为改善评估。
+
+### 实施与验收顺序
+
+1. 独立模块与真实 SQLite/文件系统回归：幂等、路径/软链接边界、沙盒、源码漂移、预算、撤回/过期记忆、停止及重启。
+2. 接入原 service/MCP、任务查询和可选后台 tick；隔离 Commerce 实例验证三阶段与原经营功能兼容，合成模型明确标识。
+3. 通过真实可用模型处理一个本项目的有界源码任务，在沙盒运行原检查；产出补丁与来源证据，保持 awaiting_review，不修改日常源。
+4. 本地常驻依赖现有独立服务生命周期。仅在源码冻结、现有任务空闲、备份和原记录核对后保护加载；持续时长只按实际观测报告，不宣称已证明 24×7。
+
+### 首版入口、记忆与运行方式
+
+实现位于 `commerce/engineering/`，经 `commerce_engineering_*` 接口和 `commerce/engineering_cli.py` 接入原共享服务。原 `commerce_task_result/cancel/retry` 识别工程所有权，不再交给经营执行器。三阶段各自记录实际提供方回执；Reviewer 是同一路线的另一次调用，不冒充独立认证。
+
+使用项目现有 Python 环境：
+
+```sh
+python commerce/engineering_cli.py status
+python commerce/engineering_cli.py enable
+python commerce/engineering_cli.py submit work-order.json
+python commerce/engineering_cli.py get <run-id>
+python commerce/engineering_cli.py artifact <run-id>
+python commerce/engineering_cli.py recall
+python commerce/engineering_cli.py retrospect
+python commerce/engineering_cli.py disable
+```
+
+`work-order.json` 必须包含 `goal`、`files`、`writable_paths`、`checks`、`idempotency_key`；可明确 `kind=bugfix/feature`、`model_id`、`max_attempts`、`max_model_calls`、`max_seconds`。`checks` 是 `{"kind":"python_unittest","paths":["tests/test_module.py"]}` 或 `python_compile` 配方，不接受命令文本。只有工单显式列出的文件进入快照，必须列齐依赖；缺依赖会失败，不绕到日常源码读取。bugfix 的原验收须实际失败，否则返回 `engineering_bug_not_reproduced`。
+
+功能到验证的映射维护在 `commerce/engineering/features.json`，首批仅覆盖工程 CLI 和离线装箱候选。`commerce_engineering_feature_list/feature_get/prepare` 均为只读：不入队、不检查、不调用模型。配方经源码审查维护，不能通过工具动态扩大权限；目录返回 `verification_status=not_run`，登记本身不证明当前功能通过验收。可先检索/检查，再生成兼容原提交入口的工单：
+
+```sh
+python commerce/engineering_cli.py features
+python commerce/engineering_cli.py feature engineering-cli
+python commerce/engineering_cli.py prepare engineering-cli --goal "明确的修改目标" --key "本次唯一工单键" > work-order.json
+python commerce/engineering_cli.py submit work-order.json
+```
+
+生成的 `feature_ref` 固定配方和源码哈希，包括只读 `AGENTS.md`；入队及执行前拒绝配方、文件范围和源码漂移。原幂等请求仍返回同一任务，不重复创建；不带 `feature_ref` 的显式手写工单保持兼容。已经完成的历史任务和经验不会被改写；依赖源码变化的经验按原规则显示 stale，不自动注入新任务。
+
+默认关闭工程调度，启用本身不生成工单。已启用后由原服务时钟非阻塞派发；单工程任务互斥，日调用上限30（Asia/Shanghai）、单任务最多2轮/5调用/300秒。日额度和在途调用前预留均持久保存；队列等待不占本任务执行时长。结果未知不重发。检查器探测工作区外读写、网络、Shell、跨进程信号和fork拒绝，任何探针失败都不执行检查；独立watchdog在启动前落盘归属，宿主断开时回收检查进程。watchdog自身异常丢失时，以独立持久回执核对checker是否已终止；未核清则保留unknown，并阻止所有状态下的后续工程派发，不能用取消覆盖未知结果；允许读取当前基础Python发行版运行库，不开放整个用户目录。此为本机实测边界，不是形式化安全证明。
+
+工单结果先为 `awaiting_review`。操作者审查并在原项目实际采用后，可调用 `commerce_engineering_record_adoption`，传入 `run_id/candidate_sha256/confirmed=true`；服务仅在全部候选文件哈希实际匹配时记录 `completed`，接口不改源码、不提交Git、不部署。补丁支持无终止换行的文件；运行经历和旧回执保留。
+
+运行经历自动从原执行账本检索；工程经验通过 `commerce_engineering_memory_propose` 绑定原回执，再以准确SHA明确确认或撤回。未确认、源码变化或撤回的经验不进入新上下文；已采用任务的经验绑定实际候选。记忆只提供可解释上下文，不授予工具或修改用户全局助手记忆。业务事实继续由原 `LayeredMemory` 管理。
+
+HR首版入口 `commerce_engineering_retrospect` 做零模型消耗的失败聚合、证据指向和改进候选；已有 `commerce_extension_assist` 可将明确选定的候选生成技能/Agent草稿。保存、测试、启用继续走原扩展门禁。尚未实现自动招聘、自动启用或以结构测试证明行为改善；需要基线/候选/保留案例的真实评估后再扩大自主权。
+
+首个真实模型任务修复了新工程CLI“全量读取后才检查输入限额”的缺陷：实际3次Codex调用约42秒，原失败检查在沙盒中通过，操作者审查采用后记录completed，并保留一条绑定候选来源的经验。这证明有界开发回路可运行，不代表复杂工单收益或长期稳定性已验证。任务验收覆盖运行正确性、明确拒绝与重启恢复；验收数据为隔离状态，未发店铺/设备操作。
+
+### 为什么值得继续做，以及投入边界
+
+phone-lab已有多个宿主、经营模块和并行工作，重复定位入口、复述上下文、核对源版本、人工搬运错误和复验结果才是本团队优先消除的成本。长期资产是功能到验证的映射、可执行约束、带证据且能失效的记忆与可恢复的工单。组织图本身不构成收益。
+
+继续扩大前，应记录每项实际采用结果、操作者复核时间、返工次数、未发现的缺陷及可知用量，与原人工协作方式比较。功能地图应复用既有页面/能力登记与QA入口；复杂并发状态先增加状态机与性质检查，再按实际需要考虑形式化工具。模型评估使用未参与提示词改写的保留案例，避免只优化评分；增加岗位须有重复的能力缺口证据。先工程再经营，保持业务权限、对象范围和事实验证的独立门禁。
+
+持续时长及最终回归以本次私有验收回执为准；没有持续观测的数据不标为24×7验收通过。
+
 状态：目标规范，尚未实现为统一扩展系统。与[产品主稿](PLATFORM_REQUIREMENTS.md)、[交互设计](PLATFORM_EXPERIENCE.md)、[需求台账](PLATFORM_BACKLOG.md)共同使用。已有共享服务、技能目录和平台适配继续复用。
 
 2026-11-13 用户确认：项目独立拥有数据库、记忆、技能与插件系统；Harness、Hermes、Codex 是可替换宿主，默认智能三选一运行。以下合同为实施与验收目标，不把宿主已经安装的能力自动登记为项目已启用。

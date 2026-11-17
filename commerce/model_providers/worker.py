@@ -11,7 +11,7 @@ def main():
     try:local=host=='localhost' or ipaddress.ip_address(host).is_private
     except ValueError:local=False
     if local:handlers.append(urllib.request.ProxyHandler({}))
-    body={'model':data['model'],'stream':False,'max_tokens':data['max_tokens'],'temperature':0,'tools':[],
+    body={'model':data['model'],'stream':bool(data.get('stream')),'max_tokens':data['max_tokens'],'temperature':0,'tools':[],
           'messages':[{'role':'system','content':data['instructions']},{'role':'user','content':json.dumps(data['payload'],ensure_ascii=False)}]}
     if data.get('output_schema'):body['response_format']={'type':'json_schema','json_schema':{'name':'commerce_decision','strict':True,'schema':data['output_schema']}}
     elif data['json_mode']:body['response_format']={'type':'json_object'}
@@ -19,7 +19,38 @@ def main():
     if data['api_key']:headers['Authorization']='Bearer '+data['api_key']
     request=urllib.request.Request(url,data=json.dumps(body,ensure_ascii=False).encode(),headers=headers)
     try:
-        with urllib.request.build_opener(*handlers).open(request,timeout=65) as response:raw=response.read(262145)
+        with urllib.request.build_opener(*handlers).open(request,timeout=65) as response:
+            if data.get('stream') and 'text/event-stream' in response.headers.get('Content-Type',''):
+                print(json.dumps({'stream_mode':'provider_deltas'}),flush=True)
+                parts=[];total=0;stopped=False;done=False;reported=''
+                for line in response:
+                    total+=len(line)
+                    if total>1000000 or len(line)>262144:raise ValueError('agent_model_response_too_large')
+                    if not line.startswith(b'data:'):continue
+                    event=line[5:].strip()
+                    if event==b'[DONE]':done=True;break
+                    try:event=json.loads(event)
+                    except ValueError:raise ValueError('agent_model_invalid_json') from None
+                    if event.get('error'):raise ValueError('agent_provider_outcome_unknown')
+                    reported=str(event.get('model',reported))[:160]
+                    for choice in event.get('choices',[]):
+                        if choice.get('index',0)!=0:continue
+                        delta=choice.get('delta',{})
+                        if delta.get('tool_calls') or delta.get('function_call'):raise ValueError('agent_provider_unexpected_tool')
+                        chunk=delta.get('content')
+                        if chunk is not None:
+                            if not isinstance(chunk,str):raise ValueError('agent_model_invalid_json')
+                            parts.append(chunk)
+                            if sum(map(len,parts))>40000:raise ValueError('agent_model_response_too_large')
+                            print(json.dumps({'delta':chunk},ensure_ascii=False),flush=True)
+                        reason=choice.get('finish_reason')
+                        if reason in ('length','content_filter'):raise ValueError('agent_model_invalid_json')
+                        if reason=='stop':stopped=True
+                if not done or not stopped:raise ValueError('agent_provider_outcome_unknown')
+                raw=json.dumps({'model':reported,'choices':[{'message':{'content':''.join(parts)},'finish_reason':'stop'}]}).encode()
+            else:
+                if data.get('stream'):print(json.dumps({'stream_mode':'provider_final_only'}),flush=True)
+                raw=response.read(262145)
     except (TimeoutError,socket.timeout):raise ValueError('agent_provider_outcome_unknown') from None
     except urllib.error.HTTPError as error:
         error.close();raise ValueError('agent_provider_request_rejected') from None

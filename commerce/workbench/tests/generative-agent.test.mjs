@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import vm from 'node:vm';
+import {createRequire} from 'node:module';
+const compiled=await build({entryPoints:['src/commerce-agent.ts'],bundle:true,write:false,format:'cjs',platform:'node'});
+const sandbox={exports:{},require:createRequire(import.meta.url),console,setTimeout,clearTimeout,TextEncoder,TextDecoder,AbortController,URL,crypto:globalThis.crypto};sandbox.module={exports:sandbox.exports};vm.runInNewContext(compiled.outputFiles[0].text,sandbox);
+const {CommerceAgent}=sandbox.module.exports;
+const thread={id:'thread',context_sha256:'scope',turns:[],latest_run:{id:'original',status:'running'}};
+test('AG-UI resume reads original cursor without sending or opening another task',async()=>{
+  const calls=[];let n=0;
+  const invoke=async(name,args)=>{calls.push({name,args});if(name==='commerce_copilot_events'){n++;return {status:n===1?'running':'completed',cursor:n,snapshot:{cursor:n,answer:n===1?'正在生成':'',components:[],provisional:n===1,mode:'provider_deltas'}}}if(name==='commerce_copilot_get')return {...thread,turns:[{id:'turn',question:'原问题',run:{id:'original',status:'completed',result:{answer:'正在生成完成'},presentation:{components:[]}}}],latest_run:{id:'original',status:'completed',result:{answer:'正在生成完成'},presentation:{components:[]}}};throw Error(name);};
+  const agent=new CommerceAgent({module:'overview',demo:true},invoke,1),events=[];
+  await new Promise((resolve,reject)=>agent.resume({runId:'ui-run',threadId:'ui-thread',messages:[]},thread,'original').subscribe({next:e=>events.push(e),complete:resolve,error:reject}));
+  assert.equal(calls.filter(c=>/send|open/.test(c.name)).length,0);
+  assert.equal(calls[1].args.after,1);
+  assert.ok(events.some(e=>e.type==='TEXT_MESSAGE_CONTENT'&&e.delta==='正在生成'));
+  assert.ok(events.some(e=>e.type==='STATE_SNAPSHOT'&&e.snapshot.provisional===false));
+  assert.equal(events.at(-1).type,'RUN_FINISHED');
+});

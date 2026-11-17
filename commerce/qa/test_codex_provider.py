@@ -57,6 +57,40 @@ class CodexProvider(unittest.TestCase):
             self.assertIn(config,cmd)
         self.assertNotIn('--dangerously-bypass-approvals-and-sandbox',cmd)
 
+    def test_transport_keeps_builtin_account_provider_and_finishes_before_chain_deadline(self):
+        with patch.object(provider.shutil,'which',return_value='/synthetic/codex'):
+            cmd=provider.command(Path('/synthetic/work'),{'model':'gpt-6.1-sol'})
+        self.assertFalse(any(setting.startswith('model_providers.')for setting in cmd))
+        self.assertLess(provider.TIMEOUT_SECONDS,90)
+
+    def test_timed_out_started_turn_retains_safe_stage_and_never_resubmits(self):
+        with tempfile.TemporaryDirectory()as directory:
+            cmd=self.fake_cli(Path(directory),"print(json.dumps({'type':'thread.started','thread_id':'synthetic'}),flush=True)\nprint(json.dumps({'type':'turn.started'}),flush=True)\nsys.stderr.write('SECRET_SENTINEL')\nsys.stderr.flush()\ntime.sleep(20)\n")
+            with patch.object(provider,'command',return_value=cmd)as launch,patch.object(provider,'TIMEOUT_SECONDS',.25):
+                with self.assertRaisesRegex(ValueError,'agent_provider_outcome_unknown')as caught:
+                    provider.invoke({},lambda:False,{'model':'synthetic'})
+            launch.assert_called_once()
+            diagnostic=provider.failure_diagnostic(caught.exception)
+            self.assertEqual(diagnostic['stage'],'model_started')
+            self.assertEqual(diagnostic['reason'],'deadline')
+            self.assertGreaterEqual(diagnostic['elapsed_seconds'],.25)
+            self.assertFalse(diagnostic['automatic_retry'])
+            self.assertNotIn('SECRET_SENTINEL',json.dumps(diagnostic))
+
+    def test_started_cli_failure_is_unknown_and_diagnostic_survives_parent_error(self):
+        with tempfile.TemporaryDirectory()as directory:
+            cmd=self.fake_cli(Path(directory),"print(json.dumps({'type':'turn.started'}),flush=True)\nsys.exit(1)\n")
+            with patch.object(provider,'command',return_value=cmd):
+                with self.assertRaisesRegex(ValueError,'agent_provider_outcome_unknown')as caught:
+                    provider.invoke({},lambda:False,{'model':'synthetic'})
+            try:
+                raise ValueError('agent_chain_budget_exhausted')from caught.exception
+            except ValueError as parent:
+                diagnostic=provider.failure_diagnostic(parent)
+            self.assertEqual(diagnostic['stage'],'model_started')
+            self.assertEqual(diagnostic['reason'],'cli_exit')
+            self.assertEqual(diagnostic['returncode'],1)
+
     def test_structured_transport_normalizes_only_the_valid_phase(self):
         inspect={'phase':'inspect','calls':[{'tool':'commerce_runtime_status','arguments_json':'{}'}]}
         self.assertEqual(provider.decode({'decision':inspect})['calls'][0]['arguments'],{})

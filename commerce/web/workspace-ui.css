@@ -36,7 +36,7 @@
 @media(min-width:1280px){.copilot-docked .workspace-toolbar-popover{right:376px}}
 @media(max-width:780px){.workspace-topbar{padding:var(--ui-space-2);gap:var(--ui-space-2)}.workspace-topbar .ui-tabs{display:none}.workspace-topbar .ui-module-picker{display:block;margin:0}.workspace-topbar .ui-module-picker .ui-field{font-size:0;display:block}.workspace-topbar .ui-module-picker select{font-size:14px;width:100%;min-width:0;min-height:44px}.workspace-global-controls>select{width:84px;min-height:44px}.workspace-toolbar-menu>summary{height:44px;width:44px}.workspace-toolbar-popover{right:var(--ui-space-2);top:60px}.top-line h1{font-size:22px}.workspace-assistant-rail{min-height:96px;padding:var(--ui-space-2)}}
 
-[data-ui-help]{display:none}.runtime-status-grid{display:flex;flex-wrap:wrap;gap:var(--ui-space-3) var(--ui-space-5);font-size:13px}.runtime-status-grid>span{display:inline-flex;gap:var(--ui-space-2);align-items:center}.copilot-header>p,.copilot-composer>small:empty{display:none}
+.runtime-status-grid{display:flex;flex-wrap:wrap;gap:var(--ui-space-3) var(--ui-space-5);font-size:13px}.runtime-status-grid>span{display:inline-flex;gap:var(--ui-space-2);align-items:center}.copilot-header>p,.copilot-composer>small:empty{display:none}
 
 /* Reference-led operations shell. Business modules keep their original handlers. */
 [data-ui-appearance=shopify] .app{display:grid;grid-template-columns:var(--ui-nav-width) minmax(0,1fr);grid-template-rows:64px minmax(0,1fr);height:100dvh;min-height:0;background:var(--ui-color-canvas)}

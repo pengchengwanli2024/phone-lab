@@ -8,6 +8,7 @@ import uuid
 from agent_runtime import sha
 from agent_runtime.policy import canonical
 from .context import validate_context, route, CONTEXT_SCHEMA
+from .page_context import PAGE_CONTEXT_SCHEMA, validate_page_context
 
 ACTIVE=('queued','running','cancel_requested')
 # Serializes scope changes and review across instances in this process. DB transactions
@@ -17,16 +18,26 @@ LOCK=threading.RLock()
 
 def definitions(schema,string):
     tid={'thread_id':string}; review={**tid,'run_id':string,'proposal_id':string,'result_sha256':string,'context_sha256':string}
-    return [
+    from .followups import definitions as followup_definitions
+    from .materials import definitions as material_definitions
+    from .capabilities import definitions as capability_definitions, IDS_SCHEMA
+    from .activity import definitions as activity_definitions
+    tools = [
       ('commerce_copilot_open','打开共享业务对话；不会请求模型',schema({'title':string,'context':CONTEXT_SCHEMA,'idempotency_key':string},['context','idempotency_key'])),
       ('commerce_copilot_list','读取最近共享业务对话；不包含宿主聊天记录',schema()),
       ('commerce_copilot_get','读取业务对话及同一模型运行结果；不会重发模型',schema({**tid,'before':string},['thread_id'])),
+      ('commerce_copilot_catalog','读取受控业务组件、原成本字段目录与宿主降级能力；不执行模型或业务',schema()),
+      ('commerce_copilot_events','按游标读取原模型请求的真实展示增量；预览未经最终校验，重连不重新执行',schema({**tid,'run_id':string,'after':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':100}},['thread_id','run_id'])),
       ('commerce_copilot_model','为当前会话选择已启用模型；活动请求期间拒绝切换，不触发推理',schema({**tid,'model_id':string,'expected_revision':string},['thread_id','model_id','expected_revision'])),
-      ('commerce_copilot_send','明确发送业务问题到现有有界模型队列',schema({**tid,'message':{'type':'string','minLength':1,'maxLength':2000},'context_sha256':string,'idempotency_key':string,'expected_model_sha256':{'type':'string','pattern':'^[a-f0-9]{64}$'},'execution_hosts':{'type':'array','minItems':1,'maxItems':3,'items':{'type':'object','properties':{'host_id':{'type':'string','enum':['dsh','hermes','codex']},'expected_route_sha256':{'type':'string','pattern':'^[a-f0-9]{64}$'}},'required':['host_id','expected_route_sha256'],'additionalProperties':False}}},['thread_id','message','context_sha256','idempotency_key'])),
+      ('commerce_copilot_send','明确发送业务问题到现有有界模型队列',schema({**tid,'message':{'type':'string','minLength':1,'maxLength':2000},'context_sha256':string,'idempotency_key':string,'expected_model_sha256':{'type':'string','pattern':'^[a-f0-9]{64}$'},'page_context':PAGE_CONTEXT_SCHEMA,'execution_hosts':{'type':'array','minItems':1,'maxItems':3,'items':{'type':'object','properties':{'host_id':{'type':'string','enum':['dsh','hermes','codex']},'expected_route_sha256':{'type':'string','pattern':'^[a-f0-9]{64}$'}},'required':['host_id','expected_route_sha256'],'additionalProperties':False}}},['thread_id','message','context_sha256','idempotency_key'])),
       ('commerce_copilot_context','显式更新对话业务范围；旧范围建议失效',schema({**tid,'context':CONTEXT_SCHEMA,'expected_context_sha256':string},['thread_id','context','expected_context_sha256'])),
       ('commerce_copilot_cancel','取消本对话的一次排队或运行请求',schema({**tid,'run_id':string},['thread_id','run_id'])),
       ('commerce_copilot_apply','按范围及结果哈希审阅单条本地建议；不执行店铺写操作',schema(review,list(review))),
     ]
+    send = next(item[2] for item in tools if item[0]=='commerce_copilot_send')
+    send['properties']['material_ids']={'type':'array','maxItems':4,'uniqueItems':True,'items':string}
+    send['properties'].update(capability_ids=IDS_SCHEMA,expected_capability_sha256={'type':'string','pattern':'^[a-f0-9]{64}$'})
+    return tools + followup_definitions(schema,string) + material_definitions(schema,string) + capability_definitions(schema,string) + activity_definitions(schema,string)
 
 
 class Copilot:
@@ -37,10 +48,22 @@ class Copilot:
             db.execute('CREATE TABLE IF NOT EXISTS copilot_turns(id TEXT PRIMARY KEY,thread_id TEXT,idem TEXT,request TEXT,question TEXT,run_id TEXT UNIQUE,context_sha TEXT,revision INTEGER,created REAL,UNIQUE(thread_id,idem))')
             db.execute('CREATE INDEX IF NOT EXISTS copilot_thread_turns ON copilot_turns(thread_id)')
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS copilot_a2a_message ON copilot_turns(idem) WHERE idem LIKE 'a2a:%'")
+        from .followups import CopilotFollowups
+        from .materials import CopilotMaterials
+        self.followups=CopilotFollowups(self)
+        self.materials=CopilotMaterials(self)
+        from .capabilities import CopilotCapabilities
+        from .activity import CopilotActivity
+        self.capabilities=CopilotCapabilities(self)
+        self.activity=CopilotActivity(self)
 
     def invoke(self,name,args):
         from inspect import signature
-        methods={'open':self.open,'list':self.list,'get':self.get,'send':self.send,'context':self.context,'cancel':self.cancel,'apply':self.apply,'model':self.model}
+        if name in ('commerce_copilot_capabilities','commerce_copilot_capability_check'):return self.capabilities.invoke(name,args)
+        if name=='commerce_copilot_activity':return self.activity.invoke(name,args)
+        if name.startswith('commerce_copilot_followup_'):return self.followups.invoke(name,args)
+        if name.startswith('commerce_copilot_material_'):return self.materials.invoke(name,args)
+        methods={'open':self.open,'list':self.list,'get':self.get,'send':self.send,'context':self.context,'cancel':self.cancel,'apply':self.apply,'model':self.model,'events':self.events,'catalog':self.catalog}
         fn=methods.get(name.removeprefix('commerce_copilot_')) if name.startswith('commerce_copilot_') else None
         if not fn:raise ValueError('unknown_tool')
         if not isinstance(args,dict) or set(args)-set(signature(fn).parameters):raise ValueError('copilot_invalid_arguments')
@@ -60,6 +83,27 @@ class Copilot:
 
     def get(self,thread_id,before=None):
         return self._get(thread_id,before=before)
+
+    def catalog(self):
+        from generative.catalog import CATALOG
+        import copy
+        return {**copy.deepcopy(CATALOG),'cost_catalog_tool':'commerce_a2ui_status',
+                'renderers':{'browser':'shared_controlled_views','harness_iframe':'same_shared_assets',
+                             'stdio_hosts':'structured_data_and_existing_workspace_fallback'},
+                'stream_capabilities':{'compatible':'SSE_when_supported; ignored_stream_returns_final_only',
+                    'hermes':'configured_provider_deltas','codex':'actual_CLI_message_events; token_deltas_not_guaranteed',
+                    'host_native':'final_only; no_simulated_tokens'},'external_execution_allowed':False}
+
+    def events(self,thread_id,run_id,after=0,limit=100):
+        with self.core.db() as db:
+            thread=self._thread(db,thread_id)
+            binding=db.execute('SELECT context_sha,revision FROM copilot_turns WHERE thread_id=? AND run_id=?',(thread_id,run_id)).fetchone()
+            if not binding:raise ValueError('copilot_stream_scope_mismatch')
+            value=self.runtime.ui_journal.read(db,run_id,after,limit)
+            run=self.runtime._get(run_id,_db=db)
+            value['status']=run['status'];value['context_current']=binding==(thread['context_sha256'],thread['revision'])
+            if run['status'] not in ACTIVE:value['snapshot'].update(answer='',components=[],provisional=False,status=run['status'])
+            return value
 
     def model(self,thread_id,model_id,expected_revision):
         return self.service.models.select(thread_id,model_id,expected_revision)
@@ -103,6 +147,8 @@ class Copilot:
     def _get(self,thread_id,before=None,include_turn=None):
         with self.core.db() as db:
             thread=self._thread(db,thread_id)
+            if getattr(self.service,'assistant_team',None):
+                thread['assistant_team']=self.service.assistant_team.binding_for_thread(db,thread_id)
             thread['model_selection']=self.service.models.selection(db,thread_id)
             boundary='';values=[thread_id]
             if before is not None or include_turn is not None:
@@ -119,42 +165,57 @@ class Copilot:
             thread['next_cursor']=rows[0][0] if thread['has_more'] else None
             latest=db.execute('SELECT run_id FROM copilot_turns WHERE thread_id=? ORDER BY rowid DESC LIMIT 1',(thread_id,)).fetchone()
             thread['latest_run']=self.runtime._get(latest[0],_db=db) if latest else None
+            payload=json.loads(db.execute('SELECT payload FROM agent_runs WHERE id=?',(latest[0],)).fetchone()[0]) if latest else {}
+            selected=payload.get('capability_selection')
+            thread['capability_selection']={**{k:v for k,v in selected.items() if k!='capabilities'},'capabilities':[{k:v for k,v in item.items() if k not in ('method_text','method_steps')} for item in selected['capabilities']]} if selected else None
             from .receipts import attach
             for turn in thread['turns']:attach(db,turn['run'])
             attach(db,thread['latest_run'])
             thread['research_job']=self.service.market_research.for_run(latest[0], db) if latest else None
+            thread['followups']=self.followups.snapshot(thread_id,_db=db)
+            thread['materials']=self.materials.metadata(db,thread)
+            thread['interaction_capabilities']={'followups':True,'materials':True}
         from .methods import method_for
         thread['method']=method_for(thread['context'])
         thread['memory']={'model_history_max_turns':6,'model_history_max_bytes':32000,'full_history':'persistent_paginated'}
         from protocols.a2ui import surface
         thread['surfaces']=surface(thread['latest_run'],thread['context']) if thread['latest_run'] else []
+        from generative.catalog import present
+        for run in [turn['run'] for turn in thread['turns']]+([thread['latest_run']] if thread['latest_run'] else []):
+            run['presentation']=present(run)
+            run['stream']=self.runtime.ui_journal.snapshot(run['id'])
+            if run['status'] not in ACTIVE:run['stream'].update(answer='',components=[],provisional=False,status=run['status'])
         return thread
 
     def list(self):
         with self.core.db() as db:
             rows=db.execute('SELECT id,title,context,context_sha,updated FROM copilot_threads ORDER BY updated DESC LIMIT 50').fetchall()
-        return {'threads':[dict(id=r[0],title=r[1],context=json.loads(r[2]),context_sha256=r[3],updated=r[4]) for r in rows]}
+        return {'threads':[dict(id=r[0],title=r[1],context=json.loads(r[2]),context_sha256=r[3],updated=r[4]) for r in rows],
+                'interaction_capabilities':{'followups':True,'materials':True}}
 
     def open(self,context,idempotency_key,title=None):
         context=validate_context(context);self.key(idempotency_key)
         if title is not None and (not isinstance(title,str) or not title.strip() or len(title)>160):raise ValueError('copilot_invalid_title')
         request=canonical({'context':context,'title':title});ident=uuid.uuid4().hex;at=time.time()
         with LOCK,self.core.db() as db:
-            db.execute('BEGIN IMMEDIATE');old=db.execute('SELECT id,request FROM copilot_threads WHERE idem=?',(idempotency_key,)).fetchone()
+            if not db.in_transaction:db.execute('BEGIN IMMEDIATE')
+            old=db.execute('SELECT id,request FROM copilot_threads WHERE idem=?',(idempotency_key,)).fetchone()
             if old:
                 if old[1]!=request:raise ValueError('idempotency_conflict')
                 ident=old[0]
             else:db.execute('INSERT INTO copilot_threads VALUES(?,?,?,?,?,?,?,?,?,NULL)',(ident,idempotency_key,request,title or '业务助手',canonical(context),sha(context),1,at,at))
         return self.get(ident)
 
-    def send(self,thread_id,message,context_sha256,idempotency_key,expected_model_sha256=None,execution_hosts=None):
+    def send(self,thread_id,message,context_sha256,idempotency_key,expected_model_sha256=None,execution_hosts=None,page_context=None,material_ids=None,capability_ids=None,expected_capability_sha256=None):
         self.key(idempotency_key)
         if not isinstance(message,str) or not message.strip() or len(message)>2000:raise ValueError('copilot_invalid_message')
         if expected_model_sha256 is not None and (not isinstance(expected_model_sha256,str) or not re.fullmatch('[a-f0-9]{64}',expected_model_sha256)):raise ValueError('copilot_model_changed')
         if execution_hosts is not None:self.service.host_execution.validate_plan_request(execution_hosts)
-        request=canonical({'message':message.strip(),'context_sha256':context_sha256,**({'expected_model_sha256':expected_model_sha256} if expected_model_sha256 is not None else {}),**({'execution_hosts':execution_hosts} if execution_hosts is not None else {})})
-        with LOCK,self.core.db() as db:
-            db.execute('BEGIN IMMEDIATE');thread=self._thread(db,thread_id)
+        if capability_ids is not None:capability_ids=self.capabilities.ids(capability_ids)
+        elif expected_capability_sha256 is not None:raise ValueError('copilot_invalid_capability_selection')
+        request=canonical({'message':message.strip(),'context_sha256':context_sha256,**({'expected_model_sha256':expected_model_sha256} if expected_model_sha256 is not None else {}),**({'execution_hosts':execution_hosts} if execution_hosts is not None else {}),**({'page_context':page_context} if page_context is not None else {}),**({'material_ids':material_ids} if material_ids else {}),**({'capability_ids':capability_ids,'expected_capability_sha256':expected_capability_sha256} if capability_ids is not None else {})})
+        with LOCK,self.core.atomic(reuse=True) as db:
+            thread=self._thread(db,thread_id)
             if idempotency_key.startswith('a2a:'):
                 owner=db.execute('SELECT thread_id FROM copilot_turns WHERE idem=?',(idempotency_key,)).fetchone()
                 if owner and owner[0]!=thread_id:raise ValueError('idempotency_conflict')
@@ -168,9 +229,15 @@ class Copilot:
                 # task's explicit recovery or cancellation settles that boundary.
                 self.service.host_execution.guard_conversation(db,thread_id)
                 topic,parameters=route(thread['context'])
+                if page_context is not None:parameters['page_context']=validate_page_context(page_context,thread['context'])
+                if thread['context'].get('store_scope') is not None:
+                    from .store_scope import validate_binding
+                    validate_binding(self.service,thread['context'],parameters.get('page_context'))
                 parent,history,current_research=self._conversation(db,thread)
                 ident=uuid.uuid4().hex;at=time.time()
+                capability_selection=self.capabilities.freeze(thread['context'],capability_ids,expected_capability_sha256)
                 selected_model=self.service.models.snapshot(db,thread_id=thread_id,expected_sha256=expected_model_sha256)
+                materials=self.materials.resolve_for_send(db,thread,[] if material_ids is None else material_ids)
                 host_plan=self.service.host_execution.freeze(db,execution_hosts) if execution_hosts is not None else self.service.host_execution.inherited_plan(db,thread_id)
                 if selected_model.get('provider')=='host_auto':
                     if execution_hosts is not None:
@@ -181,7 +248,17 @@ class Copilot:
                     original=json.loads(db.execute('SELECT payload FROM agent_runs WHERE id=?',(parent,)).fetchone()[0])['model_route']
                     if not self.service.host_execution.same_model(selected_model,original):
                         raise ValueError('host_plan_model_conflict')
-                run=self.runtime._create(question=message.strip(),role='conductor',topic=topic,parameters=parameters,parent_id=parent,idempotency_key='copilot:'+ident,_db=db,_conversation=history,_model_route=selected_model)
+                team=getattr(self.service,'assistant_team',None)
+                assistant_binding=team.binding_for_send(db,thread_id) if team else None
+                run=self.runtime._create(question=message.strip(),role=assistant_binding['profile']['role_id'] if assistant_binding else 'conductor',topic=topic,parameters=parameters,parent_id=parent,idempotency_key='copilot:'+ident,_db=db,_conversation=history,_model_route=selected_model,_materials=materials if materials['items'] else None)
+                if assistant_binding:
+                    payload=json.loads(db.execute('SELECT payload FROM agent_runs WHERE id=?',(run['id'],)).fetchone()[0])
+                    payload['assistant_team']=assistant_binding
+                    db.execute('UPDATE agent_runs SET payload=? WHERE id=?',(canonical(payload),run['id']))
+                if capability_selection is not None:
+                    payload=json.loads(db.execute('SELECT payload FROM agent_runs WHERE id=?',(run['id'],)).fetchone()[0])
+                    payload['capability_selection']=capability_selection
+                    db.execute('UPDATE agent_runs SET payload=? WHERE id=?',(canonical(payload),run['id']))
                 if current_research is not None:
                     payload=json.loads(db.execute('SELECT payload FROM agent_runs WHERE id=?',(run['id'],)).fetchone()[0])
                     payload['current_research']=current_research
@@ -238,6 +315,10 @@ class Copilot:
             with self.core.db() as db:
                 db.execute('BEGIN IMMEDIATE');thread=self._thread(db,thread_id);binding=self._member(db,thread_id,run_id)
                 if context_sha256!=thread['context_sha256'] or tuple(binding)!=(context_sha256,thread['revision']):raise ValueError('copilot_context_changed')
+                if thread['context'].get('store_scope') is not None:
+                    from .store_scope import validate_binding
+                    frozen=db.execute("SELECT json_extract(payload,'$.parameters.page_context') FROM agent_runs WHERE id=?",(run_id,)).fetchone()
+                    validate_binding(self.service,thread['context'],json.loads(frozen[0]) if frozen and frozen[0] else None)
                 current=db.execute('SELECT approving FROM copilot_threads WHERE id=?',(thread_id,)).fetchone()[0]
                 if current and current!=approval:raise ValueError('copilot_active_review_retry_required')
                 # Durable marker prevents a second process changing context during task

@@ -1,0 +1,26 @@
+.team-routing,.team-routing-rule{display:grid;gap:14px;min-width:0}
+.team-routing{border-top:1px solid var(--ui-color-border)!important;padding-top:16px!important}
+.team-routing-rule{padding:14px;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control)}
+.assistant-team .team-automation{display:grid;gap:20px;min-width:0}
+.assistant-team .team-trigger-list{display:grid;margin-top:16px}
+.assistant-team .team-trigger-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:16px 0;border-top:1px solid var(--ui-color-border);min-width:0}
+.assistant-team .team-trigger-row>div{flex:1;min-width:180px}
+.assistant-team .team-trigger-row p{margin:4px 0 0}
+.assistant-team .team-trigger-history-title{margin:24px 0 12px}
+.assistant-team .team-trigger-history{padding:0;list-style:none;display:grid;gap:12px}
+.assistant-team .team-trigger-history li{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--ui-color-border);padding-top:12px;min-width:0}
+.assistant-team .team-trigger-history li p{flex-basis:100%;margin:0}
+.assistant-team .team-trigger-webhook{margin-top:20px;min-width:0}
+.assistant-team .team-trigger-webhook pre,.team-preset pre{max-width:100%;max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--ui-color-canvas);border-radius:var(--ui-radius-control);padding:14px;font-size:12px;line-height:1.7}
+.assistant-team .team-presets{display:grid;gap:20px;min-width:0}
+.team-preset{min-width:0}
+.team-preset details{margin-top:16px}
+.team-preset details>div,.team-preset .team-preset-section{padding:12px 0;border-top:1px solid var(--ui-color-border)}
+.team-preset h4{font-size:14px;line-height:1.6;margin:0 0 8px}
+.team-preset p,.team-preset li{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}
+.team-preset .team-preset-long{max-height:480px;overflow:auto;padding-right:8px}
+.assistant-team .team-routing-decision{padding:12px 0;border-top:1px solid var(--ui-color-border)}
+.assistant-team .team-plan{padding-left:22px;display:grid;gap:8px;line-height:1.7}
+.assistant-team .team-plan li>span{margin-left:8px}
+.assistant-team .team-final-answer{border-top:1px solid var(--ui-color-border);padding-top:20px;margin-top:20px}
+@media(max-width:600px){.assistant-team .team-trigger-row{align-items:flex-start}.assistant-team .team-trigger-row>div{flex-basis:100%}.assistant-team .team-trigger-row>button{flex:1}.team-routing-rule{padding:12px}.assistant-team .team-automation .r-actions>button{white-space:normal}.assistant-team .team-plan{padding-left:20px}}

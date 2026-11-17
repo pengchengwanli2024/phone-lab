@@ -1,0 +1,3 @@
+# Shared service dependencies; team Markdown uses a bounded SafeLoader.
+-r a2ui/requirements.txt
+PyYAML==6.0.3

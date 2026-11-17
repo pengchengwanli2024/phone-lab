@@ -71,7 +71,9 @@ class ExtensionRuntime:
         return {'id':ident,'kind':doc['kind'],'name':doc['name'],'version':selected,'current_version':current[0],'enabled':bool(current[1] and selected==current[0]),'definition':doc,'test_status':row[2],'test_verification':test_verification,'provenance':json.loads(row[1]),'created_at':row[3],'history':history}
 
     def get(self,extension_id,version=None):
-        with self.core.db() as db:return redact(self._entry(db,extension_id,version))
+        with self.core.db() as db:
+            entry=self._entry(db,extension_id,version)
+            return {**redact(entry),'definition_sha256':sha(entry['definition'])}
 
     def save(self,definition,expected_version=None,provenance=None):
         doc=globals()['definition'](definition);ident=doc.get('id') or 'ext_'+uuid.uuid4().hex[:20];doc['id']=ident
@@ -372,6 +374,9 @@ class ExtensionRuntime:
             if run['test'] and name in PROTECTED_BUILTINS:return self._complete(run,path,{'status':'validation_only','external_action':'not_executed'},{'kind':'media','verification':'structure_only'})
             return self._media(run,path,name,args)
         if required and (not run['scope'].get(required) or args.get(required)!=run['scope'][required]):raise ValueError('extension_scope_mismatch')
+        if name=='commerce_operating_pipeline_get' and any(not run['scope'].get(source) or args.get(key)!=run['scope'][source]
+                for key,source in [('platform','platform'),('store_ref','store_id'),('market','market')]):
+            raise ValueError('extension_scope_mismatch')
         if name=='commerce_media_readiness':
             object_keys(args,('project_id',));self._project_scope(run,args['project_id'])
         self._reserve(run,path,'read',args=args)
@@ -531,11 +536,15 @@ class ExtensionRuntime:
                 draft=definition(output['definition'])
                 if draft['kind']!=run['assist_kind']:raise ValueError('extension_assist_kind_mismatch')
                 draft.pop('id',None);output={'definition':draft,'status':'draft_not_saved','verification':'model_generated_not_independently_verified'}
-            run.update(status='succeeded',output=output,error=None,finished_at=time.time(),inflight={});self._persist(run)
-            if run['test']:
-                with self.core.atomic(reuse=True) as db:
+            run.update(status='succeeded',output=output,error=None,finished_at=time.time(),inflight={})
+            # A successful test and its enable gate must become visible in the
+            # same commit. Otherwise immediate enable races the second update.
+            with self.core.atomic(reuse=True) as db:
+                self._guard(run)
+                if run['test']:
                     entry=self._entry(db,run['extension_id'])
                     if entry['version']==run['version']:db.execute("UPDATE extension_versions SET test_status='passed' WHERE id=? AND version=?",(run['extension_id'],run['version']))
+                self._persist(run)
         except Paused:return
         except Revoked:
             with self.core.atomic(reuse=True) as db:

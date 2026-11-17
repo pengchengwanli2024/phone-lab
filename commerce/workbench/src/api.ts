@@ -5,6 +5,14 @@ export function api<T>(tool: string, args: object = {}): Promise<T> {
   return transport(tool, args) as Promise<T>;
 }
 const errors: Record<string, string> = {
+  order_support_editor_open:'客服仍有未结束的编辑，请先保存或关闭，再从原订单进入。',
+  order_support_context_timeout:'客服页面未确认交接，请重新进入原订单。',
+  order_support_scope_mismatch:'订单范围与当前数据模式不一致，请重新读取订单。',
+  order_support_context_failed:'订单资料未能交接，请重新读取原订单后重试。',
+  order_support_context_cancelled:'已取消订单交接，请从原订单重新进入。',
+  copilot_capability_changed: '所选能力的版本或范围已变化，请打开“功能与工具”重新核对。原问题与任务记录保留。',
+  copilot_capability_unavailable: '所选能力目前不可用，本轮已停止。请移除该能力或核对连接后继续，系统不会自动重发。',
+  copilot_unknown_capability: '该能力未在本项目登记，请从“功能与工具”中重新选择。',
   agent_workspace_evidence_changed: '商品资料、报价或交付审阅版本已变化，请重新读取当前工作项。旧建议未提交，原记录保留。',
   followup_group_changed: '同一对象已有新的复查回执，请刷新核对后再标记已查看。',
   timeline_changed: '原任务历史已有变化，请刷新时间线后继续查看。',
@@ -28,9 +36,12 @@ const errors: Record<string, string> = {
   host_unavailable_use_workbench: '执行端暂不可用，原记录和输入已保留。请稍后刷新或选择固定模型。',
   agent_host_unavailable_use_workbench: '执行端暂不可用，原记录和输入已保留。请稍后刷新或选择固定模型。',
   agent_provider_outcome_unknown: '结果尚未确认，已暂停自动重发。请先核对原任务，再明确恢复。',
+  copilot_page_scope_changed: '页面对象或店铺范围已变化，请重新核对当前范围后发送。输入已保留。',
+  copilot_invalid_page_context: '页面资料未能安全带入，请刷新当前页面后重试。输入已保留。',
   copilot_model_changed: '模型配置已变化，请刷新模型列表后核对。输入已保留。',
   invalid_model_catalog: '模型列表未能读取，请刷新或检查连接。',
   agent_model_setup_required: '模型运行入口尚未配置，请在能力库的模型管理中完成配置。',
+  agent_model_context_limit: '本机模型的上下文容量不足，本轮已停止推理。原问题、已读来源和回执保留；可缩小问题范围或在新会话中选择更大容量模型，不会自动重发。',
   agent_interrupted_no_automatic_resubmit: '回复已中断，未自动重发。核对原记录后可重新编辑问题。',
   market_research_revision_conflict: '研究任务已有新版本，请刷新核对后再继续。',
   market_research_not_found: '找不到这条研究任务，请核对任务入口。',

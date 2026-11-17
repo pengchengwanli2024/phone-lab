@@ -1,7 +1,10 @@
 """Host independent tool contracts and deliberately small declarative surface."""
 KINDS=('skill','plugin','agent','workflow')
 SAFE_BUILTINS={
+    'commerce_operating_pipeline_get':'case_id',
     'commerce_runtime_status':None,'commerce_model_list':None,
+    'commerce_ozon_search_terms_refresh':None,'commerce_ozon_search_terms_status':None,'commerce_ozon_search_terms_search':None,
+    'commerce_intel_opportunity_packet':None,'commerce_intel_opportunity_validate':None,
     'commerce_unit_economics':None,'commerce_restock_plan':None,'commerce_packing_estimate':None,
     'commerce_organization_board':'case_id','commerce_organization_brief':'case_id',
     'commerce_media_overview':'project_id',

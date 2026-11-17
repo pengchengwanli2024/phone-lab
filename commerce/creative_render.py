@@ -10,11 +10,11 @@ def text_rows(text, width=20, limit=240):
     return [text[i:i+width] for i in range(0,len(text),width)] or ['']
 
 
-def panel_svg(text):
+def panel_svg(text,width=720,height=1280):
     rows=text_rows(text,20,100)
-    y=1080-len(rows)*38
-    spans=''.join(f'<tspan x="360" dy="{0 if i==0 else 38}">{escape(row)}</tspan>' for i,row in enumerate(rows))
-    return f'<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280"><rect x="26" y="{y-40}" width="668" height="{len(rows)*38+44}" rx="12" fill="#111827" fill-opacity=".86"/><text x="360" y="{y}" font-family="sans-serif" font-size="30" text-anchor="middle" fill="white">{spans}</text></svg>'
+    y=height-200-len(rows)*38
+    spans=''.join(f'<tspan x="{width//2}" dy="{0 if i==0 else 38}">{escape(row)}</tspan>' for i,row in enumerate(rows))
+    return f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}"><rect x="26" y="{y-40}" width="{width-52}" height="{len(rows)*38+44}" rx="12" fill="#111827" fill-opacity=".86"/><text x="{width//2}" y="{y}" font-family="sans-serif" font-size="30" text-anchor="middle" fill="white">{spans}</text></svg>'
 
 
 def layout_svg(path, title, fact, kind, production_spec=None):

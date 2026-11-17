@@ -23,7 +23,7 @@ ACTIVE=('queued','running','cancel_requested')
 
 def definitions(schema,string):
  return [
-  ('commerce_platform_catalog','四个平台只读范围与接入要求；不代表已授权或已验收',schema()),
+  ('commerce_platform_catalog','多平台只读范围与接入要求；不代表已授权或已验收',schema()),
   ('commerce_platform_list','读取多店铺接入与快照状态，不返回凭据或触发同步',schema()),
   ('commerce_platform_status','读取指定店铺缺项、版本与快照状态，不调用平台',schema({'store_id':string},['store_id'])),
   ('commerce_platform_sync','明确请求一次有界平台读取；不改店铺，分页不全不覆盖旧快照',schema({'store_id':string,'resource':{'type':'string','enum':['orders','products','stock']},'expected_revision':string,'idempotency_key':string,'window_days':{'type':'integer','minimum':1,'maximum':30},'max_pages':{'type':'integer','minimum':1,'maximum':5}},['store_id','resource','expected_revision','idempotency_key'])),
@@ -31,7 +31,7 @@ def definitions(schema,string):
   ('commerce_platform_cancel','取消尚未结束的本地读取；已发请求可能已被平台处理',schema({'job_id':string},['job_id'])),
   ('commerce_platform_snapshot','读取所选店铺和资源的当前版本快照；旧版或陈旧不视为有效',schema({'store_id':string,'resource':{'type':'string','enum':['orders','products','stock']}},['store_id','resource'])),
   ('commerce_platform_export','导出所选私有业务快照与读取证据，不作为公开附件',schema({'store_id':string,'resource':{'type':'string','enum':['orders','products','stock']}},['store_id','resource'])),
-  ('commerce_platform_open_setup','在本机浏览器打开多平台私有接入向导，凭据不经聊天或MCP',schema()),
+  ('commerce_platform_open_setup','在本机浏览器打开多平台私有接入向导，可预选平台；凭据不经聊天或MCP',schema({'platform':{'type':'string','enum':list(api.CATALOG)}})),
  ]
 
 
@@ -77,7 +77,7 @@ class PlatformConnections:
   """Private HTTP only. This method is deliberately absent from MCP."""
   api.require(isinstance(data,dict),'platform_invalid_configuration')
   p=data.get('platform');api.require(p in api.CATALOG,'platform_invalid_provider');spec=api.CATALOG[p]
-  allowed={'store_id','expected_revision','platform','label','market','region','enabled','scope_reviewed',*spec['secrets'],*spec['fields']}
+  allowed={'store_id','expected_revision','platform','label','market','region','enabled','scope_reviewed','draft_create_reviewed',*spec['secrets'],*spec['fields']}
   api.require(not set(data)-allowed,'platform_invalid_configuration');ident=data.get('store_id')
   api.require(isinstance(ident,str)and bool(re.fullmatch('[a-f0-9]{32}',ident)),'platform_invalid_connection_id')
   with self.configs(write=True)as values:
@@ -93,12 +93,16 @@ class PlatformConnections:
    api.require(result['region']in spec['regions'],'platform_invalid_region')
    api.require(type(result['enabled'])is bool and type(result['scope_reviewed'])is bool,'platform_invalid_configuration')
    for field in spec['fields']:
+    if p in api.storefronts.CATALOG:
+     result[field]=api.storefronts.field(field,data.get(field));continue
     value=data.get(field);pattern=r'[A-Z0-9]{5,24}'if field=='marketplace_id'else r'[1-9][0-9]{0,19}'
     api.require(isinstance(value,str)and bool(re.fullmatch(pattern,value)),'platform_scope_field_required');result[field]=value
    for field in spec['secrets']:
     value=data.get(field)or(old or{}).get(field,'')
     api.require(isinstance(value,str)and len(value)<=4096 and (not value or value.isascii()and all(32<ord(c)<127 for c in value)),'platform_invalid_credential')
     result[field]=value
+   if 'draft_create_reviewed'in data and (p not in api.storefronts.CATALOG or type(data['draft_create_reviewed'])is not bool):raise api.Issue('platform_invalid_configuration')
+   if p in api.storefronts.CATALOG:result['draft_create_reviewed']=data.get('draft_create_reviewed',old.get('draft_create_reviewed',False)if old else False)
    result.update(store_id=ident,revision=uuid.uuid4().hex,updated_at=time.time())
    values[ident]=result
   return self.status(ident)
@@ -120,7 +124,7 @@ class PlatformConnections:
           **{k:c[k]for k in api.CATALOG[c['platform']]['fields']},'configured':not missing,'missing_fields':missing,
           'credential_presence':{k:bool(c.get(k))for k in api.CATALOG[c['platform']]['secrets']},
           'resources':api.CATALOG[c['platform']]['resources'],'scope_authority':'operator_provided_not_independently_verified',
-          'automatic_sync':False,'automatic_token_renewal':False,'business_accepted':False}
+          'automatic_sync':False,'automatic_token_renewal':False,'business_accepted':False,'draft_create_reviewed':c.get('draft_create_reviewed',False)}
 
  def listing(self):
   self.recover()
@@ -239,9 +243,10 @@ class PlatformConnections:
   result=self.snapshot(store_id,resource);api.require(result['available'],'platform_current_snapshot_missing')
   return {'filename':'platform-'+self.config(store_id)['platform']+'-'+resource+'-evidence.json','content':json.dumps(result,ensure_ascii=False,indent=2),'privacy':'private_business_data_not_public_release_attachment'}
 
- def open_setup(self):
+ def open_setup(self,platform=None):
   from runtime import PORT
-  ticket=self.service.live.new_setup_ticket();webbrowser.open('http://127.0.0.1:'+str(PORT)+'/platform-setup?ticket='+ticket)
+  if platform is not None and platform not in api.CATALOG:raise api.Issue('platform_invalid_provider')
+  ticket=self.service.live.new_setup_ticket();webbrowser.open('http://127.0.0.1:'+str(PORT)+'/platform-setup?ticket='+ticket+('&platform='+platform if platform else ''))
   return {'status':'opened_local_private_setup','credentials_in_mcp':False}
 
  def stop(self):

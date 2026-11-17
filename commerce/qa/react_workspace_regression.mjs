@@ -78,7 +78,8 @@ try {
   }
   assert.ok(ready, 'Isolated fixture did not start');
   const { case_id: caseId } = JSON.parse(await readFile(path.join(state, 'fixture.json'), 'utf8'));
-  const original = await invoke('commerce_workspace_get', { case_id: caseId }), before = await inventory();
+  const original = await invoke('commerce_workspace_get', { case_id: caseId }), initialInventory = await inventory();
+  let before=initialInventory;
   let executablePath = process.env.CHROME_PATH;
   if (!executablePath) {
     const macChrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -104,29 +105,40 @@ try {
   if (process.env.QA_INTEL_ONLY !== '1') {
   const product = page.frameLocator('iframe[title="完整商品内容编辑"]');
   await product.locator('#pw-main[aria-busy="false"]').waitFor();
-  await product.locator('#copilot-message').fill('synthetic-unsent-product-draft');
+  await page.locator('.r-shared-assistant[aria-busy="false"] #copilot-message').fill('synthetic-unsent-product-draft');
   await product.locator('[data-pw-tab="cost"]').click();
-  await product.locator('#pw-cost-purchase_cost').fill('34');
+  await product.getByRole('button',{name:'编辑成本',exact:true}).click();
+  const boundPurchase=page.locator('.r-cost-page input[name="purchase_cost"]');
+  await boundPurchase.fill('34');
+  await find('workspace');
   const originalFrame = await page.locator('iframe[title="完整商品内容编辑"]').getAttribute('srcdoc');
   await page.getByRole('button', {name:'切换智能助手',exact:true}).click();
-  await product.locator('#product-app[data-chat-visible="false"]').waitFor();
+  assert.equal(await page.locator('.r-work-area.with-assistant').count(),0);
   await page.getByRole('button', {name:'切换智能助手',exact:true}).click();
-  await product.locator('#product-app[data-chat-visible="true"]').waitFor();
+  await page.locator('.r-work-area.with-assistant').waitFor();
   await page.getByRole('button', {name:'设置',exact:true}).click();
   const settings = page.getByRole('dialog');
   await settings.getByRole('switch', {name:'示例数据',exact:true}).uncheck();
   await settings.getByRole('button', {name:'取消切换',exact:true}).click();
   assert.equal(await settings.getByRole('switch', {name:'示例数据',exact:true}).isChecked(), true);
   await page.keyboard.press('Escape');
-  await page.getByRole('button', {name:'用户',exact:true}).click();
+  await page.getByRole('button', {name:'设置',exact:true}).click();
+  await page.getByRole('dialog').locator('summary').filter({hasText:'本机访问与授权状态'}).click();
   await page.getByRole('dialog').getByText('已连接 · v0.1.0', {exact:true}).waitFor();
   assert.match(await page.getByRole('dialog').innerText(), /独立账号\s+尚未接入/);
   await page.keyboard.press('Escape');
-  assert.equal(await product.locator('#copilot-message').inputValue(), 'synthetic-unsent-product-draft');
-  assert.equal(await product.locator('#pw-cost-purchase_cost').inputValue(), '34');
+  assert.equal(await page.locator('.r-shared-assistant[aria-busy="false"] #copilot-message').inputValue(), 'synthetic-unsent-product-draft');
+  await product.locator('[data-pw-tab="cost"]').click();
+  await product.getByRole('button',{name:'编辑成本',exact:true}).click();
+  assert.equal(await boundPurchase.inputValue(),'34');
+  await page.getByRole('button',{name:'读取当前保存版本',exact:true}).click();
+  await page.getByRole('button',{name:'采用保存版本',exact:true}).click();
+  await find('workspace');
   assert.equal(await page.locator('iframe[title="完整商品内容编辑"]').getAttribute('srcdoc'), originalFrame);
   checks.push('Product assistant toggles, settings cancellation and local user status preserve the mounted frame and unsaved input');
 
+  before=await inventory();
+  assert.deepEqual(before,{...initialInventory,surfaces:initialInventory.surfaces+1},'Opening the canonical bound cost form initializes exactly one surface without tasks or conversations');
   await find('operations');
   const cost = page.locator('.r-cost-page');
   await cost.locator('input[name="price"]').fill('129');
@@ -139,7 +151,7 @@ try {
   await legacy.locator('#analysis-available').fill('77');
   assert.equal(await legacy.locator('#commerce-copilot,.workspace-assistant-rail').count(), 0);
   await find('support'); await legacy.locator('.business-root').waitFor();
-  assert.match(await legacy.locator('.business-root').innerText(), /本机全部/);
+  assert.equal(await legacy.locator('#business-mode option[value=synthetic]').count(),1);
   await find('connections'); await legacy.locator('.connections-root').waitFor();
   assert.equal(await legacy.locator('[data-connection-action="ozon-setup"]').count(), 1);
   assert.equal(await legacy.locator('[data-connection-action="platform-setup"]').count(), 1);
@@ -204,24 +216,24 @@ try {
     checks.push('Channel selection remains operable at 390px in dark mode without overflowing either document');
   }
 
-  await page.locator('.r-business-nav').getByRole('button', { name: '商品', exact: true }).click();
-  assert.equal(await product.locator('#copilot-message').inputValue(), 'synthetic-unsent-product-draft');
-  assert.equal(await product.locator('#pw-cost-purchase_cost').inputValue(), '34');
+  await find('workspace');
+  assert.equal(await page.locator('.r-shared-assistant[aria-busy="false"] #copilot-message').inputValue(), 'synthetic-unsent-product-draft');
+  assert.equal(await page.locator('iframe[title="完整商品内容编辑"]').getAttribute('srcdoc'), originalFrame);
   await find('operations'); assert.equal(await cost.locator('input[name="price"]').inputValue(), '129');
   assert.match(await cost.innerText(), /未关联商品/);
   await find('restock'); assert.equal(await legacy.locator('#analysis-available').inputValue(), '77');
-  checks.push('Product draft, product cost, general-cost input and restock input survive module round trips');
+  checks.push('Product frame and assistant draft, general-cost input and restock input survive module round trips');
 
   // Keyboard resizing exercises the actual root-to-product layout bridge.
   await page.locator('.r-business-nav').getByRole('button', { name: '运营台', exact: true }).click();
   const separator = page.locator('.r-chat-splitter'); await separator.focus(); await page.keyboard.press('Home');
   const rootWidth = (await page.locator('.r-shared-assistant').boundingBox()).width;
-  await page.locator('.r-business-nav').getByRole('button', { name: '商品', exact: true }).click();
-  const productAssistant = product.locator('.pw-conversation');
+  await find('workspace');
+  const productAssistant = page.locator('.r-shared-assistant');
   await page.waitForTimeout(150);
-  assert.ok(Math.abs((await productAssistant.boundingBox()).width - rootWidth) <= 3, 'Opaque product frame did not adopt the shared AI width');
-  assert.equal(await product.locator('#copilot-message').inputValue(), 'synthetic-unsent-product-draft');
-  checks.push('Shared AI width crosses the opaque frame without rebuilding the product');
+  assert.ok(Math.abs((await productAssistant.boundingBox()).width - rootWidth) <= 3, 'Module navigation changed the shared assistant width');
+  assert.equal(await page.locator('.r-shared-assistant[aria-busy="false"] #copilot-message').inputValue(), 'synthetic-unsent-product-draft');
+  checks.push('Shared AI width persists through module navigation without a duplicate product assistant');
 
   const productHtml = await page.locator('iframe[title="完整商品内容编辑"]').getAttribute('srcdoc');
   const nonce = productHtml.match(/const nonce = '([^']+)', pending = new Map/)[1];
@@ -247,7 +259,7 @@ try {
 
   await find('operations');
   await page.reload(); await cost.locator('input[name="price"]').waitFor();
-  await page.locator('.r-business-nav').getByRole('button', { name: '商品', exact: true }).click();
+  await find('workspace');
   await find('operations'); await cost.locator('input[name="price"]').waitFor();
   assert.deepEqual(await inventory(), before, 'General-cost refresh/reopen must stay read-only');
   checks.push('Refreshing and reopening general cost do not create tasks or surfaces');
@@ -297,9 +309,12 @@ try {
     }
     await legacy.locator('#intel-category').selectOption('logistics'); await searchReady();
     assert.equal(await legacy.locator('.intel-timeline li').count(), 1);
+    await legacy.locator('#intel-aux-menu>summary').click();
     await legacy.locator('#intel-watch-open').click();
     await legacy.locator('#intel-watch-name').fill('Synthetic logistics watch');
-    await legacy.locator('#intel-watch-save').click();
+    for(const values of [{isComposing:true,keyCode:13},{isComposing:false,keyCode:229}])await legacy.locator('#intel-watch-name').evaluate((e,values)=>e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true,...values})),values);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));assert.equal((await invoke('commerce_intel_watch_list')).watches.length,0,'IME confirmation must not save a watch');
+    await legacy.locator('#intel-watch-name').press('Enter');
     await legacy.locator('#intel-watch-name').waitFor({ state: 'detached' });
     const saved = (await invoke('commerce_intel_watch_list')).watches;
     assert.equal(saved.length, 1); assert.equal(saved[0].matches, 1);

@@ -32,13 +32,14 @@ def formatted_time_fields(key,value):
 def tool_menu(topic, parameters):
     if topic == 'workspace':
         from copilot.reads import menu
-        return menu(parameters['context'])
+        return menu(parameters['context'],parameters.get('page_context'))
     if topic == 'runtime':
         return [{'tool':'commerce_runtime_status','arguments':{}}, {'tool':'commerce_live_status','arguments':{}}, {'tool':'commerce_channel_status','arguments':{}}]
     if topic == 'intelligence':
+        from public_web import tool_menu as public_tools
         return [{'tool':'commerce_intel_search','arguments':{'query':'at most 100 characters','source':list(source_ids())}},
                 {'tool':'commerce_intel_item_get','arguments':{'item_id':'ID returned in this request, or explicitly supplied by user'}},
-                {'tool':'commerce_intel_live_get','arguments':{'query':'optional callsign, MMSI or vessel name; empty reads current local snapshots'}}]
+                {'tool':'commerce_intel_live_get','arguments':{'query':'optional callsign, MMSI or vessel name; empty reads current local snapshots'}}]+public_tools()
     if topic == 'organization_case':
         return [{'tool':'commerce_organization_board','arguments':{'case_id':parameters['case_id']}},
                 {'tool':'commerce_organization_brief','arguments':{'case_id':parameters['case_id'],
@@ -57,7 +58,10 @@ def check_call(topic, parameters, call, seen):
     if name not in allowed:raise ValueError('agent_tool_outside_scope')
     if topic=='workspace':
         from copilot.reads import check
-        return check(parameters['context'],name,args,seen)
+        return check(parameters['context'],name,args,seen,parameters.get('page_context'))
+    if name in ('commerce_web_search','commerce_web_read'):
+        from public_web import check_call as public_call
+        return public_call(name,args,seen)
     if name=='commerce_exposure_get':
         if args!={'assessment_id':parameters['assessment_id']}:raise ValueError('agent_exposure_outside_scope')
     elif name in ('commerce_runtime_status','commerce_live_status','commerce_channel_status'):
@@ -88,6 +92,9 @@ def check_call(topic, parameters, call, seen):
 
 def project(name, value):
     """No keys, local paths, store labels, transaction identifiers or full notes."""
+    if name in ('commerce_web_search','commerce_web_read'):
+        from public_web import projection
+        return projection(value)
     if name=='commerce_channel_status':
         fields=('id','adapter_available','credentials_present','gateway_enabled','runtime_status','readiness','delivery_verified')
         return {'probe_status':value['probe_status'],'profile_available':value['profile_available'],
@@ -95,7 +102,7 @@ def project(name, value):
                 'channels':[{**{key:row[key] for key in fields},'selected':row['binding']['selected'],
                              'mode':row['binding']['mode']} for row in value['channels']],
                 'configuration_is_not_authorization':True,'external_execution_allowed':False}
-    if name in ('commerce_project_memory_search','commerce_workspace_get','commerce_orders_list','commerce_products_list','commerce_skills_search','commerce_skills_get'):
+    if name in ('commerce_project_memory_search','commerce_workspace_get','commerce_orders_list','commerce_products_list','commerce_store_workbench','commerce_skills_search','commerce_skills_get'):
         from copilot.reads import projection
         return projection(name,value)
     if name=='commerce_live_status':

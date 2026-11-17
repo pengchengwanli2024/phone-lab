@@ -1,0 +1,36 @@
+{
+  "kind": "skill",
+  "name": "商品证据与上架缺项巡检",
+  "description": "复用现有准确商品流水线，只读返回当前缺项与接续入口；不采集、不调用模型、不发布。",
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "spec": {
+    "steps": [
+      {
+        "id": "inspect",
+        "uses": {"builtin": "commerce_operating_pipeline_get"},
+        "input": {
+          "case_id": {"$ref": "scope.case_id"},
+          "platform": {"$ref": "scope.platform"},
+          "store_ref": {"$ref": "scope.store_id"},
+          "market": {"$ref": "scope.market"},
+          "goal": "launch"
+        }
+      }
+    ],
+    "output": {
+      "inspection": {"$ref": "steps.inspect"},
+      "inspection_is_not_business_completion": true,
+      "external_execution": false
+    }
+  },
+  "limits": {
+    "max_steps": 1,
+    "max_model_calls": 0,
+    "max_seconds": 30,
+    "max_output_bytes": 64000
+  }
+}

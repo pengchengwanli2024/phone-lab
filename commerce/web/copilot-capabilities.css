@@ -1,0 +1,59 @@
+.copilot-capability-picker{display:flex;align-items:center;min-width:0;flex:none}
+#copilot-capability-trigger.ui-button{display:inline-flex;align-items:center;gap:6px;max-width:190px;min-height:34px;padding:6px 8px;border:0;border-radius:var(--ui-radius-control);box-shadow:none;background:transparent;color:var(--ui-color-muted);font-size:var(--ui-font-size-meta);line-height:1.4;white-space:nowrap}
+#copilot-capability-trigger.ui-button>span:first-of-type{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#copilot-capability-trigger.ui-button>.icon{width:16px;height:16px;flex:none}
+#copilot-capability-trigger.ui-button>.icon:last-child{width:12px;height:12px}
+#copilot-capability-trigger.ui-button:hover,#copilot-capability-trigger.ui-button[aria-expanded=true]{background:var(--ui-color-surface);color:var(--ui-color-text)}
+.copilot-capability-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding-inline:4px;border-radius:var(--ui-radius-control);background:var(--ui-color-brand-soft);color:var(--ui-color-brand);font-variant-numeric:tabular-nums}
+.copilot-capability-panel{position:fixed;z-index:80;display:flex;flex-direction:column;gap:8px;box-sizing:border-box;width:400px;max-width:calc(100vw - 24px);max-height:540px;padding:10px;overflow:hidden;background:var(--ui-color-surface);color:var(--ui-color-text);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-dialog);box-shadow:var(--ui-shadow-dialog);font-size:var(--ui-font-size-meta)}
+#copilot-capability-panel .ui-button{box-shadow:none;font-size:var(--ui-font-size-meta)}
+#copilot-capability-panel>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-left:4px}
+#copilot-capability-panel>header>strong{font-size:var(--ui-font-size-body);font-weight:600}
+#copilot-capability-panel .copilot-capability-close.ui-button{min-width:30px;min-height:30px;padding:2px;border:0;background:transparent;color:var(--ui-color-muted);font-size:20px;line-height:1}
+.copilot-capability-mode{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px;color:var(--ui-color-muted);line-height:1.5}
+.copilot-capability-mode>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#copilot-capability-panel .copilot-capability-mode .ui-button{flex:none;min-height:28px;padding:3px 4px;border:0;background:transparent;color:var(--ui-color-brand)}
+#copilot-capability-panel [role=tablist]{display:flex;gap:3px;padding:3px;border-radius:var(--ui-radius-control);background:var(--ui-color-canvas)}
+#copilot-capability-panel .ui-button[role=tab]{flex:1;min-width:0;min-height:34px;padding:5px 6px;border:0;background:transparent;color:var(--ui-color-muted);white-space:nowrap}
+#copilot-capability-panel .ui-button[role=tab][aria-selected=true]{background:var(--ui-color-surface);color:var(--ui-color-brand);font-weight:600}
+.copilot-capability-search{position:relative;display:block;flex:none}
+.copilot-capability-search>.icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--ui-color-muted);pointer-events:none}
+#copilot-capability-query{width:100%;min-height:38px;padding:8px 10px 8px 34px;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface);color:var(--ui-color-text);font:inherit;font-size:var(--ui-font-size-body);box-sizing:border-box}
+.copilot-capability-results{min-height:0;overflow:auto;flex:1;overscroll-behavior:contain;scroll-padding:4px}
+#copilot-capability-panel .copilot-capability-follow.ui-button{display:flex;align-items:center;justify-content:flex-start;gap:9px;width:100%;min-height:52px;padding:8px;border:0;background:transparent;text-align:left;white-space:normal}
+.copilot-capability-follow>.icon{width:18px;height:18px;flex:none;color:var(--ui-color-muted)}
+.copilot-capability-copy{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1;text-align:left}
+.copilot-capability-copy strong{display:block;min-width:0;font-size:var(--ui-font-size-body);font-weight:500;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.copilot-capability-copy small{display:block;min-width:0;color:var(--ui-color-muted);font-size:var(--ui-font-size-meta);line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.copilot-capability-modules{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;margin-top:4px}
+#copilot-capability-panel .copilot-capability-module.ui-button{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-width:0;min-height:42px;padding:8px;border:0;background:transparent;color:var(--ui-color-text);text-align:left}
+.copilot-capability-module>.icon{width:16px;height:16px;flex:none;color:var(--ui-color-muted)}
+.copilot-capability-module>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#copilot-capability-panel .copilot-capability-follow.ui-button:hover,#copilot-capability-panel .copilot-capability-module.ui-button:hover{background:var(--ui-color-canvas)}
+#copilot-capability-panel :is(.copilot-capability-follow,.copilot-capability-module).ui-button[aria-pressed=true]{background:var(--ui-color-brand-soft);color:var(--ui-color-brand)}
+.copilot-capability-check{width:14px;min-width:14px;margin-left:auto;color:var(--ui-color-brand);font-weight:600;text-align:center}
+.copilot-capability-item{display:grid;grid-template-columns:minmax(0,1fr)28px;gap:2px;align-items:center;margin-bottom:3px}
+#copilot-capability-panel .copilot-capability-row.ui-button{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-width:0;min-height:56px;padding:8px;border:0;background:transparent;color:var(--ui-color-text);text-align:left;white-space:normal}
+#copilot-capability-panel .copilot-capability-row.ui-button:hover{background:var(--ui-color-canvas)}
+#copilot-capability-panel .copilot-capability-row.ui-button[aria-pressed=true]{background:var(--ui-color-brand-soft)}
+#copilot-capability-panel .copilot-capability-row.ui-button:disabled{opacity:1;color:var(--ui-color-muted);cursor:not-allowed}
+.copilot-capability-condition{flex:none;max-width:90px;font-size:11px;color:var(--ui-color-muted);white-space:nowrap}
+#copilot-capability-panel .copilot-capability-info.ui-button{display:flex;align-items:center;justify-content:center;min-width:28px;min-height:32px;padding:4px;border:0;background:transparent;color:var(--ui-color-muted)}
+.copilot-capability-info>.icon{width:16px;height:16px}
+.copilot-capability-detail{grid-column:1/-1;margin:0 4px 6px;padding:10px;background:var(--ui-color-canvas);border-radius:var(--ui-radius-control);line-height:1.6;overflow-wrap:anywhere}
+.copilot-capability-detail>strong{font-size:var(--ui-font-size-body);font-weight:500}
+.copilot-capability-detail>p{margin:5px 0 0;color:var(--ui-color-muted)}
+.copilot-capability-tags{display:flex;flex:none;gap:5px;flex-wrap:wrap;max-height:76px;overflow:auto}
+.copilot-capability-chip{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:100%;padding:3px 4px 3px 8px;border-radius:var(--ui-radius-control);background:var(--ui-color-brand-soft);color:var(--ui-color-brand)}
+.copilot-capability-chip>span{min-width:0;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#copilot-capability-panel .copilot-capability-chip .ui-button{min-width:24px;min-height:24px;padding:1px;border:0;background:transparent;color:inherit}
+#copilot-capability-panel>footer{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;padding-top:8px;border-top:1px solid var(--ui-color-border);color:var(--ui-color-muted)}
+#copilot-capability-panel>footer>div{display:flex;gap:4px;align-items:center}
+#copilot-capability-panel>footer .ui-button,#copilot-capability-panel .copilot-capability-more.ui-button{min-height:32px;padding:5px 10px;border:0;background:transparent;color:var(--ui-color-muted)}
+#copilot-capability-panel>footer .ui-button:last-child{background:var(--ui-color-brand-soft);color:var(--ui-color-brand)}
+#copilot-capability-panel .copilot-capability-more.ui-button{width:100%;margin-top:4px;color:var(--ui-color-brand)}
+.copilot-capability-error{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;margin:0;padding:8px;border-radius:var(--ui-radius-control);background:var(--ui-color-warning-soft);color:var(--ui-color-warning);line-height:1.5}
+#copilot-capability-panel .copilot-capability-error .ui-button{flex:none;min-height:30px;padding:4px;border:0;background:transparent;color:inherit}
+.copilot-capability-empty{margin:0;padding:20px 8px;color:var(--ui-color-muted);line-height:1.6;text-align:center}
+#copilot-capability-trigger:focus-visible,#copilot-capability-panel .ui-button:focus-visible,#copilot-capability-query:focus-visible{outline:1px solid var(--ui-color-focus);outline-offset:1px;box-shadow:var(--ui-shadow-control-focus)}
+@media(max-width:600px){#copilot-capability-trigger.ui-button{min-height:44px;max-width:160px}#copilot-capability-query{min-height:44px;font-size:16px}#copilot-capability-panel .ui-button[role=tab],#copilot-capability-panel .copilot-capability-module.ui-button{min-height:44px}#copilot-capability-panel .copilot-capability-info.ui-button{min-height:44px}.copilot-capability-condition{max-width:72px;font-size:10px}}

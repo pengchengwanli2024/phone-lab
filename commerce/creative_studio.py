@@ -38,7 +38,7 @@ def tool_definitions(schema, string):
         ('list', '列出本机创意项目；不读取其它目录', {}, []),
         ('get', '读取创意项目、三类草稿、素材和真实处理回执', {'project_id': string}, ['project_id']),
         ('save', '按版本保存产品依据与参考文案；不把参考片主张当成产品事实', {'project_id': string,'brief': obj,'revision': string}, ['project_id','brief','revision']),
-        ('upload_begin', '开始有界私有素材上传，不抓取任意网址', {'project_id':string,'filename':string,'kind':{'type':'string','enum':['reference_video','reference_image','product_image','audio','captions','generated_image','generated_video']},'size':string,'sha256':string,'source_ref':{'type':'string','maxLength':1000}}, ['project_id','filename','kind','size','sha256']),
+        ('upload_begin', '开始有界私有素材上传，不抓取任意网址', {'project_id':string,'filename':string,'kind':{'type':'string','enum':['reference_video','reference_image','product_image','audio','captions','generated_image','generated_video','product_video']},'size':string,'sha256':string,'source_ref':{'type':'string','maxLength':1000}}, ['project_id','filename','kind','size','sha256']),
         ('upload_chunk', '上传一个有序分片；重传相同分片不重复写入', {'upload_id':string,'index':string,'content_base64':{'type':'string','minLength':1,'maxLength':66000}}, ['upload_id','index','content_base64']),
         ('upload_finish', '校验上传哈希和实际媒体格式后登记素材', {'upload_id':string}, ['upload_id']),
         ('asset_read', '分片读取本项目登记的私有素材，不接受文件路径', {'project_id':string,'asset_id':string,'offset':string}, ['project_id','asset_id']),
@@ -262,7 +262,7 @@ class CreativeStudio:
             if kind!='captions':
                 metadata['media']=self.probe(source)
                 media=metadata['media']
-                if kind in ['reference_video','generated_video'] and (media['width']==0 or media['duration_seconds']<=0): raise ValueError('creative_video_required')
+                if kind in ['reference_video','generated_video','product_video'] and (media['width']==0 or media['duration_seconds']<=0): raise ValueError('creative_video_required')
                 if kind in ['product_image','generated_image','reference_image'] and media['width']==0:raise ValueError('creative_image_required')
                 if kind=='audio' and not media['has_audio']:raise ValueError('creative_audio_required')
             asset=uuid.uuid4().hex;dest=self.folder(row[0])/(asset+suffix)
@@ -293,7 +293,7 @@ class CreativeStudio:
         elif project['plan']['status']!='draft_ready':raise ValueError('creative_product_facts_required')
         if kind=='design_analyze' and asset_kind not in ('reference_image','reference_video'):raise ValueError('creative_reference_media_required')
         if kind=='analyze' and asset_kind!='reference_video':raise ValueError('creative_reference_video_required')
-        if kind=='render' and (asset_kind not in ['product_image','generated_image','generated_video'] or project['plan']['status']!='draft_ready'):
+        if kind=='render' and (asset_kind not in ['product_image','generated_image','generated_video','product_video'] or project['plan']['status']!='draft_ready'):
             raise ValueError('creative_render_requires_product_asset_and_facts')
         if kind=='image_layout' and asset_kind not in ['product_image','generated_image']:
             raise ValueError('creative_product_image_required')
@@ -324,6 +324,11 @@ class CreativeStudio:
 
     def work(self, job, data):
         try:
+            # start() can join a caller's transaction. Wait for that writer to
+            # commit before reading the job; rolled-back work must never run.
+            with self.core.db() as db:
+                db.execute('BEGIN IMMEDIATE')
+                if not db.execute('SELECT 1 FROM creative_jobs WHERE id=?',(job,)).fetchone():return
             for aid,sha in data.get('source_assets',{}).items():
                 source,_,_=self.asset(data['project_id'],aid)
                 if digest(source.read_bytes())!=sha:raise ValueError('creative_asset_changed')

@@ -29,13 +29,13 @@ export function Models({ active }: { active: boolean }) {
   }
   const term = query.trim().toLocaleLowerCase();
   const visible = models.filter(model => [model.label, model.model, modelEngine(model)].some(value => value?.toLocaleLowerCase().includes(term)));
-  return <div className="r-page r-models">
+  return <div className="r-page r-models" data-ai-page="models" data-ai-context={JSON.stringify({filters:{query}})}>
     <div className="r-page-heading"><h1>模型管理</h1><div className="r-actions"><Button onClick={() => void load()} disabled={loading}>刷新列表</Button><Button primary onClick={() => void configure()} disabled={opening}>{opening ? '正在打开…' : '配置模型'}</Button></div></div>
     <ErrorNotice>{error}</ErrorNotice>{message && <p className="r-feedback" role="status">{message}</p>}
     <label className="ui-field r-model-search">查找模型<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="名称、模型 ID 或服务类型" /></label>
     {loading ? <Empty>正在读取模型…</Empty> : error && !models.length ? null : visible.length ? <section className="r-model-list" aria-label="已配置模型">{visible.map(model => {
       const state = modelReadiness(model);
-      return <article className="r-model-row" key={model.id}>
+      return <article className="r-model-row" key={model.id} data-ai-context={JSON.stringify({section:"details",entity:{kind:"model",id:model.id,name:model.label}})}>
         <div className="r-model-info"><h2>{model.label}</h2><p><span>{modelEngine(model)}</span><span>{model.model || '模型待核对'}</span></p>
           {model.engine !== 'builtin' && <details className="r-model-details"><summary>连接详情</summary><dl><div><dt>服务地址</dt><dd>{model.base_url || '待配置'}</dd></div><div><dt>配置版本</dt><dd>{model.revision}</dd></div><div><dt>凭据</dt><dd>{model.key_configured === true ? '已配置' : model.key_configured === false ? '未配置' : '待核对'}</dd></div></dl></details>}
         </div><Badge tone={state.tone}>{state.label}</Badge>

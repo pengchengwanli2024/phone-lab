@@ -7,10 +7,13 @@ class CapabilityLifecycle:
     def __init__(self,service):
         self.service=service;self._lock=threading.Lock();self._thread=None;self._closed=False
         self._extension_error=None;self._media_error=None;self._last_tick=None
+        self._team_error=None
+        self._engineering_error=None
 
     def status(self):
         return {'stopped':self._closed,'media_io_running':bool(self._thread and self._thread.is_alive()),
-                'extension_error':self._extension_error,'media_error':self._media_error,'last_tick':self._last_tick}
+                'extension_error':self._extension_error,'media_error':self._media_error,'team_error':self._team_error,
+                'engineering_error':self._engineering_error,'last_tick':self._last_tick}
 
     def _media_tick(self,at):
         try:
@@ -25,6 +28,14 @@ class CapabilityLifecycle:
         self._last_tick=time.time() if at is None else at
         try:self.service.extensions.tick(at=at);self._extension_error=None
         except Exception:self._extension_error='extension_background_tick_failed'
+        teams=getattr(self.service,'assistant_team',None)
+        if teams:
+            try:teams.tick(at=at);self._team_error=None
+            except Exception:self._team_error='team_background_tick_failed'
+        engineering=getattr(self.service,'engineering',None)
+        if engineering:
+            try:engineering.tick(at=at);self._engineering_error=None
+            except Exception:self._engineering_error='engineering_background_tick_failed'
         with self._lock:
             if self._closed or self._thread and self._thread.is_alive():return
             self._thread=threading.Thread(target=self._media_tick,args=(at,),name='commerce-media-io',daemon=True)
@@ -34,10 +45,16 @@ class CapabilityLifecycle:
         self.service.extensions.recover();self.service.media_providers.recover()
         execution=getattr(self.service,'media_plugin_execution',None)
         if execution:execution.recover()
+        teams=getattr(self.service,'assistant_team',None)
+        if teams:teams.recover()
+        engineering=getattr(self.service,'engineering',None)
+        if engineering:engineering.recover()
 
     def stop(self):
         with self._lock:self._closed=True
         self.service.media_providers.stop();self.service.extensions.stop()
+        engineering=getattr(self.service,'engineering',None)
+        if engineering:engineering.stop()
         execution=getattr(self.service,'media_plugin_execution',None)
         if execution:execution.stop()
         if self._thread:self._thread.join(timeout=3)

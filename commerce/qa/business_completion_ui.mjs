@@ -104,7 +104,7 @@ try {
       await page.evaluate(theme=>window.CommerceUI.applyTheme(theme),theme);
       const box=await dialog.boundingBox();assert.ok(box.x>=0&&box.x+box.width<=width+1);
       const moneyCell=await comparison.locator('td:nth-child(5)').first().boundingBox();assert.ok(moneyCell.width>=120,'money columns must remain readable');
-      if(width===390){const scroll=comparison.locator('.ui-table[data-ui-scrollable="true"]');await scroll.waitFor();assert.equal(await scroll.getAttribute('tabindex'),'0')}
+      if(width===390){const table=comparison.locator('.ui-table').first();if(await table.evaluate(el=>el.scrollWidth>el.clientWidth+1))assert.equal(await table.getAttribute('tabindex'),'0');else assert.ok(await comparison.locator('td:nth-child(5)').first().isVisible(),'compact money cells remain readable without horizontal scrolling')}
       await page.screenshot({path:path.join(process.env.QA_OUTPUT_DIR,`supply-${width}-${theme}.png`),animations:'disabled'});
     }}
   }

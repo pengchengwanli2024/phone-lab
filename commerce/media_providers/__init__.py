@@ -297,6 +297,7 @@ class MediaProviders:
             if row['revision'] != expected_profile_revision: raise ValueError('media_provider_profile_changed')
             if not self._public_profile(row)['selectable']: raise ValueError('media_provider_not_ready')
             d = self.service.media.request_get(request_id); self.service.media._current(d)
+            if d['spec'].get('editing') or d['spec'].get('delivery_commitment'):raise ValueError('creative_edit_local_render_required')
             config = row['config']; video = d['spec']['format'].endswith('_video')
             if config['media_kind'] != ('video' if video else 'image'): raise ValueError('media_provider_request_kind_mismatch')
             if not config['capabilities']['image_input']: raise ValueError('media_provider_product_image_input_unsupported')

@@ -40,11 +40,11 @@ class FakeBridge:
 
 class FleetUnit(unittest.TestCase):
     def test_device_ids_are_stable_and_hashed(self):
-        first = _device_id('a', 'synthetic-android-serial')
-        self.assertEqual(first, _device_id('a', 'synthetic-android-serial'))
+        first = _device_id('a', '1e31f3a8')
+        self.assertEqual(first, _device_id('a', '1e31f3a8'))
         self.assertNotEqual(first, _device_id('a', 'other'))
         self.assertTrue(first.startswith('a'))
-        self.assertNotIn('synthetic-android-serial', first)
+        self.assertNotIn('1e31f3a8', first)
 
     def test_labels_disambiguate_duplicates(self):
         fleet = PhoneFleet()

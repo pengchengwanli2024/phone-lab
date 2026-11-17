@@ -32,12 +32,21 @@ def fake_model(payload, cancelled):
     if not payload['observations']:
         decision = {'phase': 'inspect', 'calls': [payload['tools'][0]]}
     else:
-        decision = {'phase': 'answer', 'answer': '合成验收：已读取当前允许的商品资料；成本仍由确定性计算器核对。', 'questions': [], 'evidence_refs': ['R1'], 'proposals': []}
+        questions = ['合成验收：请补充目标时间范围。'] if os.environ.get('COMMERCE_QA_LAYOUT_QUESTIONS') == '1' else []
+        decision = {'phase': 'answer', 'answer': '合成验收：已读取当前允许的商品资料；成本仍由确定性计算器核对。', 'questions': questions, 'evidence_refs': ['R1'], 'proposals': []}
     return {'decision': decision, 'provider': 'synthetic-no-network', 'model': 'synthetic'}
 
 
 model.invoke = fake_model
 app = server.Commerce(server.STATE)
+if os.environ.get('COMMERCE_QA_OPERATING_CONTROL') == '1':
+    from fixture_operating_control import seed as seed_operating_control
+    seed_operating_control(app)
+    import webbrowser
+    def capture_local_open(url, *args, **kwargs):
+        (server.STATE/'qa-open-url.json').write_text(json.dumps({'url':url}))
+        return True
+    webbrowser.open = capture_local_open
 original_invoke = app.invoke
 
 
@@ -62,6 +71,9 @@ if os.environ.get('COMMERCE_QA_LISTING_RELEASE')=='1':
     from fixture_listing_release import install as install_listing_release
     install_listing_release(app)
 marker.write_text(json.dumps({'case_id': case_id}))
+if os.environ.get('COMMERCE_QA_PAGE_CONTEXT')=='1':
+    from fixture_page_context import seed as seed_page_context
+    seed_page_context(app)
 if os.environ.get('COMMERCE_QA_OWNER_REVIEW')=='1':
     from fixture_owner_review import install as install_owner_review
     install_owner_review(app)

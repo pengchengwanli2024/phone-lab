@@ -25,6 +25,8 @@ CATALOG={
  'temu':{'name':'Temu','regions':['global','us','eu'],'resources':['orders'],'secrets':['app_key','app_secret','access_token'],'fields':[],
          'notice':'仅接订单列表；适用地区、店铺类型与权限包须按真实授权验收。库存和金额口径尚未接入。'},
 }
+from . import storefronts
+CATALOG.update(storefronts.CATALOG)
 HOSTS={'tiktok':{'global':'open-api.tiktokglobalshop.com'},'amazon':{r:'sellingpartnerapi-'+r+'.amazon.com' for r in ('na','eu','fe')},
        'mercado':{'global':'api.mercadolibre.com'},'temu':{r:'openapi-b-'+r+'.temu.com' for r in ('global','us','eu')}}
 LIMIT_BYTES=2*1024*1024
@@ -110,6 +112,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def network(request):
+ if getattr(request,'_commerce_pin_public',False):return storefronts.secure_network(request)
  try:
   with urllib.request.build_opener(NoRedirect).open(request,timeout=15)as response:
    data=response.read(LIMIT_BYTES+1);headers=response.headers
@@ -127,6 +130,7 @@ class Transport:
   self.events=[];self.bytes=0;self.end=time.monotonic()+75
 
  def call(self,method,path,query=None,body=None):
+  if self.provider in storefronts.CATALOG:return storefronts.call(self,method,path,query,body)
   require(not self.cancelled(),'platform_cancelled')
   require(time.monotonic()<self.end and len(self.events)<24,'platform_read_budget_exceeded')
   query=dict(query or {});body=dict(body or {});c=self.config;p=self.provider
@@ -253,7 +257,8 @@ def temu(c,resource,window,pages,t):
 
 def fetch(config,resource,window,pages,transport):
  require(resource in CATALOG[config['platform']]['resources'],'platform_resource_unsupported')
- records,complete,expected=globals()[config['platform']](config,resource,window,pages,transport)
+ handler=getattr(storefronts,config['platform'])if config['platform']in storefronts.CATALOG else globals()[config['platform']]
+ records,complete,expected=handler(config,resource,window,pages,transport)
  ids=[r['row_id']for r in records];require(len(ids)==len(set(ids)),'platform_duplicate_records')
  return {'records':records,'complete':complete,'expected_entities':expected,'scope':'selected_store_resource_and_requested_window_only',
          'business_scope_reviewed':False,'stock_basis_reviewed':False,'financial_ledger':False,'buyer_fields_retained':False,'notice':CATALOG[config['platform']]['notice']}

@@ -87,6 +87,11 @@ test('out of view is distinct from a missing or expired sample',async()=>{
   assert.match(f.controller.panel(),/已有 32 条有效位置/);
   assert.doesNotMatch(f.controller.panel(),/样本已过期/);
 });
+test('a narrow viewport shows matched positions separately from the valid snapshot',async()=>{
+  const f=fixture();Object.assign(f.state.sources.flights,{matched:1,fresh_count:5000});
+  await f.controller.read();f.click('tab','flights');await new Promise(setImmediate);
+  assert.match(f.controller.panel(),/当前地图视野 1 条/);assert.match(f.controller.panel(),/快照内有效 5,000 条/);
+});
 test('unknown quote change has no direction color and FX retains four decimals',async()=>{
   const f=fixture();Object.assign(f.state.sources.markets.items[0],{change_percent:null,symbol:'CNY=X',price:7.1234});
   await f.controller.read();assert.match(f.controller.ribbon(),/7.1234/);assert.doesNotMatch(f.controller.ribbon(),/is-up|is-down/);

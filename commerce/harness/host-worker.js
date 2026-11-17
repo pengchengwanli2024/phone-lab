@@ -1,6 +1,33 @@
-import {mkdir,readFile} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,rename,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+
+const NATIVE_MAX_TOKENS=8192;
+async function writePrivateJSON(file,value){
+  const temporary=file+'.'+randomUUID()+'.tmp';
+  try{await writeFile(temporary,JSON.stringify(value),{mode:0o600,flag:'wx'});await rename(temporary,file);}
+  finally{await unlink(temporary).catch(()=>{});}
+}
+
+function parseDecision(text){
+  // A completed model may wrap its sole JSON value in a Markdown code fence.
+  // Normalize only that exact envelope; never extract JSON from surrounding prose.
+  const fenced=text.trim().match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i);
+  if(fenced)text=fenced[1];
+  try{return JSON.parse(text)}catch{
+    // Some completed native replies contain literal newlines/tabs inside JSON
+    // strings. Escape only those characters; schema validation stays server-side.
+    let quoted=false,escaped=false,normalized='';
+    for(const character of text){
+      if(quoted&&character.charCodeAt(0)<32){normalized+=JSON.stringify(character).slice(1,-1);continue}
+      normalized+=character;
+      if(escaped){escaped=false;continue}
+      if(quoted&&character==='\\'){escaped=true;continue}
+      if(character==='"')quoted=!quoted;
+    }
+    return JSON.parse(normalized);
+  }
+}
 
 export function settledResult(value,route,sessionId,requestId){
   if(value?.reason!=='idle'||value.state?.running||value.output?.truncated)throw Error('native_outcome_unconfirmed');
@@ -13,15 +40,21 @@ export function settledResult(value,route,sessionId,requestId){
   if(data.interrupted||message?.source?.kind!=='model')throw Error('native_outcome_unconfirmed');
   if(message.source.provider!==route.provider||message.source.model!==route.model)throw Error('native_route_changed');
   const finishes=(data.stream||[]).filter(record=>record.type==='chunk'&&record.chunk?.type==='finish');
-  if(finishes.at(-1)?.chunk.reason?.kind!=='stop')throw Error('native_outcome_unconfirmed');
+  const finishReason=finishes.at(-1)?.chunk.reason?.kind;
+  if(finishReason==='max-tokens')throw Error('native_output_limit');
+  if(finishReason!=='stop')throw Error('native_outcome_unconfirmed');
   const text=message.content.filter(block=>block.type==='text').map(block=>block.text).join('');
-  return {data:JSON.parse(text),receipt:{session_id:sessionId,provider:message.source.provider,
+  let decision;try{decision=parseDecision(text)}catch{throw Error('native_invalid_json')}
+  return {data:decision,receipt:{session_id:sessionId,provider:message.source.provider,
     model:message.source.model,request_id:requestId,finish_reason:'completed',tools_used:[]}};
 }
 
 /** Existing Harness process, scoped Agent only; never changes deployment defaults. */
 export function startHostWorker(ctx,{state,origin,onEvent=()=>{}}){
   const workerId='dsh-'+randomUUID();let stopped=false,timer,activeHandle,activeAbort;
+  const versionReady=writePrivateJSON(path.join(state,'native-worker-version.json'),{
+    schema:'commerce-native-worker-v1',version:'json-envelope-3',worker_id:workerId,
+    output_tokens:NATIVE_MAX_TOKENS,started_at:Date.now()}).catch(()=>{});
   async function broker(operation,argumentsValue){
     const token=(await readFile(path.join(state,'auth.token'),'utf8')).trim();
     const response=await fetch(origin+'/v1/host-worker',{method:'POST',
@@ -48,7 +81,9 @@ export function startHostWorker(ctx,{state,origin,onEvent=()=>{}}){
     let heartbeat,submitted=false;const abort=new AbortController();activeAbort=abort;
     try{
       activeHandle=await ctx.agents.create({sessionId,meta:{cwd},
-        agentOptions:{provider:route.provider,model:route.model,maxTokens:3500},signal:abort.signal,
+        // Reasoning consumes the same output budget. 3500 truncated a real
+        // final analysis before its JSON answer; keep a larger bounded budget.
+        agentOptions:{provider:route.provider,model:route.model,maxTokens:NATIVE_MAX_TOKENS},signal:abort.signal,
         setup:(agentCtx)=>{
           agentCtx.tools.restrict({allow:[]});
           agentCtx.tools.guard(()=>({reason:'commerce_native_tools_disabled'}));
@@ -71,6 +106,16 @@ export function startHostWorker(ctx,{state,origin,onEvent=()=>{}}){
       await broker('finish',{...identity,outcome:'completed',result:result.data,receipt:result.receipt});
       onEvent({type:'completed',attempt_id:lease.attempt_id});
     }catch(error){
+      const known=new Set(['native_output_limit','native_invalid_json','native_outcome_unconfirmed',
+        'native_route_changed','native_tools_unexpected','native_admission_unconfirmed',
+        'native_tool_menu_not_empty','native_tool_menu_changed','native_lease_lost','host_invalid_result']);
+      const diagnostic={schema:'commerce-native-outcome-v1',attempt_id:lease.attempt_id,
+        request_id:request.request_id,phase:lease.phase||null,provider:route.provider,model:route.model,
+        code:known.has(error?.message)?error.message:'native_outcome_unconfirmed',max_tokens:NATIVE_MAX_TOKENS,
+        submitted,recorded_at:Date.now()};
+      // This receipt explains uncertainty without storing prompts, replies or credentials.
+      // A diagnostic must never replace the broker's authoritative completion/schema checks.
+      await writePrivateJSON(path.join(cwd,'outcome.json'),diagnostic).catch(()=>{});
       onEvent({type:'unconfirmed',attempt_id:lease.attempt_id,submitted,error});
       await broker('finish',{...identity,outcome:submitted?'unknown':'failed'}).catch(()=>{});
     }finally{
@@ -80,7 +125,7 @@ export function startHostWorker(ctx,{state,origin,onEvent=()=>{}}){
   }
   async function poll(){
     if(stopped)return;
-    try{await register();const lease=await broker('claim',{host_id:'dsh',worker_id:workerId});
+    try{await versionReady;await register();const lease=await broker('claim',{host_id:'dsh',worker_id:workerId});
       if(lease&&!stopped)await execute(lease);
     }catch(error){onEvent({type:'unavailable',error});}
     finally{if(!stopped)timer=setTimeout(poll,2000);}

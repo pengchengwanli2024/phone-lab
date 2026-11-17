@@ -13,23 +13,45 @@ def selected_intel(context):
     return ident if context['module'] in ('intelligence','research') and entity.get('kind')=='intel' and isinstance(ident,str) and re.fullmatch(r'[a-f0-9]{24}',ident) else None
 
 
-def menu(context):
-    out=[{'tool':'commerce_runtime_status','arguments':{}},{'tool':'commerce_live_status','arguments':{}},{'tool':'commerce_channel_status','arguments':{}}]
+def menu(context,page=None):
+    from public_web import tool_menu as public_tools
+    out=public_tools()
+    out.append({'tool':'commerce_runtime_status','arguments':{},'purpose':'only for explicit questions about the local backend/task executor; not public news or vessel/flight data'})
+    scoped=context.get('store_scope') is not None
+    if context['module'] not in ('intelligence','research') and not scoped:
+        out.extend([{'tool':'commerce_live_status','arguments':{}},{'tool':'commerce_channel_status','arguments':{}}])
     out.append({'tool':'commerce_project_memory_search','arguments':{'query':'at most 100 characters; empty reads current scoped memory'}})
     module=context['module']
     if context.get('entity',{}).get('kind')=='case':
         out.append({'tool':'commerce_workspace_get','arguments':{'case_id':context['entity']['id']}})
         out.append({'tool':'commerce_workspace_quote_compare','arguments':{'case_id':context['entity']['id'],'quantity':'whole units explicitly supplied by the user, 1..1000000000; do not guess'}})
-    if module in ('orders','overview'):out.append({'tool':'commerce_orders_list','arguments':filters(context)})
+        from generative.reads import listing_target
+        target=listing_target(context)
+        if target:out.append({'tool':'commerce_listing_get','arguments':target})
+    if scoped:
+        from .store_scope import arguments
+        scoped_args=arguments(context,page) if page is not None else {'demo':context.get('demo',False),'store_scope':context['store_scope'],'expected_catalog_sha256':'frozen page source_refs.store_scope; required before execution'}
+        out.append({'tool':'commerce_store_workbench','arguments':scoped_args})
+    elif module in ('orders','overview'):out.append({'tool':'commerce_orders_list','arguments':filters(context)})
     if module in ('products','operations','overview'):out.append({'tool':'commerce_products_list','arguments':filters(context)})
     out.extend([{'tool':'commerce_skills_search','arguments':{'query':'at most 100 characters'}},{'tool':'commerce_skills_get','arguments':{'skill_id':'one ID returned by skill search in this run'}}])
+    out.append({'tool':'commerce_skills_readiness','arguments':{'skill_id':'one ID returned by skill search in this run; current prerequisites only, never execution'}})
     if module in ('intelligence','research'):out.extend([{'tool':'commerce_intel_search','arguments':{'query':'at most 100 characters','source':'all'}},{'tool':'commerce_intel_item_get','arguments':{'item_id':selected_intel(context) or 'one ID returned in this run'}}])
     if module=='intelligence':out.append({'tool':'commerce_intel_live_get','arguments':{'query':'optional callsign, MMSI or vessel name; empty reads current local snapshots'}})
     if context.get('calculator') and isinstance(context.get('input'),dict):out.append({'tool':'commerce_'+context['calculator'],'arguments':{'input':context['input']}})
     return out
 
 
-def check(context,name,args,seen):
+def check(context,name,args,seen,page=None):
+    if context.get('store_scope') is not None:
+        if name in ('commerce_orders_list','commerce_products_list','commerce_live_status','commerce_channel_status'):raise ValueError('agent_tool_outside_scope')
+        if name=='commerce_store_workbench':
+            from .store_scope import arguments
+            if canonical(args)!=canonical(arguments(context,page)):raise ValueError('agent_workspace_scope_changed')
+            return name,args
+    if name in ('commerce_web_search','commerce_web_read'):
+        from public_web import check_call
+        return check_call(name,args,seen)
     if name=='commerce_project_memory_search':
         from .memory_scope import query_value
         if set(args)-{'query'}:raise ValueError('agent_invalid_tool_arguments')
@@ -50,7 +72,11 @@ def check(context,name,args,seen):
     elif name=='commerce_skills_search':
         if set(args)-{'query'} or not isinstance(args.get('query',''),str) or len(args.get('query',''))>100:raise ValueError('agent_invalid_tool_arguments')
         args={'query':args.get('query',''),'limit':5}
-    elif name=='commerce_skills_get':
+    elif name=='commerce_listing_get':
+        from generative.reads import listing_target
+        target=listing_target(context)
+        if not target or args!=target:raise ValueError('agent_case_outside_scope')
+    elif name in ('commerce_skills_get','commerce_skills_readiness'):
         if set(args)!={'skill_id'} or not isinstance(args['skill_id'],str) or args['skill_id'] not in seen or not re.fullmatch('sealeap-[a-z0-9-]+',args['skill_id']):raise ValueError('agent_skill_outside_read_scope')
     elif name.startswith('commerce_intel_'):
         from agent_runtime.policy import check_call
@@ -96,6 +122,10 @@ def revalidate_workspace(service,context,previous):
 
 
 def projection(name,value):
+    if name=='commerce_store_workbench':
+        from .store_scope import projection as store_projection
+        return store_projection(value)
+    if name in ('commerce_listing_get','commerce_skills_readiness'):return copy.deepcopy(value)
     if name=='commerce_project_memory_search':return copy.deepcopy(value)
     if name=='commerce_workspace_quote_compare':
         # Only the selected case's bounded quotation facts, never other scopes.

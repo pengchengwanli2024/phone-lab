@@ -36,6 +36,24 @@ class ListingWorkspaceTests(unittest.TestCase):
         with self.app.core.db() as db:self.assertEqual(before,list(db.execute('SELECT * FROM form_drafts')))
         self.assertEqual(count,len(self.app.core.invoke('commerce_task_list',{})['tasks']))
 
+    def test_product_draft_identity_tracks_saved_and_stale_editor_revision(self):
+        workspace=self.app.product_workspace.get(self.cid)
+        initial=self.get()['product_draft']
+        self.assertEqual(initial['revision'],workspace['forms']['content']['revision'])
+        self.app.product_workspace.save(self.cid,'content',{'fields':{'title':'待核对的优化标题'}},
+            workspace['forms']['content']['revision'],workspace['source_sha256'])
+        current=self.get()
+        self.assertEqual(current['payload']['fields']['title'],'待核对的优化标题')
+        self.assertEqual(current['product_draft']['revision'],initial['revision']+1)
+        self.assertTrue(current['product_draft']['has_payload'])
+        self.assertFalse(current['product_draft']['stale'])
+        self.assertEqual(current['product_draft']['source_sha256'],current['source_sha256'])
+        self.app.organization.set_currency(self.cid,'USD')
+        changed=self.get()
+        self.assertTrue(changed['product_draft']['stale'])
+        self.assertNotEqual(changed['product_draft']['source_sha256'],changed['source_sha256'])
+        self.assertFalse(changed['external_execution_allowed'])
+
     def test_store_market_and_platform_drafts_never_overwrite_one_another(self):
         first=self.get();fields={**first['payload']['fields'],'title':'Synthetic Ozon version'}
         saved=self.save(first,fields=fields)

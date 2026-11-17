@@ -4,6 +4,18 @@
 .platform-heading,.platform-controls{display:flex;align-items:center;gap:var(--ui-space-3);flex-wrap:wrap;margin-bottom:var(--ui-space-3)}
 .platform-heading h2{flex:1;margin:0}
 .platform-controls .ui-field{flex:1;min-width:170px}
+.platform-root h2,.platform-root h3,.platform-root p{overflow-wrap:anywhere}
+.platform-heading h3{flex:1;min-width:0;margin:0}
+.platform-bind .platform-controls{align-items:flex-end}
+.platform-bind .platform-controls .ui-field{max-width:420px}
+.platform-accounts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:var(--ui-space-3)}
+.platform-account{min-width:0;padding:var(--ui-space-3);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-card);background:var(--ui-color-surface)}
+.platform-account-actions{display:flex;flex-wrap:wrap;gap:var(--ui-space-2)}
+.platform-account-detail{margin-top:var(--ui-space-4);padding-top:var(--ui-space-4);border-top:1px solid var(--ui-color-border)}
+.platform-account-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:var(--ui-space-3);margin:0}
+.platform-account-facts div{min-width:0}
+.platform-account-facts dt{color:var(--ui-color-muted);margin-bottom:var(--ui-space-1)}
+.platform-account-facts dd{margin:0;overflow-wrap:anywhere}
 .platform-root .data-table td{white-space:normal;overflow-wrap:anywhere}
 .platform-setup{max-width:900px;margin:var(--ui-space-6) auto;padding:var(--ui-space-4)}
 .platform-setup form{display:grid;gap:var(--ui-space-3)}
@@ -14,4 +26,4 @@
 .platform-setup form>label:not(.ui-field) input{flex:none;margin-top:5px}
 .platform-setup .ui-field input,.platform-setup .ui-field select{width:100%}
 .platform-setup pre{white-space:pre-wrap;overflow-wrap:anywhere}
-@media(max-width:600px){.platform-controls{align-items:stretch;flex-direction:column}.platform-controls .ui-field{min-width:0}}
+@media(max-width:600px){.platform-controls,.platform-bind .platform-controls{align-items:stretch;flex-direction:column}.platform-controls .ui-field{min-width:0}.platform-bind .platform-controls .ui-field{max-width:none}.platform-account-actions{flex-direction:column;align-items:stretch}.platform-heading>h2{flex-basis:100%}}

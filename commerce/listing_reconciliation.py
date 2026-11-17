@@ -9,7 +9,7 @@ from research import canonical,digest
 def definitions(schema,string):
     target={'case_id':string,'platform':string,'store_ref':{'type':'string','maxLength':100},'market':{'type':'string','maxLength':2}}
     return [
-        ('commerce_listing_directory','分页读取当前模式已保存的上架目标、缺项与本地核对状态；不访问平台',schema({'demo':{'type':'boolean'},'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':50}})),
+        ('commerce_listing_directory','分页读取当前模式已保存的上架目标、缺项与本地核对状态；不访问平台',schema({'demo':{'type':'boolean'},'store_scope':string,'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':50}})),
         ('commerce_listing_reconcile','按精确店铺、市场与SKU核对已有只读快照，区分差异与不可比较口径；不触发同步',schema(target,list(target))),
         ('commerce_listing_review','将准确版本的本地核对声明追加到原商品产物；不授予平台提交或经营批准',schema({**target,'expected_comparison_sha256':string,'expected_review_sha256':{'type':'string','maxLength':64},'decision':{'type':'string','enum':['reviewed','needs_changes']},'note':string,'confirmed':{'type':'boolean'},'idempotency_key':string},[*target,'expected_comparison_sha256','expected_review_sha256','decision','note','confirmed','idempotency_key'])),
     ]
@@ -141,12 +141,14 @@ class ListingReconciliation:
                 observation_sha256=observation['sha256'],approval_scope='local_listing_observation_only',platform_submission_verified=False)
             return self.org._store(case_id,kind,payload,idempotency_key,_expected_head=head['id']if head else None)
 
-    def directory(self,demo=False,offset=0,limit=25):
+    def directory(self,demo=False,offset=0,limit=25,store_scope='all'):
+        catalog=self.service.store_scopes.selection(store_scope,demo)
         if type(demo)is not bool or type(offset)is not int or offset<0 or type(limit)is not int or not 1<=limit<=50:raise ValueError('listing_directory_invalid_page')
         cases=[c for c in self.workspace.listing()['items']if c['synthetic']==demo];targets=[]
         for case in cases:
             source=self.workspace.sources(case['id'])[3]
             targets.extend(self.service.listings.saved_targets(case['id'],source))
+        targets=[target for target in targets if self.service.store_scopes.includes_target(target,store_scope,catalog)]
         targets.sort(key=lambda r:(r['case_id'],r['platform'],r['store_ref'],r['market']))
         items=[]
         for target in targets[offset:offset+limit]:

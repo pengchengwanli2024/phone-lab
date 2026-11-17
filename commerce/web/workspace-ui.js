@@ -32,7 +32,8 @@ window.CommerceWorkspaceContinuity=(options)=>{
   if(!attributes.length)return null;
   return element.tagName.toLowerCase()+attributes.map(a=>`[${a.name}="${CSS.escape(a.value)}"]`).join('');
  }
- function detailsState(root){const counts=new Map();return [...root.querySelectorAll('.main-scroll details')].map(d=>{const label=d.id||d.querySelector(':scope > summary')?.textContent.trim()||'',n=counts.get(label)||0;counts.set(label,n+1);return {key:label+'#'+n,open:d.open}})}
+ // A module-owned disclosure can depend on loaded data or a reply; do not replay an older DOM snapshot over it.
+ function detailsState(root){const counts=new Map();return [...root.querySelectorAll('.main-scroll details:not([data-ui-managed-state])')].map(d=>{const label=d.id||d.querySelector(':scope > summary')?.textContent.trim()||'',n=counts.get(label)||0;counts.set(label,n+1);return {key:label+'#'+n,open:d.open}})}
  function capture(){
   const root=document.querySelector('.app');if(!root?.dataset.workspaceTab)return;
   navTab=root.dataset.workspaceTab;
@@ -46,7 +47,7 @@ window.CommerceWorkspaceContinuity=(options)=>{
  function restore(tab,{focusTitle=false,ready=true}={}){
   const root=document.querySelector('.app'),saved=views.get(tab);if(!root)return;
   const nav=root.querySelector('.admin-sidebar-nav');if(nav)nav.scrollTop=navScroll;
-  if(saved){const states=new Map(saved.details.map(d=>[d.key,d.open])),counts=new Map();for(const d of root.querySelectorAll('.main-scroll details')){const label=d.id||d.querySelector(':scope > summary')?.textContent.trim()||'',n=counts.get(label)||0;counts.set(label,n+1);if(states.has(label+'#'+n))d.open=states.get(label+'#'+n)}}
+  if(saved){const states=new Map(saved.details.map(d=>[d.key,d.open])),counts=new Map();for(const d of root.querySelectorAll('.main-scroll details:not([data-ui-managed-state])')){const label=d.id||d.querySelector(':scope > summary')?.textContent.trim()||'',n=counts.get(label)||0;counts.set(label,n+1);if(states.has(label+'#'+n))d.open=states.get(label+'#'+n)}}
   if(!document.querySelector('.dialog')){
    const target=focusTitle?document.querySelector('#workspace-title'):saved?.selector?root.querySelector(saved.selector):null;
    if(target&&!target.disabled&&target.getClientRects().length){target.focus({preventScroll:true});if(!focusTitle&&typeof saved?.start==='number'&&target.setSelectionRange&&(target.tagName==='TEXTAREA'||['text','search','url','tel','password'].includes(target.type)))target.setSelectionRange(saved.start,saved.end)}
@@ -59,8 +60,9 @@ window.CommerceWorkspaceContinuity=(options)=>{
   const expanded=group=>(tab!==navTab&&group.modules.includes(tab))||(navExpanded.get(group.id)??group.modules.includes(tab));
   return `<aside class="admin-sidebar" aria-label="平台导航"><a class="admin-brand" href="/">${ui.icon('store')}<strong>AI 跨境运营平台</strong></a><nav class="admin-sidebar-nav" aria-label="业务模块">${groups.map(group=>group.id==='home'?link('overview'):`<details data-nav-group="${group.id}" ${expanded(group)?'open':''}><summary>${ui.icon(group.icon)}<span>${esc(group.label)}</span>${ui.icon('chevronDown')}</summary><div class="admin-nav-children">${group.modules.map(link).join('')}</div></details>`).join('')}</nav><div class="admin-sidebar-footer">${ui.button({label:'AI 助手',leadingIcon:'spark',action:'copilot-open',attrs:{id:'workspace-copilot-sidebar',class:'admin-nav-link'}})}${ui.button({label:'设置与连接',leadingIcon:'gear',attrs:{class:'admin-nav-link','data-tab':'connections'}})}</div></aside>`;
  }
- function topbar(items,tab,controls){return `<header class="workspace-topbar" aria-label="工作台顶部导航"><div class="workspace-primary">${ui.button({label:'查找模块',leadingIcon:'search',shortcut:'⌘ K',action:'module-finder',attrs:{class:'admin-search','aria-label':'查找业务模块'}})}<span class="admin-breadcrumb">${esc(ui.moduleDetails(tab).group)}</span></div><div class="workspace-global-controls">${controls}</div></header>`}
- function quietCopy(){for(const note of document.querySelectorAll('.main-scroll [data-ui-help],.copilot-panel [data-ui-help]')){const heading=note.closest('section,.card')?.querySelector('h2,h3');if(heading&&!heading.title)heading.title=note.textContent.trim();note.remove()}}
+ function topbar(items,tab,controls){return `<header class="workspace-topbar" aria-label="工作台顶部导航"><div class="workspace-primary">${ui.button({label:'查找模块',leadingIcon:'search',shortcut:'⌘ K',action:'module-finder',attrs:{class:'admin-search'}})}<span class="admin-breadcrumb">${esc(ui.moduleDetails(tab).group)}</span></div><div class="workspace-global-controls">${controls}</div></header>`}
+ // Keep each instruction in the document for keyboard, touch and assistive technology.
+ function quietCopy(){}
 
  document.addEventListener('click',event=>{const menu=document.querySelector('.workspace-toolbar-menu');if(menu?.open&&!event.target.closest('.workspace-toolbar-menu'))menu.open=false});
  document.addEventListener('keydown',event=>{const menu=document.querySelector('.workspace-toolbar-menu');if(event.key==='Escape'&&menu?.open&&event.target.closest('.workspace-toolbar-menu')){menu.open=false;menu.querySelector('summary').focus();event.stopImmediatePropagation()}});

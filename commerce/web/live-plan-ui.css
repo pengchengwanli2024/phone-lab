@@ -1,0 +1,15 @@
+/* Restock source identity and forms reuse shared controls and semantic tokens. */
+.live-alert-heading{display:flex;align-items:center;flex-wrap:wrap;gap:var(--ui-space-2);margin-block:var(--ui-space-3)}
+.live-alert-heading h2{flex:1;margin:0}
+.live-planning-workspace{min-width:0;container:live-plan/inline-size}
+.live-plan-input-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ui-space-4);margin-block:var(--ui-space-4)}
+.live-plan-input-grid>fieldset{min-width:0;padding:var(--ui-space-3);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control)}
+.live-plan-input-grid legend{padding-inline:var(--ui-space-1);font-size:var(--ui-font-size-meta);color:var(--ui-color-muted)}
+.live-plan-input-grid .analysis-fields{grid-template-columns:repeat(2,minmax(0,1fr));margin:0}
+.live-plan-input-grid .ui-field{min-width:0;margin:0}
+.live-plan-readiness,.live-plan-evidence{margin-block:var(--ui-space-3)}
+.live-plan-readiness>summary,.live-plan-evidence>summary{cursor:pointer;min-height:var(--ui-control-height);align-content:center}
+@container live-plan (max-width:780px){.live-plan-input-grid{grid-template-columns:minmax(0,1fr)}}
+@container live-plan (max-width:480px){.live-plan-input-grid .analysis-fields{grid-template-columns:minmax(0,1fr)}}
+
+.live-status pre{max-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}

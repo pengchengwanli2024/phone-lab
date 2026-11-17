@@ -1,0 +1,27 @@
+import { useEffect, useRef, useState } from 'react';
+import { api, errorText } from './api';
+import { Badge, Button, Dialog, Empty, ErrorNotice, Panel, Status } from './ui';
+import { TaskTimeline } from './task-timeline';
+import { MoreActions } from './action-menu';
+
+interface AssistantTask {module_label:string;thread_id:string;turn_id:string;run_id:string;title:string;question:string;status:string;context:{module:string;demo?:boolean;platform?:string;entity?:{kind:string;id:string}};created:number;updated:number;total_turns:number}
+interface ActivityPage {items:AssistantTask[];total:number;offset:number;next_offset:number|null}
+const time=(stamp:number)=>new Date(stamp*1000).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+
+export function AssistantTasks({active,onConversation}:{active:boolean;onConversation?:(id:string)=>void}) {
+  const [data,setData]=useState<ActivityPage|null>(null),[query,setQuery]=useState(''),[status,setStatus]=useState('all'),[error,setError]=useState(''),[busy,setBusy]=useState(false),[offset,setOffset]=useState(0);
+  const version=useRef(0);
+  const [selected,setSelected]=useState<AssistantTask|null>(null),[originalQuestion,setOriginalQuestion]=useState(''),[detailError,setDetailError]=useState('');
+  const detailVersion=useRef(0);
+  async function details(item:AssistantTask){const request=++detailVersion.current;setSelected(item);setOriginalQuestion('');setDetailError('');try{const thread=await api<{id:string;turns:{id:string;question:string}[]}>('commerce_copilot_get',{thread_id:item.thread_id});if(request!==detailVersion.current)return;const turn=thread.turns.find(turn=>turn.id===item.turn_id);if(thread.id!==item.thread_id||!turn)throw Error('原问题暂未读到，请从原对话核对。');setOriginalQuestion(turn.question)}catch(failure){if(request===detailVersion.current)setDetailError(failure instanceof Error?failure.message:errorText(failure))}}
+  async function load(){const request=++version.current;setBusy(true);try{const result=await api<ActivityPage>('commerce_copilot_activity',{query:query.trim(),status,offset,limit:10});if(request===version.current){setData(result);setError('')}}catch(failure){if(request===version.current)setError(errorText(failure))}finally{if(request===version.current)setBusy(false)}}
+  useEffect(()=>{if(active)void load();else{setSelected(null);detailVersion.current++}return()=>{version.current++}},[active,status,offset]);
+  useEffect(()=>()=>{detailVersion.current++},[]);
+  return <Panel title="助手任务与历史" action={<Button onClick={()=>void load()} disabled={busy}>刷新助手任务</Button>}>
+    <div className="r-list-filters"><label className="ui-field">查找历史对话<input type="search" value={query} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing){event.preventDefault();if(offset)setOffset(0);else void load()}}} placeholder="搜索标题、历史问题或回答"/></label><label className="ui-field">助手任务状态<select value={status} onChange={event=>{setStatus(event.target.value);setOffset(0)}}>{[['all','全部记录'],['active','后台进行中'],['attention','需要介入'],['completed','已返回结果']].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><Button disabled={busy} onClick={()=>{if(offset)setOffset(0);else void load()}}>查找对话</Button></div>
+    <ErrorNotice>{error}</ErrorNotice>
+    {busy&&!data?<Empty>正在读取原助手任务…</Empty>:data?.items.length?<div className="r-table-wrap"><table className="data-table"><thead><tr><th>对话与原任务</th><th>范围</th><th>状态</th><th>最近更新</th><th>继续</th></tr></thead><tbody>{data.items.map(item=><tr key={item.thread_id}><td><button type="button" className="r-task-title-button" title={item.title} aria-label={'查看对话详情：'+item.title} onClick={()=>void details(item)}><strong className="r-task-title">{item.title}</strong></button><p className="r-task-excerpt" title={item.question}>{item.question}</p><small className="r-task-id">{item.total_turns} 轮已保存 · #{item.run_id.slice(0,8)}</small></td><td>{item.module_label}<br/>{item.context.platform&&item.context.platform!=='all'?item.context.platform:''}{item.context.demo&&<Badge>示例数据</Badge>}</td><td><Status value={item.status}/></td><td><time dateTime={new Date(item.updated*1000).toISOString()}>{time(item.updated)}</time></td><td className="r-table-actions">{onConversation&&<Button onClick={()=>onConversation(item.thread_id)}>继续原对话</Button>}<MoreActions label="更多助手任务操作" actions={[{id:'details',label:'查看完整问题与时间线',onSelect:()=>void details(item)}]}/></td></tr>)}</tbody></table></div>:!error&&<Empty>当前条件下没有已保存的助手任务。</Empty>}
+    {data&&data.total>10&&<div className="r-form-actions"><Button disabled={busy||offset===0} onClick={()=>setOffset(Math.max(0,offset-10))}>上一页助手记录</Button><span>{offset+1}–{Math.min(offset+10,data.total)} / {data.total}</span><Button disabled={busy||data.next_offset===null} onClick={()=>setOffset(data.next_offset||0)}>下一页助手记录</Button></div>}
+    {selected&&<Dialog title="助手任务详情" close={()=>{detailVersion.current++;setSelected(null)}}><h3>{selected.title}</h3><Status value={selected.status}/><ErrorNotice>{detailError}</ErrorNotice>{originalQuestion?<p className="r-readable">{originalQuestion}</p>:!detailError&&<Empty>正在读取原问题全文…</Empty>}<TaskTimeline kind="run" id={selected.run_id}/>{onConversation&&<div className="r-form-actions"><Button onClick={()=>{detailVersion.current++;setSelected(null);onConversation(selected.thread_id)}}>继续原对话</Button></div>}</Dialog>}
+  </Panel>;
+}

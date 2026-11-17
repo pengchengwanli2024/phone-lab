@@ -17,7 +17,7 @@ async function component(entry, name) {
 test('the operational home retains sales and statistical panels while loading', async () => {
   const Overview = await component('src/overview.tsx', 'Overview');
   const html = renderToStaticMarkup(React.createElement(Overview, { demo: false, navigate() {}, onThread() {}, onResearch() {} }));
-  assert.match(html, /支付销售额/);
+  assert.match(html, /下单金额/);
   assert.match(html, /经营概览/);
   assert.match(html, /平台销售构成/);
 });
@@ -37,7 +37,7 @@ test('live status counts use snapshot rows and preserve stale and scope warnings
   assert.match(html, /同步范围待确认/);
   assert.match(html, /17:15:29/);
   assert.match(html, /待处理发货单<\/span><strong>0<\/strong>/);
-  assert.match(html, /支付销售额<\/span><strong>待核对<\/strong>/);
+  assert.match(html, /下单金额（平台口径）<\/span><strong>待核对<\/strong>/);
   assert.match(html, /尚无经过核对的销售额与趋势数据/);
 });
 

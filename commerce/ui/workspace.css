@@ -25,6 +25,14 @@
 [data-ui-appearance=shopify] .form-actions{flex-wrap:wrap;gap:8px}
 [data-ui-appearance=shopify] .form-actions>.ui-button{flex:0 0 auto;width:auto;max-width:100%}
 
+/* Short choices and actions should not expand with a wide business pane.
+   Listboxes, multiline editors and text inputs retain their own sizing. */
+:is(.r-main,.dialog,body[data-react-host=true]) .ui-field:has(>select:not([size]):not([multiple])){width:100%;max-inline-size:32rem}
+:is(.team-form,.team-form fieldset,.r-listing-fields,.analysis-fields,.skills-filters)>.ui-button{justify-self:start;width:auto;max-width:100%}
+.r-main .r-form-actions>.ui-button{flex:0 0 auto;width:auto;max-width:100%}
+body[data-react-host=true] .filters>select{flex:0 1 auto;max-width:min(100%,18rem)}
+body[data-react-host=true] .filters>input{max-width:40rem}
+
 /* One frame, with reading space allocated to the current task. */
 .r-app{--r-page-gutter:24px}
 @media(min-width:1361px){.r-app:not(.r-hosted){grid-template-columns:208px minmax(0,1fr)}}
@@ -60,13 +68,16 @@
 .r-main .r-object-row p{margin:4px 0 0}
 .r-main .r-quick-actions{padding-top:16px;margin-top:8px;border-top:1px solid var(--ui-color-border);flex-wrap:wrap}
 .r-main .r-list-filters{display:flex;gap:12px;align-items:end;flex-wrap:wrap;margin-bottom:20px}
-.r-list-filters>.ui-field{flex:1 1 160px}
-.r-list-filters>.ui-field:first-child{flex-grow:2}
+.r-list-filters>.ui-field{flex:0 1 240px;max-width:32rem}
+.r-list-filters>.ui-field:first-child{flex:1 1 280px;max-width:40rem}
 .r-main .r-cost-group{margin-bottom:20px}
 .r-main .r-cost-group legend{font-size:var(--ui-font-size-body);margin-bottom:12px}
 .r-main .r-cost-fields{gap:16px}
 .r-main .r-form-actions{flex-wrap:wrap;gap:8px;padding-top:16px}
 .r-store-workbench .r-store-columns{gap:20px}
+.r-main .r-store-workbench>.r-page-heading{margin-bottom:0}
+.r-main .r-store-workbench>.r-list-filters{margin-bottom:0}
+.r-main .r-page.r-secondary-entry{padding-top:0}
 .r-store-workbench .r-store-columns .r-panel{margin-bottom:16px}
 .r-store-workbench .r-empty{min-height:0;padding:16px 8px}
 .r-store-workbench .r-store-columns>div>.r-panel:has(>.r-empty){display:grid;grid-template-columns:minmax(0,1fr)}
@@ -79,13 +90,16 @@
 @container workpage (min-width:960px){.r-main .r-overview-grid{grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr)}}
 @container workpage (min-width:820px){.r-cost-page .r-calculation-grid{grid-template-columns:minmax(0,1.55fr) minmax(248px,1fr);align-items:start}}
 @container workpage (max-width:819px){.r-cost-page .r-calculation-grid{grid-template-columns:minmax(0,1fr)}}
-@container workpage (max-width:640px){.r-main .r-page{padding:20px 16px}.r-page-heading>.r-actions{justify-content:flex-start}.r-main .r-panel{padding:16px}.r-main .r-kpis>div{padding:14px 12px}}
+@container workpage (max-width:767px){.r-main .r-page{padding:20px 16px}.r-main .r-page-heading{margin-bottom:20px}.r-page-heading>.r-actions{justify-content:flex-start}.r-main .r-panel{padding:16px}.r-main .r-kpis>div{padding:14px 12px}}
+@container workpage (max-width:1023px){.r-listing-grid{grid-template-columns:minmax(0,1fr)}.r-listing-target{grid-template-columns:repeat(2,minmax(0,1fr))}.r-listing-target>button{justify-self:start}}
+@container workpage (max-width:600px){.r-listing-target,.r-listing-fields,.r-listing-attribute{grid-template-columns:minmax(0,1fr)}.r-listing-page .r-actions{flex-wrap:wrap}.r-operation-list li{align-items:flex-start;flex-wrap:wrap}.r-operation-list li>div{flex:1 1 200px}.r-notification-state{grid-template-columns:minmax(0,1fr)}}
 @container (min-width:720px){.r-store-columns{grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr)}}
 
 /* Embedded stable business pages share the same page rhythm as React. */
 [data-ui-appearance=shopify] body[data-react-host=true]{background:var(--ui-color-canvas)}
 [data-ui-appearance=shopify] body[data-react-host=true] .main-scroll{padding:24px;background:var(--ui-color-canvas);container-type:inline-size;container-name:businesspage;scroll-padding-block:16px}
 body[data-react-host=true] .workspace-heading{margin-bottom:0}
+body[data-react-host=true] .operations-shell>.pills:empty{display:none}
 body[data-react-host=true] .top-line{margin-bottom:24px}
 [data-ui-appearance=shopify] body[data-react-host=true] .card{padding:20px;margin-bottom:20px;border:1px solid var(--ui-color-border);background:var(--ui-color-surface)}
 body[data-react-host=true] .card h2{font-size:var(--ui-font-size-section);font-weight:600;line-height:1.5}
@@ -176,12 +190,18 @@ body[data-react-host=true] :is(.creative-workspace,.skills-workspace,.catalog-br
  .intel-root.intel-dashboard>.intel-dashboard-controls{grid-column:1;grid-row:2;align-self:center;border-block:0}
  .intel-root.intel-dashboard>.intel-results-head{margin-block:0}
 }
+@media(min-width:768px) and (max-width:999px){
+ .r-app .r-business-nav>button{min-width:44px;padding-inline:10px}
+ .r-app .r-business-nav>button:not([aria-current=page])>span:not(.r-icon){display:none}
+}
 @media(max-width:767px){
  .r-app{--r-page-gutter:16px}
+ .r-app .r-business-nav>button{flex:1 1 0;min-width:0;padding-inline:2px!important}
  [data-ui-appearance=shopify] .form-actions>.ui-button{min-height:44px}
  [data-ui-appearance=shopify] :is(.setup-shell,.model-setup,.platform-setup,.capability-setup){padding:20px 16px}
  [data-ui-appearance=shopify] :is(.setup-shell,.model-setup,.platform-setup,.capability-setup) :is(.card,.ui-card){padding:16px}
  .r-app .r-work-area.is-compact{grid-template-rows:minmax(0,1fr)}
+ .r-app>.r-work-area.is-compact.with-assistant{padding:0 0 var(--r-mobile-nav-space)}
  .r-work-area.is-compact>.r-mode-switcher{display:none}
  .r-app .r-work-area.is-compact>.r-main,.r-app .r-work-area.is-compact>.r-shared-assistant{grid-row:1;margin:0;width:100%;height:100%;border:0;border-radius:0}
  .r-app .r-topbar>.r-assistant-toggle{min-width:44px;min-height:44px;padding:10px}
@@ -211,3 +231,39 @@ body[data-react-host=true] :is(.creative-workspace,.skills-workspace,.catalog-br
  .intel-root .intel-time-controls button{min-height:44px}
  .intel-root .intel-dashboard-controls{gap:4px}
 }
+
+/* Keep short labels readable even in the narrow secondary business column. */
+.r-notification-state{grid-template-columns:minmax(0,1fr)!important;gap:4px!important}
+.r-notification-state dt{white-space:nowrap;font-weight:500;margin-top:8px}
+.r-notification-state dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.r-table-wrap td:has(>.badge),.r-table-wrap td:has(>.ui-badge){min-width:88px}
+[data-ui-appearance] :is(.ui-table,.table-wrap,.r-table-wrap):not([data-ui-table-mode=compact]){overflow:auto;max-width:100%}
+[data-ui-appearance] :is(.ui-table,.table-wrap,.r-table-wrap):not([data-ui-table-mode=compact])>table{width:100%;min-width:600px}
+.r-task-sources{margin-bottom:16px}
+.r-task-ledger{max-height:65dvh;overflow:auto}
+.r-task-ledger thead{position:sticky;top:0;z-index:1}
+.r-task-ledger .r-task-title{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.team-profile-description,.team-channel .r-readable{white-space:pre-wrap;overflow-wrap:anywhere}
+.team-directory-search{max-width:32rem;margin-bottom:16px}
+
+/* The embedded business document owns vertical scrolling while it is visible. */
+.r-main:has(>.r-legacy-container:not([hidden])){display:flex;flex-direction:column;overflow:hidden}
+.r-main:has(>.r-legacy-container:not([hidden]))>.r-section-tabs{flex:none}
+.r-main>.r-legacy-container:not([hidden]){height:auto;min-height:0;flex:1}
+.r-legacy-container>.r-legacy-shell{height:100%;min-height:0}
+
+/* Keep record actions in view while wider fields remain horizontally readable. */
+[data-ui-appearance] :is(.ui-table,.table-wrap,.r-table-wrap):not([data-ui-table-mode=compact]):has(>table>tbody>tr>td:last-child button)>table>tbody>tr>td:last-child,
+[data-ui-appearance] :is(.ui-table,.table-wrap,.r-table-wrap):not([data-ui-table-mode=compact]):has(>table>tbody>tr>td:last-child button)>table>thead>tr>th:last-child{position:sticky;right:0;background:var(--ui-color-surface);border-left:1px solid var(--ui-color-border);z-index:1}
+[data-ui-appearance] :is(.ui-table,.table-wrap,.r-table-wrap):not([data-ui-table-mode=compact]):has(>table>tbody>tr>td:last-child button)>table>thead>tr>th:last-child{z-index:2}
+.r-execution-origin{min-width:156px}
+.r-execution-time{white-space:nowrap;overflow-wrap:normal}
+.r-notice-reference{display:block;color:var(--ui-color-muted);font-size:11px;margin-top:4px}
+
+html:has(>body[data-react-host=true]),body[data-react-host=true]{height:100%;overflow:hidden}
+.inventory-comparison .table-wrap:not([data-ui-table-mode=compact])>table{table-layout:fixed}
+.inventory-comparison .table-wrap:not([data-ui-table-mode=compact]) th{white-space:normal}
+.inventory-comparison .table-wrap:not([data-ui-table-mode=compact]) :is(th,td){min-width:0;overflow-wrap:anywhere}
+.inventory-comparison .table-wrap:not([data-ui-table-mode=compact]) :is(th,td):first-child{width:24%}
+.inventory-comparison .table-wrap:not([data-ui-table-mode=compact]) :is(th,td):nth-child(4){width:9%}
+.inventory-comparison .table-wrap:not([data-ui-table-mode=compact]) :is(th,td):last-child{width:112px}

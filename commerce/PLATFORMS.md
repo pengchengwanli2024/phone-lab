@@ -111,3 +111,12 @@ Ozon 俄罗斯的`commerce_listing_release_bind/refresh`接收用户另行提交
 记录校验准确商品/店铺/市场、核查包 SHA 与历史头 SHA，支持幂等、退回和撤销。商品来源、成本/内容检查点、保存方案、交付/回执、当前凭据或平台结构证据变化后旧签收失效；回执过期及上游失败也阻塞继续采用。S6 及店铺方案分别验证范围，不跨店铺沿用。新本地申请冻结核查人、逐项依据与记录哈希，旧申请保留原版本；HTML 可读包明确标为非独立认证。
 
 `commerce_live_readiness(scope='desktop')`只统计桌面经营六项检查，四项通知检查保留在 `deferred`；省略 scope 仍返回原十项。接入向导的订单/库存确认绑定当前新鲜快照（新服务提供 `scope_review_version`），统计窗口改变后订单确认及自动同步/通知失效，先重新只读同步再核对；不自动启用任何真实连接或通知。
+
+
+## Shopify / WooCommerce 单商品草稿接续
+
+私有接入目录增加 Shopify Admin GraphQL 2026-10（商品变体）及 WooCommerce REST wc/v3（商品、变体、订单）。未知库存保持未知；分页不完整不替换旧快照。请求只发往已校验的公开 HTTPS 店铺，固定操作、验证 TLS、禁止重定向，不导入买家字段。
+
+`commerce_storefront_draft_prepare/list/get/submit/probe` 复用商品保存版本与原 `org_artifacts`。仅创建新商品 DRAFT，发送 SKU、标题、描述和原币价格；不改已有 SKU，不写库存/图片/类目/属性/税率/履约，也不执行上线发布。先冻结准确字段，独立核对私有连接的 `draft_create_reviewed`，再由用户逐次确认；发送前核对实际店铺币种及 SKU 不存在，收到准确产品 ID 后回读。描述被平台规范化时保留待审阅状态；断线或进程中断为 unknown，不重发。创建草稿与完整平台上架验收分别判断。
+
+Shopify 查询与 mutation 已通过官方 2026-10 Schema 校验；技术测试使用隔离合成上游。没有实际店铺授权与逐次确认时，不声称远端商品已创建。协议依据：[Shopify productSet](https://shopify.dev/docs/api/admin-graphql/2026-10/mutations/productSet)、[WooCommerce REST 产品 API](https://woocommerce.github.io/woocommerce-rest-api-docs/v3.html#products)。

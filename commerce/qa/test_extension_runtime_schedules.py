@@ -48,7 +48,7 @@ class Schedules(RuntimeCase):
             self.app.tick()
             actual=[r for r in self.call('run_list')['runs'] if not r['test']]
             for value in actual:
-                if value['status'] in ('queued','running'):self.drain(value)
+                if value['status']=='queued':self.drain(value)
         self.assertEqual(len(actual),3)
 
 if __name__=='__main__':unittest.main()

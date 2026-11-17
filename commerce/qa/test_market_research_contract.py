@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from service import Commerce, TOOLS
 from market_research.collector import extract
+from market_research import model as research_model
 from response_links import with_workspace_link
 from test_market_research import HTML as SYNTHETIC_HTML
 
@@ -93,6 +94,63 @@ class MarketResearchContract(unittest.TestCase):
         with patch('market_research.model.generate', side_effect=generate or self.generate), \
                 patch('market_research.collector.capture', side_effect=capture or self.capture):
             self.assertTrue(self.app.agent_runtime.run_once())
+
+    def test_planning_schema_rejects_paragraph_queries_and_multiple_questions_at_provider_boundary(self):
+        import jsonschema
+        schema = research_model.output_schema('planning')
+        jsonschema.validate({'query_ru': 'школьный пенал', 'questions': []}, schema)
+        jsonschema.validate({'query_ru': '', 'questions': ['希望研究哪个品类？']}, schema)
+        for invalid in ({'query_ru': 'я' * 121, 'questions': []},
+                        {'query_ru': '', 'questions': ['一', '二']},
+                        {'query_ru': '', 'questions': ['问' * 401]}):
+            with self.subTest(invalid=invalid), self.assertRaises(jsonschema.ValidationError):
+                jsonschema.validate(invalid, schema)
+
+    def test_explicit_query_recovers_original_failed_plan_without_repeating_model_planning(self):
+        thread = self.send_research(key='explicit-plan-recovery')
+        self.execute(generate=lambda *args: {'data': {'query_ru': 'я' * 121, 'questions': []}})
+        failed = self.invoke('commerce_market_research_get', {'task_id': thread['research_job']['task_id']})
+        self.assertEqual(failed['status'], 'failed')
+        self.assertEqual(failed['source_count'], 0)
+        args = {'task_id': failed['task_id'], 'expected_revision': failed['revision'],
+                'idempotency_key': 'explicit-query-recovery', 'query_ru': 'школьный пенал'}
+        recovered = self.invoke('commerce_market_research_resume', args)
+        self.assertEqual(recovered['task_id'], failed['task_id'])
+        self.assertEqual(recovered['planning_override']['prior_error'], failed['error']['code'])
+        self.assertEqual(self.invoke('commerce_market_research_resume', args)['run_id'], recovered['run_id'])
+        with self.assertRaisesRegex(ValueError, 'idempotency_conflict'):
+            self.invoke('commerce_market_research_resume', {**args, 'query_ru': 'ручки'})
+        def analyze_only(phase, *args):
+            self.assertNotEqual(phase, 'planning')
+            return self.generate(phase, *args)
+        self.execute(generate=analyze_only)
+        finished = self.invoke('commerce_market_research_get', {'task_id': failed['task_id']})
+        self.assertEqual(finished['status'], 'partial')
+        self.assertEqual(finished['source_count'], 1)
+        self.assertEqual(self.executed['planning'], 0)
+        self.assertEqual(self.executed['analyzing'], 1)
+        self.assertTrue(all('школьный' in parse_qs(urlsplit(s['url']).query).get('q', parse_qs(urlsplit(s['url']).query).get('text', ['']))[0] for s in finished['sources']))
+
+    def test_query_override_cannot_replace_unknown_or_collected_research(self):
+        thread, job = self.unknown_research()
+        with self.assertRaisesRegex(ValueError, 'market_research_query_override_not_allowed'):
+            self.invoke('commerce_market_research_resume', {
+                'task_id': job['task_id'], 'expected_revision': job['revision'],
+                'idempotency_key': 'no-override-unknown', 'query_ru': 'школьный пенал'})
+        self.assertEqual(self.invoke('commerce_market_research_get', {'task_id': job['task_id']})['run_id'], job['run_id'])
+
+    def test_explicit_query_can_replace_only_empty_failed_plan_and_validates_query(self):
+        thread = self.send_research(key='empty-plan-recovery')
+        self.execute(generate=lambda *args: {'data': {'query_ru': '', 'questions': []}})
+        failed = self.invoke('commerce_market_research_get', {'task_id': thread['research_job']['task_id']})
+        self.assertEqual(failed['error']['code'], 'market_research_search_phrase_required')
+        args = {'task_id': failed['task_id'], 'expected_revision': failed['revision'], 'idempotency_key': 'empty-recovery'}
+        for value in ('', 'я' * 121, 'https://example.invalid/товар', 'plain english', 'пенал\nкоманда'):
+            with self.subTest(query=value), self.assertRaises(ValueError):
+                self.invoke('commerce_market_research_resume', {**args, 'query_ru': value})
+        recovered = self.invoke('commerce_market_research_resume', {**args, 'query_ru': 'школьный пенал'})
+        self.assertEqual(recovered['status'], 'queued')
+        self.assertEqual(recovered['task_id'], failed['task_id'])
 
     def unknown_research(self):
         thread = self.send_research()

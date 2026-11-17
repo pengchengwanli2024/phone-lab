@@ -12,6 +12,7 @@ import fcntl
 import signal
 from runtime import ROOT,STATE,PORT,token
 from response_links import with_workspace_link
+from http_delivery import encode_html
 from service import Commerce
 from phone_bridge import PhoneBridge
 from phone_fleet import PhoneFleet
@@ -46,6 +47,9 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args):pass
     def answer(self,code,body,typ='application/json; charset=utf-8',headers=None):
         content=body.encode()if isinstance(body,str)else json.dumps(body,ensure_ascii=False).encode()
+        if code==200 and typ.startswith('text/html'):
+            content,delivery_headers=encode_html(content,self.headers.get('Accept-Encoding'))
+            headers={**delivery_headers,**(headers or{})}
         if code>=400:self.close_connection=True
         self.send_response(code)
         for k,v in {'Content-Type':typ,'Content-Length':str(len(content)),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer',**({'Connection':'close'}if self.close_connection else{}),**(headers or{})}.items():self.send_header(k,v)
@@ -65,10 +69,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.trusted():return self.answer(403,{'error':'untrusted_origin'})
         parsed=urlparse(self.path)
-        if parsed.path in ('/setup','/open','/platform-setup','/model-setup','/capability-setup') and 'ticket' in parse_qs(parsed.query):
+        if parsed.path in ('/setup','/open','/platform-setup','/model-setup','/capability-setup','/phones') and 'ticket' in parse_qs(parsed.query):
             ticket=parse_qs(parsed.query).get('ticket',[''])[0]
             if not self.service.live.consume_ticket(ticket):return self.answer(401,{'error':'setup_ticket_expired'})
-            return self.answer(303,'',headers={'Location':parsed.path if parsed.path in ('/setup','/platform-setup','/model-setup','/capability-setup') else '/','Set-Cookie':'commerce_session='+self.secret+'; HttpOnly; SameSite=Strict; Path=/'})
+            destination=parsed.path if parsed.path in ('/setup','/platform-setup','/model-setup','/capability-setup','/phones') else '/'
+            provider=parse_qs(parsed.query).get('platform',[''])[0]
+            if parsed.path=='/platform-setup' and provider in {p['id']for p in self.service.platforms.catalog()['providers']}:destination+='?platform='+provider
+            return self.answer(303,'',headers={'Location':destination,'Set-Cookie':'commerce_session='+self.secret+'; HttpOnly; SameSite=Strict; Path=/'})
         if parsed.path=='/login':
             value=parse_qs(parsed.query).get('token',[''])[0]
             if not hmac.compare_digest(value,self.secret):return self.answer(401,{'error':'authentication_required'})
@@ -76,14 +83,14 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authenticated():return self.answer(401,{'error':'authentication_required'})
         if parsed.path=='/.well-known/agent-card.json':return self.answer(200,agent_card(f'http://127.0.0.1:{PORT}'))
         if parsed.path=='/v1/health':return self.answer(200,{'service':'commerce-backend','version':'0.1.0','status':'ready'})
-        if parsed.path in ('/','/workspace','/phones'):return self.answer(200,react_workspace_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; media-src data: blob:; worker-src blob:; connect-src 'self'; frame-src 'self' about:; frame-ancestors 'self'"})
-        if parsed.path=='/legacy':return self.answer(200,page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; media-src data: blob:; worker-src blob:; connect-src 'self'; frame-ancestors 'self'"})
-        if parsed.path=='/product-workspace':return self.answer(200,product_workspace_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; media-src data: blob:; connect-src 'self'; frame-ancestors 'self'"})
+        if parsed.path in ('/','/workspace','/phones'):return self.answer(200,react_workspace_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src data: blob:; worker-src blob:; connect-src 'self'; frame-src 'self' about:; frame-ancestors 'self'"})
+        if parsed.path=='/legacy':return self.answer(200,page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src data: blob:; worker-src blob:; connect-src 'self'; frame-ancestors 'self'"})
+        if parsed.path=='/product-workspace':return self.answer(200,product_workspace_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src data: blob:; connect-src 'self'; frame-ancestors 'self'"})
         if parsed.path=='/setup':return self.answer(200,setup_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"})
         if parsed.path=='/platform-setup':return self.answer(200,platform_setup_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"})
         if parsed.path=='/model-setup':return self.answer(200,model_setup_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"})
         if parsed.path=='/capability-setup':return self.answer(200,capability_setup_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"})
-        if parsed.path=='/v1/connections/status':return self.answer(200,self.service.live.status(samples=True))
+        if parsed.path=='/v1/connections/status':return self.answer(200,{**self.service.live.status(samples=True),'ozon_accounts':self.service.ozon_accounts.listing()})
         if parsed.path=='/phone/status':return self.answer(200,self.phone.status())
         if parsed.path=='/phone/fleet/status':return self.answer(200,self.fleet.status())
         if parsed.path=='/phone/fleet/frame':return self.fleet_frame(parsed)
@@ -238,19 +245,26 @@ class Handler(BaseHTTPRequestHandler):
         route=urlparse(self.path).path
         if route=='/v1/host-worker' and not hmac.compare_digest(self.headers.get('Authorization',''),'Bearer '+self.secret):
             return self.answer(401,{'error':'native_worker_bearer_required'})
-        allowed={'/a2a','/v1/invoke','/v1/connections/save','/v1/connections/sync','/v1/connections/test-feishu','/v1/connections/ticket','/v1/platforms/configure','/v1/models/configure','/v1/models/test','/v1/models/enabled','/phone/control','/phone/input','/phone/settings','/phone/fleet/control','/phone/fleet/input'}
+        allowed={'/a2a','/v1/invoke','/v1/connections/save','/v1/connections/sync','/v1/connections/test-feishu','/v1/connections/ticket','/v1/platforms/configure','/v1/models/configure','/v1/models/test','/v1/models/enabled','/v1/models/accounts','/v1/models/login','/phone/control','/phone/input','/phone/settings','/phone/fleet/control','/phone/fleet/input'}
         allowed.update(('/v1/host-worker','/v1/media/providers/configure','/v1/media/plugins/configure','/v1/extensions/credentials'))
+        allowed.add('/v1/connections/activate')
         if route not in allowed:return self.answer(404,{'error':'not_found'})
         if self.headers.get('Content-Type','').split(';')[0]!='application/json':return self.answer(415,{'error':'json_required'})
         try:
             size=int(self.headers.get('Content-Length','0'))
-            if not 0<size<=(262144 if route=='/v1/media/providers/configure' else 131072):return self.answer(413,{'error':'request_too_large'})
+            # Shipping CSV tools validate a 500 KB UTF-8 document themselves.
+            # Allow JSON escaping overhead only for their authenticated intake.
+            limit=1572864 if route=='/v1/invoke' else 262144 if route=='/v1/media/providers/configure' else 131072
+            if not 0<size<=limit:return self.answer(413,{'error':'request_too_large'})
             data=json.loads(self.rfile.read(size))
             if not isinstance(data,dict):return self.answer(400,{'error':'invalid_request'})
+            if route=='/v1/invoke' and size>131072 and data.get('tool') not in ('commerce_shipping_rates_preview','commerce_shipping_rates_import','commerce_shipping_input_preview','commerce_shipping_plan_create','commerce_shipping_compare'):
+                return self.answer(413,{'error':'request_too_large'})
             if route=='/a2a':return self.answer(200,a2a_dispatch(self.service,data))
             if route=='/v1/invoke':result=with_workspace_link(data['tool'],self.service.invoke(data['tool'],data.get('arguments',{}),data.get('client','local')),PORT)
             elif route=='/v1/host-worker':result=self.service.host_execution.broker(data.get('operation'),data.get('arguments'))
-            elif route=='/v1/connections/save':result=self.service.live.configure(data)
+            elif route=='/v1/connections/save':result=self.service.ozon_accounts.configure(data)
+            elif route=='/v1/connections/activate':result=self.service.ozon_accounts.activate(**data)
             elif route=='/v1/connections/sync':result=self.service.live.start_sync()
             elif route=='/v1/connections/test-feishu':result=self.service.live.test_feishu()
             elif route=='/v1/platforms/configure':result=self.service.platforms.configure(data)
@@ -258,6 +272,12 @@ class Handler(BaseHTTPRequestHandler):
             elif route=='/v1/media/providers/configure':result=self.service.media_providers.configure(data)
             elif route=='/v1/media/plugins/configure':result=self.service.media_plugins.configure(data)
             elif route=='/v1/extensions/credentials':result=self.service.extensions.configure_credentials(data)
+            elif route=='/v1/models/accounts':
+                from model_accounts import status
+                result=status(self.service.models)
+            elif route=='/v1/models/login':
+                from model_accounts import login
+                result=login(self.service.models,**data)
             elif route=='/v1/models/test':result=self.service.models.test(**data)
             elif route=='/v1/models/enabled':result=self.service.models.set_enabled(**data)
             elif route=='/phone/control':result=self.phone.control(data)
@@ -299,6 +319,7 @@ if __name__=='__main__':
     signal.signal(signal.SIGTERM,shutdown_signal)
     try:server.serve_forever()
     finally:
+        Handler.service.ozon_search_terms.close()
         Handler.service.article_batches.stop()
         Handler.service.listing_schema.stop()
         Handler.service.catalog_sync.stop()

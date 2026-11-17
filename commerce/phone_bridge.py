@@ -365,7 +365,7 @@ class PhoneBridge:
 
     def snapshot(self):
         with self._lock:
-            if self._frame and time.time() - self._frame_at < 2.5:
+            if self._frame and 0 <= time.time() - self._frame_at < 2.5:
                 return self._mime, self._frame
         adb = self._adb()
         if not self._serial or not adb:

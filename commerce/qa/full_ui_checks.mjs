@@ -35,9 +35,14 @@ export async function fullUiChecks({page,origin,caseId,output,checks}) {
     if(await frame.count())await page.frameLocator('iframe[title="专业业务模块"]').locator('.app[data-view-ready="true"]').waitFor();
     if(route==='workspace')await page.frameLocator('iframe[title="完整商品内容编辑"]').locator('#pw-main[aria-busy="false"]').waitFor();
     if(route==='phones')await page.getByText('未发现手机',{exact:true}).waitFor();
-    if(route==='agent')await page.frameLocator('iframe[title="专业业务模块"]').locator('#agent-submit:not(:disabled)').waitFor();
+    if(route==='agent'){
+      const agent=page.frameLocator('iframe[title="专业业务模块"]');await agent.locator('#agent-submit:not(:disabled)').waitFor({state:'attached'});
+      if(!await agent.locator('#agent-submit').isVisible())await agent.locator('[data-agent-composer]>summary').click();
+      await agent.locator('#agent-submit:not(:disabled)').waitFor();
+    }
     if(width===390&&['pilots','tasks'].includes(route)) {
-      const search=await page.getByRole('searchbox',{name:route==='tasks'?'查找任务':'查找候选',exact:true}).boundingBox();
+      const control=page.getByRole('searchbox',{name:route==='tasks'?'查找任务':'搜索商品候选',exact:true});await control.waitFor();
+      const search=await control.boundingBox();
       assert.ok(search.width>=200,route+' search retains a usable narrow-screen width');
       if(route==='tasks')assert.ok((await page.locator('.r-table-wrap:visible td:nth-child(2)').first().boundingBox()).width>=90,'task status remains readable inside its scroll region');
     }
@@ -56,13 +61,16 @@ export async function fullUiChecks({page,origin,caseId,output,checks}) {
   // Wide result tables remain reachable without a pointer on a compact page.
   await page.goto(origin+'/workspace?host=harness&tab=orders');
   const data=page.frameLocator('iframe[title="专业业务模块"]');
-  await data.locator('.ui-table[data-ui-scrollable="true"]').waitFor();
-  const region=data.locator('.ui-table[data-ui-scrollable="true"]').first();
-  assert.equal(await region.getAttribute('tabindex'),'0');
-  await region.focus();await region.press('ArrowRight');
-  const moved=await region.evaluate(el=>new Promise(resolve=>{let frames=0;function check(){if(el.scrollLeft>0||frames++>=60)return resolve(el.scrollLeft>0);requestAnimationFrame(check)}check()}));
-  assert.ok(moved,'keyboard scroll reaches remaining table fields');
-  checks.push('26 business routes render in desktop light and narrow dark without document overflow; wide tables support keyboard reading');
+  const region=data.locator('.ui-table').first();await region.waitFor();
+  const compact=await region.getAttribute('data-ui-table-mode')==='compact';
+  if(compact){
+    assert.ok(await region.locator('td[data-ui-table-label]').count()>0,'compact rows retain their field labels');
+    assert.ok(await region.evaluate(el=>el.scrollWidth<=el.clientWidth+1),'compact rows reflow without clipped fields');
+  }else if(await region.evaluate(el=>el.scrollWidth>el.clientWidth+1)){
+    assert.equal(await region.getAttribute('tabindex'),'0');await region.focus();await region.press('ArrowRight');
+    assert.ok(await region.evaluate(el=>new Promise(resolve=>{let frames=0;function check(){if(el.scrollLeft>0||frames++>=60)return resolve(el.scrollLeft>0);requestAnimationFrame(check)}check()})),'keyboard scrolling reaches remaining fields');
+  }
+  checks.push('26 business routes render in desktop light and narrow dark without document overflow; compact tables retain field associations and overflowing tables remain keyboard readable');
   await page.goto(origin+'/workspace?host=harness&tab=skills');
   const skills=page.frameLocator('iframe[title="专业业务模块"]');
   await skills.locator('#skills-query').fill('sealeap-ebay-category-keywords');
@@ -110,7 +118,7 @@ export async function fullUiChecks({page,origin,caseId,output,checks}) {
       await page.locator('#private-scope').waitFor();
     }
     if(route!=='/phones') {
-      assert.equal(await page.locator('body').getAttribute('data-ui-appearance'),'shopify');
+      assert.equal(await page.locator('[data-ui-appearance]').first().getAttribute('data-ui-appearance'),'shopify');
       for(const control of await page.locator('.ui-control:not([type=checkbox]):not([type=radio])').all()) {
         assert.ok((await control.boundingBox()).height>=44,route+' uses readable touch controls');
       }

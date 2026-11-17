@@ -1,0 +1,27 @@
+{
+  "schema": "phone-lab-project-skills-v1",
+  "scope": "project_agent_skills_not_automatic_SeaLeap_execution",
+  "skills": [
+    {
+      "name": "open-websearch",
+      "repo": "https://github.com/Aas-ee/open-webSearch",
+      "commit": "2562c9233a945c18fa9d08b7e450ca218a8853b6",
+      "path": "skills/open-websearch",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "anysearch",
+      "repo": "https://github.com/anysearch-ai/anysearch-skill",
+      "commit": "e70355ba9957cf69923f49ae8ffb224ccc3ae7f0",
+      "path": ".",
+      "license": "Apache-2.0"
+    }
+  ],
+  "runtime": {
+    "open_websearch_version": "2.2.0",
+    "package_integrity": "sha512-Wv2iZqknbNGNMqD9YQ7+gfgc0FFIFg303HfbysRDDbbob9vamCp/99ltP3EIMO/kskWERU9cFpDV3tO1sdnPTw==",
+    "browser_downloaded": false,
+    "persistent_daemon": false,
+    "anonymous_anysearch": true
+  }
+}

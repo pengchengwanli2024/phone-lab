@@ -34,6 +34,15 @@ class RoleRuntime(unittest.TestCase):
     def process_decisions(self,decisions):
         with patch('agent_runtime.model.invoke',side_effect=decisions):self.agent.run_once()
 
+    def test_clarification_requires_words_instead_of_punctuation(self):
+        payload={'topic':'workspace','evidence_required':False}
+        for question in (' ', '],', '？？', '...', '\n\t', '\u200b'):
+            with self.subTest(question=question), self.assertRaisesRegex(ValueError,'agent_model_invalid_response'):
+                self.agent.step(answer(questions=[question],refs=[]),payload,[])
+        for question in ('请补充运费币种？','Which currency?','Какая валюта?','订单123?'):
+            _,result=self.agent.step(answer(questions=[question],refs=[]),payload,[])
+            self.assertEqual(result['questions'],[question])
+
     def test_role_aliases_no_role_contract_rewrite(self):
         rolepath=Path(__file__).resolve().parents[1]/'agents/roles.json';before=rolepath.read_bytes()
         run=self.create(role='commerce-chief')

@@ -38,6 +38,33 @@ def stamp(value):
         return dt.timestamp()
     except (ValueError,OverflowError): raise ValueError('business_invalid_time') from None
 
+
+MISSING_FACT = object()
+
+
+def citation_fact(kind, field, source, key):
+    """Resolve only a physical field or Ozon's one simple description attribute.
+
+    This is exact evidence lookup, never an alias to arbitrary matching text.
+    Rewritten content still needs review and cannot become a source fact here.
+    """
+    if not source or source['document']['kind'] != 'facts':return MISSING_FACT
+    document = source['document'];facts = {r['key']: r['value'] for r in document['records']}
+    if key in facts:return facts[key]
+    if kind != 'listing' or field != 'description' or key != 'attributes.4191' or document['scope']['platform'] != 'ozon':
+        return MISSING_FACT
+    attributes = facts.get('attributes')
+    if type(attributes) is not list:return MISSING_FACT
+    def exact_id(value, expected):return type(value) in (int, str) and str(value) == str(expected)
+    matches = [a for a in attributes if type(a) is dict and exact_id(a.get('id'), 4191)]
+    if len(matches) != 1 or not exact_id(matches[0].get('complex_id'), 0):return MISSING_FACT
+    values = matches[0].get('values')
+    if (type(values) is not list or len(values) != 1 or type(values[0]) is not dict
+            or not exact_id(values[0].get('dictionary_value_id'), 0)
+            or type(values[0].get('value')) is not str or not values[0]['value'].strip()):
+        return MISSING_FACT
+    return values[0]['value']
+
 def validate_document(doc):
     if type(doc) is not dict or set(doc)!={'schema','kind','scope','label','origin_ref','observed_at','valid_until','synthetic','records'}:
         raise ValueError('business_invalid_document')
@@ -197,8 +224,8 @@ class BusinessWorkflows:
                 continue
             c=citations.get(name,{})
             source=by_id.get(c.get('source_id'))
-            facts={r['key']:r['value'] for r in source['document']['records']} if source and source['document']['kind']=='facts' else {}
-            if c.get('key') not in facts or encoded(facts.get(c.get('key')))!=encoded(value):uncited.append(name)
+            physical = citation_fact(env['kind'], name, source, c.get('key'))
+            if physical is MISSING_FACT or encoded(physical) != encoded(value):uncited.append(name)
         if env['kind']=='advertising' and not any(x in missing+invalid for x in ('start_at','end_at')) and stamp(fields['end_at'])<=stamp(fields['start_at']):invalid.append('end_at')
         scope_known=bool(env['scope']['store_ref']) and env['scope']['platform'] not in ('public','local')
         return dict(current,missing_fields=missing,invalid_fields=sorted(set(invalid)),uncited_fields=uncited,

@@ -29,7 +29,7 @@ button:disabled{cursor:not-allowed;opacity:.55}
 .app input[aria-invalid=true],.app select[aria-invalid=true],.dialog input[aria-invalid=true]{border-color:var(--ui-color-danger)}
 .ui-field{display:flex;flex-direction:column;gap:var(--ui-space-2);min-width:0;color:var(--ui-color-muted);font-size:13px}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible,[tabindex]:focus-visible{outline:3px solid var(--ui-color-focus);outline-offset:2px}
-.badge,.ui-badge{font-size:12px;line-height:1.5;border-radius:20px;padding:3px var(--ui-space-2);color:var(--ui-color-warning);background:var(--ui-color-warning-soft)}
+.badge,.ui-badge{white-space:nowrap;flex-shrink:0;font-size:12px;line-height:1.5;border-radius:20px;padding:3px var(--ui-space-2);color:var(--ui-color-warning);background:var(--ui-color-warning-soft)}
 .badge.blue{color:var(--ui-color-brand);background:var(--ui-color-brand-soft)}
 .badge.gray{color:var(--ui-color-muted);background:var(--ui-color-canvas)}
 .badge.success{color:var(--ui-color-success);background:var(--ui-color-success-soft)}
@@ -38,11 +38,36 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .alert.error{color:var(--ui-color-danger);background:var(--ui-color-danger-soft)}
 .empty,.muted,.footnote{color:var(--ui-color-muted)}
 .empty{line-height:1.8}
-.dialog{background:var(--ui-color-surface);color:var(--ui-color-text);border-radius:var(--ui-radius-dialog);box-shadow:var(--ui-shadow-dialog)}
+.dialog{background:var(--ui-color-surface);color:var(--ui-color-text);border-radius:var(--ui-radius-dialog);box-shadow:var(--ui-shadow-dialog);overflow-wrap:anywhere}
 .dialog-actions{gap:var(--ui-space-2)}
 .toast{border-radius:var(--ui-radius-control);font-family:var(--ui-font-family);font-size:var(--ui-font-size);background:var(--ui-color-toast-surface);color:var(--ui-color-toast-text)}
 .data-table{font-family:var(--ui-font-family);color:var(--ui-color-text)}
 .data-table th{color:var(--ui-color-muted)}
+/* Compact records retain field labels and live controls; only read-only values truncate. */
+[data-ui-appearance] :is(.ui-table,.table-wrap,.r-table-wrap)[data-ui-table-mode=compact]{max-width:100%;overflow:visible;border:0;border-radius:0}
+[data-ui-appearance] [data-ui-table-mode=compact]>table{display:block;width:100%;min-width:0;max-width:100%;table-layout:fixed}
+[data-ui-appearance] [data-ui-table-mode=compact]>table>thead{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+[data-ui-appearance] [data-ui-table-mode=compact]>table>tbody{display:grid;gap:12px;width:100%;min-width:0}
+[data-ui-appearance] [data-ui-table-mode=compact]>table>tbody>tr{display:block;min-width:0;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface);overflow:hidden}
+[data-ui-appearance] [data-ui-table-mode=compact]>table>tbody>tr>td{display:block;position:relative;box-sizing:border-box;min-width:0;max-width:100%;width:auto;padding:10px 12px;border:0;border-bottom:1px solid var(--ui-color-border);text-align:left;overflow-wrap:anywhere;white-space:normal}
+[data-ui-appearance] [data-ui-table-mode=compact]>table>tbody>tr>td:last-child{border-bottom:0}
+[data-ui-appearance] [data-ui-table-mode=compact] td::before{content:attr(data-ui-table-label);display:block;margin-bottom:4px;color:var(--ui-color-muted);font-size:var(--ui-font-size-meta);font-weight:500;line-height:1.5;white-space:normal}
+[data-ui-appearance] [data-ui-table-mode=compact] td[data-ui-table-copy]{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+[data-ui-appearance] [data-ui-table-mode=compact] td[data-ui-table-copy]>*{display:inline;white-space:nowrap;max-width:none}
+[data-ui-appearance] [data-ui-table-mode=compact] td[data-ui-table-copy]>*+*{margin-inline-start:6px}
+[data-ui-appearance] [data-ui-table-mode=compact] td[data-ui-table-copy]>br{display:none}
+[data-ui-appearance] [data-ui-table-mode=compact] td[data-ui-table-preview]{cursor:pointer}
+[data-ui-appearance] [data-ui-table-mode=compact] td[data-ui-table-preview]::after{content:'查看完整';position:absolute;top:10px;right:12px;font-size:var(--ui-font-size-meta);color:var(--ui-color-brand);background:var(--ui-color-surface);padding-left:8px}
+[data-ui-appearance] [data-ui-table-mode=compact] td[data-ui-table-preview]:focus-visible{outline:2px solid var(--ui-color-focus);outline-offset:-3px}
+[data-ui-appearance] [data-ui-table-mode=compact] td :is(button,input,select,textarea){max-width:100%;box-sizing:border-box}
+[data-ui-appearance] .ui-table-detail{width:680px;max-width:calc(100vw - 32px);max-height:85dvh;box-sizing:border-box;padding:24px;border:1px solid var(--ui-color-border);overflow:auto}
+.ui-table-detail::backdrop{background:var(--ui-color-overlay)}
+.ui-table-detail .dialog-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.ui-table-detail h2{margin:0;font-size:var(--ui-font-size-section)}
+.ui-table-detail-fields{margin:20px 0 0;display:grid;gap:16px;min-width:0}
+.ui-table-detail-fields>div{min-width:0;border-top:1px solid var(--ui-color-border);padding-top:12px}
+.ui-table-detail-fields dt{color:var(--ui-color-muted);font-size:var(--ui-font-size-meta);margin-bottom:6px}
+.ui-table-detail-fields dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
 .tab.active,.link-btn{color:var(--ui-color-brand)}
 .host-sidebar{background:linear-gradient(145deg,var(--ui-color-canvas),var(--ui-color-surface-alt))}
 .side-link.active{background:var(--ui-color-brand-soft);color:var(--ui-color-brand)}
@@ -158,7 +183,7 @@ button.ui-module-result:hover,button.ui-module-result:focus-visible{background:v
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-control:not([type=checkbox]):not([type=radio]):not([type=file]){font-size:var(--ui-font-size-compact);font-family:inherit;line-height:1.5;min-height:40px;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface);color:var(--ui-color-text);padding:8px 12px;width:100%;max-width:100%}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) textarea.ui-control{resize:vertical;min-height:96px}
 @media(max-width:767px){:is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-control:not([type=checkbox]):not([type=radio]):not([type=file]){min-height:44px}}
-:is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-badge{font-size:var(--ui-font-size-compact);line-height:1.5;padding:2px 8px;border-radius:8px;white-space:normal;font-weight:500}
+:is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-badge{font-size:var(--ui-font-size-compact);line-height:1.5;padding:2px 8px;border-radius:8px;white-space:nowrap;font-weight:500}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-alert{font-size:var(--ui-font-size-compact);padding:12px 16px;margin:0 0 16px;overflow-wrap:anywhere}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .ui-table{border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);overflow:auto}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .data-table{font-size:var(--ui-font-size-compact);border-collapse:collapse;min-width:0;width:100%}
@@ -179,3 +204,17 @@ button.ui-module-result:hover,button.ui-module-result:focus-visible{background:v
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) .dialog-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:24px}
 :is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) body:has(.overlay){overflow:hidden}
 @media(max-width:767px){:is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) button.ui-button:where(:not(.tab):not(.pill):not(.link-btn):not(.side-link)),:is([data-ui-appearance=minimal],[data-ui-appearance=shopify]) button.ui-button.link-btn{min-height:44px}}
+
+/* Form focus is one continuous boundary, including compound chat composers.
+   Keyboard focus for buttons, links and navigation retains a distinct outline. */
+:is(input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color]),select,textarea):focus {
+  outline:none; border-color:var(--ui-color-focus); box-shadow:var(--ui-shadow-control-focus);
+}
+:is(input,select,textarea)[aria-invalid=true]:focus {
+  border-color:var(--ui-color-danger); box-shadow:0 2px 8px color-mix(in srgb,var(--ui-color-danger) 12%,transparent);
+}
+
+/* Native disclosure and confirmation labels share a usable click target. */
+.ui-card details>summary{min-block-size:var(--ui-control-height);align-content:center;cursor:pointer}
+.review-check{display:flex;align-items:center;gap:var(--ui-space-2);min-block-size:var(--ui-control-height);cursor:pointer}
+@media(pointer:coarse){.ui-card details>summary,.review-check{min-block-size:44px}}

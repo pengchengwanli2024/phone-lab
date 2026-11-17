@@ -126,6 +126,7 @@ class MediaPluginConnections:
         text(idempotency_key);binding=self._binding(provider)
         if binding['revision']!=expected_connection_revision or not binding['revision']:raise ValueError('media_plugin_connection_changed')
         request=self.service.media.request_get(request_id);project=self.service.media._current(request,expected_revision);self._production_guard(request)
+        if request['spec'].get('editing') or request['spec'].get('delivery_commitment'):raise ValueError('creative_edit_local_render_required')
         video=request['spec']['format'].endswith('_video')
         if (provider=='heygen')!=video:raise ValueError('media_plugin_format_not_supported')
         if not isinstance(asset_ids,list) or not 1<=len(asset_ids)<=8 or len(set(asset_ids))!=len(asset_ids):raise ValueError('creative_invalid_asset_selection')

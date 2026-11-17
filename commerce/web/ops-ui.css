@@ -1,0 +1,8 @@
+/* Local supplementary records are secondary to the operating alert list. */
+.ops-manual-tools{margin-top:20px;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-card);background:var(--ui-color-surface)}
+.ops-manual-tools>summary{cursor:pointer;min-height:48px;padding:14px 20px;color:var(--ui-color-text);font-weight:500}
+.ops-workspace .ops-manual-tools>.card{border:0!important;border-top:1px solid var(--ui-color-border)!important;border-radius:0;margin:0!important;box-shadow:none}
+.ops-workspace .ops-toolbar{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin:0 0 20px}
+.ops-workspace .ops-toolbar>.field{min-width:180px;flex:1 1 200px;margin:0}
+.ops-workspace .ops-toolbar>button{min-height:40px}
+.ops-workspace .ops-summary{margin-block:16px;gap:12px}

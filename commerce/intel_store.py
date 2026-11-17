@@ -32,6 +32,8 @@ ALIASES = {
     '森林火灾': ['forest fire', 'wildfire'], '山火': ['forest fire', 'wildfire'], '火灾': ['fire'],
     '气旋': ['cyclone'], '飓风': ['hurricane'], '美联储': ['federal reserve', 'fed'],
     '宏观': ['macro'], '能源': ['energy', 'eia'], '物流': ['logistics', 'transport'],
+    '东南亚': ['southeast asia','asean','indonesia','thailand','vietnam','malaysia','singapore','philippines','cambodia','myanmar','laos','brunei','timor-leste','印度尼西亚','印尼','泰国','越南','马来西亚','新加坡','菲律宾','柬埔寨','缅甸','老挝','文莱','东帝汶'],
+    '中东': ['middle east','iran','iraq','israel','saudi arabia','united arab emirates','qatar','oman','yemen','kuwait','bahrain','lebanon','jordan','syria','palestine','伊朗','伊拉克','以色列','沙特','阿联酋','卡塔尔','阿曼','也门','科威特','巴林','黎巴嫩','约旦','叙利亚','巴勒斯坦'],
 }
 
 

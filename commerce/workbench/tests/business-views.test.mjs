@@ -17,6 +17,7 @@ async function business(file, factory, options) {
   return { controller, calls, handlers, window };
 }
 const fixtures = {
+  commerce_platform_list: { stores: [] },
   commerce_platform_catalog: { providers: [{ name: 'Synthetic provider', resources: ['orders'], notice: 'read only' }] },
   commerce_live_status: { configured: true, orders_scope_confirmed: false, feishu_test_verified: true, feishu_received_confirmed: false, notifications_enabled: false },
 };
@@ -27,7 +28,7 @@ test('connection hub reads real states separately and exposes each existing setu
   assert.match(view, /接口测试已接收/); assert.match(view, /群内收件未确认/);
   assert.equal((view.match(/data-connection-action="ozon-setup"/g) || []).length, 1);
   assert.equal((view.match(/data-connection-action="platform-setup"/g) || []).length, 1);
-  assert.match(view, /existing-knowledge/); assert.equal(s.calls.length, 2);
+  assert.doesNotMatch(view, /existing-knowledge/); assert.match(view, /资料与业务记忆/); assert.equal(s.calls.length, 3);
 });
 test('failed connection refresh removes old successful state and never opens a setup or retries', async () => {
   let fail = false;
@@ -35,7 +36,7 @@ test('failed connection refresh removes old successful state and never opens a s
   await s.controller.load(); fail = true; await s.controller.load(); const view = s.controller.view();
   assert.match(view, /状态未读到/); assert.match(view, /test service unavailable/);
   assert.doesNotMatch(view, /凭据字段已保存/); assert.doesNotMatch(view, /接口测试已接收/);
-  assert.equal(s.calls.length, 4); assert.ok(s.calls.every(([name]) => name.endsWith('_catalog') || name.endsWith('_status')));
+  assert.equal(s.calls.length, 6); assert.ok(s.calls.every(([name]) => name.endsWith('_catalog') || name.endsWith('_status') || name === 'commerce_platform_list'));
 });
 test('each explicit setup action calls its existing private wizard without passing credentials', async () => {
   const notices = [];

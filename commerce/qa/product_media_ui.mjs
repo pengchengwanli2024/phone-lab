@@ -24,7 +24,7 @@ try{
  await page.locator('[data-catalog-action=creative]').click();await page.locator('.media-flow').waitFor();
  await page.locator('[data-creative-tab=brief]').click();await page.locator('#creative-name').fill('合成验收 · 产品图像视频');
  await page.locator('#creative-facts').fill('合成规格：容量500毫升 | synthetic:spec');
- await page.locator('[data-creative-action=save]').click();await page.locator('.creative-projects [aria-pressed=true]').waitFor();
+ await page.locator('[data-creative-action=save]').click();await page.waitForFunction(()=>!!document.querySelector('#creative-project-select')?.value);
  await page.locator('#creative-kind').selectOption('product_image');await page.locator('#creative-file').setInputFiles(path.join(state,'synthetic-upload.png'));
  await page.locator('[data-creative-action=upload]').click();await page.getByText('校验完成，素材已保存。',{exact:true}).waitFor();
  await page.locator('[data-creative-tab=workflow]').click();await page.locator('[data-media-reference]').first().check();

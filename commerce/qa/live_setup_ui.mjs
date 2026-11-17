@@ -58,7 +58,8 @@ try{
   const publicStatus=JSON.stringify(await invoke('commerce_live_status'));assert.ok(!publicStatus.includes('synthetic-not-network-key'));assert.ok(!publicStatus.includes('123456'));
   await action('sync');await page.waitForFunction(()=>document.querySelector('#setup-root')?.textContent.includes('SYN-1'));
   await page.waitForFunction(()=>document.querySelector('#setup-root')?.textContent.includes('本次仅建立初始基线'));
-  await action('enable-sync');await page.getByText('请先把订单样本与 OGL 后台核对，并确认读取范围。',{exact:true}).waitFor();
+  await action('enable-sync');await page.waitForFunction(()=>document.querySelector('#setup-root')?.textContent.includes('自动同步：已开启'));
+  assert.equal((await invoke('commerce_live_status')).orders_scope_confirmed,false);
   await action('confirm-orders');await page.waitForFunction(()=>document.querySelector('#setup-root')?.textContent.includes('订单范围核对：已确认'));
   await page.locator('#stock-basis').selectOption('present_minus_reserved');await action('save-stock');await page.getByText('请先拉取真实库存，再核对可售口径。',{exact:true}).waitFor();
   await page.locator('#stock-basis').selectOption('present_minus_reserved');await page.locator('#stock-reviewed').check();await action('save-stock');

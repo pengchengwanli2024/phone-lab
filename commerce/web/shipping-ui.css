@@ -1,0 +1,68 @@
+.shipping-workbench{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--ui-space-5,20px);min-width:0}
+.shipping-workbench .card{min-width:0}
+.shipping-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ui-space-3,12px)}
+.shipping-actions>.shipping-actions{display:contents}
+.shipping-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--ui-space-4,16px);margin:var(--ui-space-4,16px) 0}
+.shipping-workbench .data-table{min-width:780px}
+.shipping-workbench .data-table td{vertical-align:top}
+.shipping-workbench .data-table .ui-control{min-width:82px;max-width:180px}
+.shipping-triple{display:flex;gap:var(--ui-space-1,4px)}
+.shipping-triple .ui-control{width:84px}
+.shipping-door{display:flex;gap:var(--ui-space-1,4px)}
+.shipping-door .ui-control{width:84px}
+.shipping-model-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:var(--ui-space-3,12px);margin-block:var(--ui-space-4,16px)}
+.shipping-model-controls .ui-field{flex:1;min-width:min(100%,240px);max-width:480px}
+.shipping-reference{margin-top:var(--ui-space-2,8px);max-width:260px;white-space:normal;font-size:var(--ui-font-size-compact,13px);color:var(--ui-color-muted)}
+.shipping-reference summary{cursor:pointer}
+.shipping-reference p{margin-block:var(--ui-space-2,8px);overflow-wrap:anywhere}
+.shipping-check{display:flex;align-items:center;gap:var(--ui-space-2,8px);white-space:nowrap}
+.shipping-check input[type=checkbox]{width:18px;min-width:18px;max-width:18px;accent-color:var(--ui-color-action-primary)}
+.shipping-workbench .file-import{position:relative;display:inline-flex;align-items:center;min-height:40px}
+.shipping-workbench .file-import input{max-width:230px}
+.shipping-workbench .shipping-file-picker{position:relative;padding:var(--ui-space-2,8px) var(--ui-space-3,12px);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface);cursor:pointer;overflow:hidden}
+.shipping-workbench .shipping-file-picker input{position:absolute;inset:0;width:100%;height:100%;max-width:none;opacity:0;cursor:pointer}
+.shipping-workbench .shipping-file-picker:focus-within{outline:3px solid var(--ui-color-focus);outline-offset:2px}
+.shipping-file-status{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ui-space-3,12px);margin-block:var(--ui-space-3,12px);overflow-wrap:anywhere;font-size:var(--ui-font-size-compact,13px)}
+.shipping-download-status{padding:var(--ui-space-3,12px);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface-alt);overflow-wrap:anywhere}
+.shipping-rates>summary{cursor:pointer;font-weight:600}
+.shipping-visual{margin:var(--ui-space-5,20px) 0;min-width:0}
+.shipping-visual .data-table{min-width:0}
+#shipping-scene{display:block;width:100%;height:340px}
+.shipping-viewer-help{margin-block:var(--ui-space-3,12px)}
+.shipping-camera{display:block;margin-block:var(--ui-space-2,8px);color:var(--ui-color-muted);font-size:var(--ui-font-size-compact,13px);font-variant-numeric:tabular-nums}
+#shipping-step{width:100%;accent-color:var(--ui-color-action-primary)}
+.shipping-sku-legend{display:flex;flex-wrap:wrap;gap:var(--ui-space-4,16px);margin:var(--ui-space-3,12px) 0}
+.shipping-sku-legend>span{display:inline-flex;align-items:center;gap:var(--ui-space-2,8px)}
+.shipping-swatch{width:12px;height:12px;background:var(--shipping-sku-color);display:inline-block}
+.shipping-hash{overflow-wrap:anywhere;font-family:var(--ui-font-mono,monospace)}
+.shipping-workbench #shipping-result{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--ui-space-4,16px);min-width:0}
+.shipping-comparison{min-width:0}
+.shipping-comparison h2{margin:0}
+.shipping-comparison-grid{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:var(--ui-space-3,12px);overflow-x:auto;max-width:100%;padding-block:var(--ui-space-3,12px)}
+.shipping-comparison-column{min-width:0;padding:var(--ui-space-4,16px);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface)}
+.shipping-comparison-column.is-selected{border-color:var(--ui-color-action-primary);box-shadow:inset 0 0 0 1px var(--ui-color-action-primary)}
+.shipping-comparison-column h3{margin:0 0 var(--ui-space-3,12px)}
+.shipping-comparison-column dl{margin:0 0 var(--ui-space-4,16px);font-variant-numeric:tabular-nums}
+.shipping-comparison-column dl>div{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(--ui-space-1,4px);padding-block:var(--ui-space-2,8px)}
+.shipping-comparison-column dt{color:var(--ui-color-muted)}
+.shipping-comparison-column dd{margin:0;overflow-wrap:anywhere}
+.shipping-comparison-column dl>div:last-child{font-weight:600;border-top:1px solid var(--ui-color-border)}
+.shipping-comparison-column button{max-width:100%;white-space:normal}
+.shipping-comparison-error{color:var(--ui-color-danger);overflow-wrap:anywhere}
+@media(max-width:800px){.shipping-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.shipping-fields{grid-template-columns:minmax(0,1fr)}#shipping-scene{height:260px}.shipping-workbench .file-import{flex-wrap:wrap}}
+
+/* Input disclosure keeps comparison and the selected plan within reach. */
+.shipping-workbench{gap:var(--ui-space-4)}
+.shipping-stages{display:flex;gap:var(--ui-space-2);flex-wrap:wrap}
+.shipping-input{min-width:0;border-block:1px solid var(--ui-color-border)}
+.shipping-input>summary{cursor:pointer;font-weight:600;min-height:44px;align-content:center}
+.shipping-input>.card{margin-block:var(--ui-space-3);padding:var(--ui-space-3)}
+.shipping-import-tools{min-width:0}
+.shipping-import-tools>summary,.shipping-rates>summary,.shipping-advanced>summary,.shipping-quote-details>summary,.shipping-history>summary{cursor:pointer;min-height:var(--ui-control-height);align-content:center}
+.shipping-import-tools[open]>.shipping-actions{margin-block:var(--ui-space-2)}
+.shipping-rates,.shipping-advanced,.shipping-quote-details{margin-block:var(--ui-space-3)}
+.shipping-plan-detail{min-width:0;scroll-margin-top:var(--ui-space-3)}
+.shipping-plan-detail:focus-visible{outline:2px solid var(--ui-color-focus);outline-offset:var(--ui-space-1)}
+.shipping-calculate{margin-block:var(--ui-space-3)}
+@media(max-width:600px){.shipping-stages>.ui-button{flex:1;min-width:0}.shipping-stages{gap:var(--ui-space-1)}.shipping-input>.card{padding:var(--ui-space-2)}}

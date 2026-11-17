@@ -1,0 +1,6 @@
+.r-listing-inherited-field>label{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.r-listing-inherited-field>label>small{font-size:var(--ui-font-size-meta);color:var(--ui-color-brand);font-weight:400}
+.r-listing-base-value{min-height:var(--ui-control-height,40px);max-height:10rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:8px 12px;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface-alt);color:var(--ui-color-text);line-height:1.5}
+.r-listing-field-actions{display:flex;justify-content:flex-end}
+.r-listing-inherited-field .r-listing-field-actions button.ui-button.link-btn{min-height:30px;padding:3px 6px;font-size:var(--ui-font-size-meta)}
+@media(max-width:767px){.r-listing-inherited-field .r-listing-field-actions button.ui-button.link-btn{min-height:44px}}

@@ -1,4 +1,5 @@
 """Isolated real HTTP/stdio acceptance; synthetic provider, no installed-host claim."""
+import base64
 import json
 import os
 from pathlib import Path
@@ -186,10 +187,41 @@ class CopilotTransport(unittest.TestCase):
         self.assertFalse(result.get('isError'), 'synthetic MCP tool failed')
         return result['structuredContent']
 
+    def test_05_http_followups_edit_withdraw_and_unknown_pause_resume(self):
+        thread = self.call('commerce_copilot_open', {'context':{'module':'orders','demo':True}, 'idempotency_key':'http-queue'})
+        sent = self.call('commerce_copilot_send', {'thread_id':thread['id'], 'context_sha256':thread['context_sha256'], 'message':'slow synthetic response', 'idempotency_key':'slow-queue'})
+        binding = {'thread_id':thread['id'], 'context_sha256':thread['context_sha256'], 'after_run_id':sent['latest_run']['id']}
+        queue = self.call('commerce_copilot_followup_add', {**binding, 'message':'原队列消息', 'idempotency_key':'queued'})
+        item = queue['items'][0]
+        queue = self.call('commerce_copilot_followup_change', {'thread_id':thread['id'], 'item_id':item['id'], 'expected_revision':queue['revision'], 'operation':'edit', 'message':'已修改队列消息'})
+        self.assertEqual(queue['items'][0]['message'], '已修改队列消息')
+        queue = self.call('commerce_copilot_followup_change', {'thread_id':thread['id'], 'item_id':item['id'], 'expected_revision':queue['revision'], 'operation':'cancel'})
+        self.assertEqual(queue['items'][0]['status'], 'cancelled')
+        self.call('commerce_copilot_cancel', {'thread_id':thread['id'],'run_id':sent['latest_run']['id']})
+        self.poll(sent['latest_run']['id'], {'canceled'})
+        unknown = self.call('commerce_copilot_send', {'thread_id':thread['id'], 'context_sha256':thread['context_sha256'], 'message':'unknown synthetic response', 'idempotency_key':'unknown-queue'})
+        queue = self.call('commerce_copilot_followup_add', {**binding, 'after_run_id':unknown['latest_run']['id'], 'message':'Inspect scoped evidence after uncertainty', 'idempotency_key':'after-unknown'})
+        outcome = self.poll(unknown['latest_run']['id'], {'failed'})
+        self.assertEqual(outcome['metadata']['commerce']['runStatus'], 'unknown')
+        queue = self.call('commerce_copilot_followup_list', {'thread_id':thread['id']})
+        self.assertTrue(queue['paused'])
+        self.assertEqual(self.call('commerce_copilot_get', {'thread_id':thread['id']})['total_turns'], 2)
+        self.call('commerce_copilot_followup_resume', {'thread_id':thread['id'], 'expected_revision':queue['revision'], 'context_sha256':thread['context_sha256']})
+        deadline = time.monotonic()+12
+        while time.monotonic()<deadline:
+            current = self.call('commerce_copilot_get', {'thread_id':thread['id']})
+            if current['total_turns']==3 and current['latest_run']['status']=='completed':break
+            time.sleep(.05)
+        self.assertEqual(current['total_turns'],3)
+        self.assertEqual(current['latest_run']['status'],'completed')
+        self.assertEqual(current['turns'][1]['run']['id'],unknown['latest_run']['id'])
+
     def test_04_three_stdio_clients_share_threads_runs_and_annotations(self):
         clients = []
         names = ['codex', 'hermes', 'harness']
-        expected = {'commerce_copilot_' + suffix for suffix in ['open', 'list', 'get', 'send', 'context', 'cancel', 'apply', 'model']}
+        expected = {'commerce_copilot_' + suffix for suffix in ['open', 'list', 'get', 'send', 'context', 'cancel', 'apply', 'model', 'catalog', 'events', 'capabilities', 'capability_check', 'activity']}
+        expected |= {'commerce_copilot_followup_' + suffix for suffix in ['list','add','change','resume']}
+        expected |= {'commerce_copilot_material_' + suffix for suffix in ['capabilities','preflight','upload','upload_begin','upload_chunk','upload_finish','upload_cancel','reference','list','get','preview','remove']}
         try:
             for name in names:
                 process = subprocess.Popen([sys.executable, str(ROOT / 'mcp_server.py'), name], env=self.env,
@@ -207,8 +239,8 @@ class CopilotTransport(unittest.TestCase):
                 self.assertFalse(model_schema['additionalProperties'])
                 for tool_name, tool in tools.items():
                     annotation = tool['annotations']
-                    self.assertEqual(annotation['readOnlyHint'], tool_name in {'commerce_copilot_list', 'commerce_copilot_get'})
-                    self.assertEqual(annotation['openWorldHint'], tool_name == 'commerce_copilot_send')
+                    self.assertEqual(annotation['readOnlyHint'], tool_name in {'commerce_copilot_capabilities','commerce_copilot_capability_check','commerce_copilot_activity','commerce_copilot_catalog','commerce_copilot_events','commerce_copilot_list','commerce_copilot_get','commerce_copilot_followup_list','commerce_copilot_material_capabilities','commerce_copilot_material_preflight','commerce_copilot_material_list','commerce_copilot_material_get','commerce_copilot_material_preview'})
+                    self.assertEqual(annotation['openWorldHint'], tool_name in {'commerce_copilot_send','commerce_copilot_followup_add','commerce_copilot_followup_change','commerce_copilot_followup_resume'})
                     self.assertFalse(annotation['destructiveHint'])
             thread = self.mcp_call(clients[0], 'commerce_copilot_open', {'context': {'module': 'orders', 'demo': True}, 'idempotency_key': 'three-clients'})
             self.assertEqual(thread['turns'], [])
@@ -227,6 +259,18 @@ class CopilotTransport(unittest.TestCase):
                 shared = self.mcp_call(process, 'commerce_copilot_get', {'thread_id': thread['id']})
                 self.assertEqual([t['run']['id'] for t in shared['turns']], run_ids)
                 self.assertTrue(all(t['run']['result']['provider'] == 'synthetic-no-network' for t in shared['turns']))
+            # These are real stdio calls from separate clients, sharing one local receipt.
+            material = self.mcp_call(clients[0], 'commerce_copilot_material_upload', {
+                'thread_id':thread['id'], 'context_sha256':thread['context_sha256'],
+                'filename':'synthetic.txt', 'mime_type':'text/plain',
+                'content_base64':base64.b64encode(b'Synthetic selected reference').decode(), 'idempotency_key':'mcp-material'})
+            listed = self.mcp_call(clients[1], 'commerce_copilot_material_list', {'thread_id':thread['id']})
+            self.assertEqual(listed['items'][0]['id'], material['id'])
+            detail = self.mcp_call(clients[2], 'commerce_copilot_material_get', {'thread_id':thread['id'], 'material_id':material['id']})
+            self.assertEqual(detail['text'], 'Synthetic selected reference')
+            self.assertNotIn('content_base64', detail)
+            queue = self.mcp_call(clients[2], 'commerce_copilot_followup_list', {'thread_id':thread['id']})
+            self.assertEqual(queue['items'], [])
             self.assertTrue(set(names) <= set(self.call('commerce_status')['clients']))
         finally:
             for process in clients:

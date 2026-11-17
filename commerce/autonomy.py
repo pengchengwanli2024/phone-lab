@@ -86,6 +86,9 @@ class Autonomy:
         if operation == 'report':
             if task['kind'] != 'report' or type(data.get('demo', False)) is not bool:
                 raise ValueError('report_task_required')
+            if data.get('mode')=='public_research':
+                from public_research_tasks import validate
+                validate(data)
         elif operation == 'intel_review':
             evidence = data.get('evidence')
             if task['kind'] != 'analysis' or data.get('mode') != 'public_source' or not isinstance(evidence, dict):
@@ -160,8 +163,12 @@ class Autonomy:
             self.validate_operation(task, operation)
             data = task['input']
             if operation == 'report':
-                report_scope = {k: v for k, v in data.get('source_context', {}).items() if k in ('platform', 'store_id', 'market')}
-                output = self.service.invoke('commerce_report_create', {**report_scope, 'demo': data.get('demo', False), 'idempotency_key': 'local-report:' + task_id})
+                if data.get('mode')=='public_research':
+                    from public_research_tasks import render
+                    output=render(self.service,data)
+                else:
+                    report_scope = {k: v for k, v in data.get('source_context', {}).items() if k in ('platform', 'store_id', 'market')}
+                    output = self.service.invoke('commerce_report_create', {**report_scope, 'demo': data.get('demo', False), 'idempotency_key': 'local-report:' + task_id})
             elif operation == 'intel_review':
                 e = data['evidence']
                 output = {'generator': 'local_evidence_template', 'verification': 'not_independently_verified',

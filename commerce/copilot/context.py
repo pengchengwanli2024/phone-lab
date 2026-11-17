@@ -4,8 +4,8 @@ import re
 from agent_runtime.policy import canonical
 
 MODULES=('overview','orders','products','operations','alerts','support','insights','research','intelligence','creative','pilots','agent','exposure','organization','tasks','platforms','live','skills','connections')
-FIELDS={'module','demo','platform','store_id','market','entity','calculator','input'}
-CONTEXT_SCHEMA={'type':'object','properties':{'module':{'type':'string','enum':list(MODULES)},'demo':{'type':'boolean'},**{k:{'type':'string','maxLength':160} for k in ('platform','store_id','market')},'entity':{'type':'object','properties':{'kind':{'type':'string','maxLength':40},'id':{'type':'string','maxLength':160}},'required':['kind','id'],'additionalProperties':False},'calculator':{'type':'string','enum':['unit_economics','restock_plan']},'input':{'type':'object'}},'required':['module'],'additionalProperties':False}
+FIELDS={'module','demo','platform','store_id','market','store_scope','entity','calculator','input'}
+CONTEXT_SCHEMA={'type':'object','properties':{'module':{'type':'string','enum':list(MODULES)},'demo':{'type':'boolean'},**{k:{'type':'string','maxLength':160} for k in ('platform','store_id','market','store_scope')},'entity':{'type':'object','properties':{'kind':{'type':'string','maxLength':40},'id':{'type':'string','maxLength':160}},'required':['kind','id'],'additionalProperties':False},'calculator':{'type':'string','enum':['unit_economics','restock_plan']},'input':{'type':'object'}},'required':['module'],'additionalProperties':False}
 FORBIDDEN=re.compile(r'(password|passwd|secret|token|credential|authorization|api.?key|chat_history|messages|private.?key|cookie)',re.I)
 
 
@@ -14,6 +14,10 @@ def validate_context(value):
     except (ValueError,TypeError,RecursionError):raise ValueError('copilot_invalid_context') from None
     if not isinstance(value,dict) or set(value)-FIELDS or size>8000 or value.get('module') not in MODULES:raise ValueError('copilot_invalid_context')
     if 'demo' in value and type(value['demo']) is not bool:raise ValueError('copilot_invalid_context')
+    if 'store_scope' in value:
+        scope=value['store_scope']
+        if value['module']!='orders' or type(value.get('demo')) is not bool or not isinstance(scope,str) or scope!='unassigned' and not re.fullmatch(r'store_source_[a-f0-9]{32}',scope):raise ValueError('copilot_invalid_context')
+        if value.get('store_id','all')!='all' or value.get('entity') or value.get('calculator'):raise ValueError('copilot_invalid_context')
     for key in ('platform','store_id','market'):
         if key in value and (not isinstance(value[key],str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,160}',value[key])):raise ValueError('copilot_invalid_context')
     if 'entity' in value:

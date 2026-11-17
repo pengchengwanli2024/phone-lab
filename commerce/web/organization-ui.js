@@ -1,6 +1,6 @@
 window.CommerceOrganization=({api,repaint,toast,getCostBase})=>{
   const ui=window.CommerceUI,esc=ui.escape;
-  const state={board:null,caseId:'',busy:false,error:'',kind:'supply',projectId:'',project:null,assets:[],scopeReviewed:false,bindings:{},exchange:null};
+  const state={board:null,caseId:'',busy:false,error:'',kind:'supply',projectId:'',project:null,assets:[],scopeReviewed:false,bindings:{},exchange:null,moreOpen:false};
   const text={PASS:'检查通过',FAIL:'实测不符',BLOCKED:'依赖或能力阻断',HOLD:'资料待补或待核实'};
   const isCandidate=c=>c?.scope.origin==='research_candidate_not_inventory';
   const caseLabel=c=>isCandidate(c)?`${c.scope.label} · 调研候选 · 尚未绑定店铺商品`:`${c.scope.sku} · ${c.scope.inventory_type} · 产品 ${c.scope.product_id}`;
@@ -9,8 +9,8 @@ window.CommerceOrganization=({api,repaint,toast,getCostBase})=>{
   async function load(){state.busy=true;try{state.board=await api('commerce_organization_board',state.caseId?{case_id:state.caseId}:{});state.caseId=state.board.case?.id||'';state.exchange=await api('commerce_organization_exchange_status',state.caseId?{case_id:state.caseId}:{});state.error=''}catch(e){state.error=e.message}finally{state.busy=false;repaint()}}
   function render(){
     const b=state.board,c=b?.case;
-    const controls=`<div class="form-actions">${button('从现有库存建立工作项','import')}${button('重新检查','refresh')}${button('同步已完成产物','exchange-sync')}${button('保存体检快照','capture')}${button('导出当前看板','export')}</div>`;
-    if(!b)return ui.card({title:'岗位与闭环',content:controls+(state.error?ui.alert(state.error,'danger'):ui.empty('正在读取本项目契约与证据…'))});
+    const controls=`<div class="form-actions">${button('重新检查','refresh')}${button('同步已完成产物','exchange-sync')}${!b?.cases?.length?button('从现有库存建立工作项','import'):''}</div><details class="workspace-disclosure" data-org-controls data-ui-managed-state ${state.moreOpen?'open':''}><summary>更多工作项操作</summary><div class="form-actions">${b?.cases?.length?button('从现有库存建立工作项','import'):''}${button('保存体检快照','capture')}${button('导出当前看板','export')}</div></details>`;
+    if(!b)return ui.card({title:'岗位检查',content:controls+(state.error?ui.alert(state.error,'danger'):ui.empty('正在读取本项目契约与证据…'))});
     const cases=ui.field('当前工作项',ui.select({id:'org-case',value:state.caseId,disabled:state.busy,options:[{value:'',label:'项目体检（尚未选择工作项）'},...b.cases.map(c=>({value:c.id,label:caseLabel(c)}))]}));
     const scope=c?`<p>平台 ${esc(c.scope.platform)} · 市场 ${esc(c.scope.market)} · ${isCandidate(c)?`调研候选 ${esc(c.scope.label)}；内部标识 ${esc(c.scope.sku)}。尚未绑定店铺商品、SKU 或库存`:`SKU ${esc(c.scope.sku)} · 库存范围 ${esc(c.scope.inventory_type)}`}。币种：<strong>${esc(c.currency||'未知')}</strong>。</p><div class="analysis-fields">${ui.field('明确工作项金额币种（不换算）',ui.input({id:'org-currency',value:c.currency||'',disabled:state.busy,maxlength:3,placeholder:'例如 CNY 或 RUB'}))}</div>${button('保存明确币种','currency')}`:ui.empty('可从已有库存建立本地工作项。旧快照和未核对口径会如实显示，不会冒充已完成。');
     const stages=b.stages.map(s=>ui.card({title:s.id+' · '+s.name,content:`${ui.badge(text[s.status],s.status==='PASS'?'success':s.status==='FAIL'?'danger':'warning')} <span class="muted">责任岗位：${esc(s.role)}；本段 ${s.passed}/${s.total} 项检查通过。</span>${s.gaps.length?ui.table(['缺什么 / 原因','谁补','补完如何验'],s.gaps.map(g=>`<tr><td>${esc(g.reason)}</td><td>${esc(g.owner)}</td><td>${esc(g.verify)}</td></tr>`)):'<p data-ui-help>当前受支持检查已通过。仍需按范围和事实核查要求使用产物。</p>'}${c?`<div class="form-actions">${button('岗位简报','brief',{'data-stage':s.id})}${s.status!=='PASS'?button('创建补齐任务','handoff',{'data-stage':s.id}):''}</div>`:''}`})).join('');
@@ -21,6 +21,8 @@ window.CommerceOrganization=({api,repaint,toast,getCostBase})=>{
   function receiptHtml(r){if(!r)return '';return ui.alert(r.status==='saved'&&r.context_current!==false&&r.artifact_current!==false?'产物已交接到工作项；门禁仍按原文、校对与来源判据复验。':r.status==='waiting_for_source'?'交接已登记，等待原任务完成；不会重复提交模型。':'产物交接待处理：'+(r.code||r.status),r.status==='saved'?'info':'danger')}
   function exchangeView(){const receipts=state.exchange?.receipts||[];return ui.card({title:'产物交接回执',content:`<p class="muted" data-ui-help>先在调研或成本页明确选择工作项，完成检查/测算后会直接留存产物；重开页面后可同步已完成的绑定任务，译文保持待校对。</p>${ui.table(['产物','状态','当前绑定','回执'],receipts.map(r=>`<tr><td>${esc(r.kind)}</td><td>${esc(({saved:'已保存',held:'待处理',pending:'待恢复'})[r.status]||r.status)}</td><td>${!r.context_current?'范围变化，需重新绑定':r.artifact_current?'当前产物':'历史版本'}</td><td>${esc(r.code||'')}</td></tr>`),'尚无产物交接回执。')}`})}
   function bindingView(kind){const selected=state.bindings[kind]?.case_id||'';return ui.card({title:'工作项自动交接',content:`<p class="muted" data-ui-help>只在明确绑定后保存本地产物。演示测算不会交接；资料完整性不代表事实或合规已核实。</p>${!state.board?button('载入工作项以选择绑定','binding-load'):ui.field('将本页产物交接到',ui.select({id:'org-binding-'+kind,'data-org-binding':kind,value:selected,disabled:state.busy,options:[{value:'',label:'不绑定，仅在本页使用'},...state.board.cases.map(c=>({value:c.id,label:caseLabel(c)}))]}))}${selected?button('按当前范围更新绑定','binding-refresh',{'data-kind':kind}):''}`})}
+  document.addEventListener('toggle',event=>{if(event.target.isConnected&&event.target.matches?.('[data-org-controls]'))state.moreOpen=event.target.open},true);
+  document.addEventListener('keydown',event=>{const details=event.target.closest?.('[data-org-controls]');if(event.key==='Escape'&&details?.open){event.preventDefault();event.stopPropagation();details.open=false;state.moreOpen=false;details.querySelector('summary')?.focus()}});
   async function produce(tool,args,options={}){const kind=tool==='commerce_unit_economics'?'economics':'research';const context=state.bindings[kind];if(!context||options.origin&&options.origin!=='manual')return api(tool,args);return api('commerce_organization_exchange_produce',{context,source_tool:tool,source_arguments:args,...(options.record?{source_record:options.record}:{})})}
   async function afterTranslation(job){if(job.artifact_handoff?.case_id)await api('commerce_organization_exchange_sync',{case_id:job.artifact_handoff.case_id})}
   document.addEventListener('change',async e=>{
@@ -63,5 +65,6 @@ window.CommerceOrganization=({api,repaint,toast,getCostBase})=>{
       if(['template','export','brief','project'].includes(action)){state.busy=false;state.error='';repaint()}else await load();
     }catch(e){state.error=e.message;state.busy=false;repaint()}
   });
-  return {load,render,bindingView,produce,afterTranslation,receiptHtml};
+  async function openCase(id){if(!/^[a-zA-Z0-9_-]{1,160}$/.test(id))return;state.caseId=id;state.project=null;state.projectId='';state.assets=[];state.scopeReviewed=false;await load();}
+  return {openCase,load,render,bindingView,produce,afterTranslation,receiptHtml};
 };
