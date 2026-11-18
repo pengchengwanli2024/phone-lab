@@ -14,18 +14,40 @@ const fields={sku:'S1',title:'Proposed title',description:'Proposed prose',categ
 const target={case_id:'case-A',platform:'ozon',store_ref:'store-A',market:'RU'};
 const imageValue=text=>({mime:'image/png',content_base64:Buffer.from(text).toString('base64'),sha256:createHash('sha256').update(text).digest('hex')});
 const catalog=id=>({id,name:'Original '+id,kind:'inventory',synthetic:false,source_sha256:'sha-'+id,sku:'SKU-'+id,product_id:id,primary_case_id:id,case_ids:[id],store_identity:{kind:'store',label:'Actual shop',store_ref:'store-A',platform:'ozon',market:'RU',active:true},fields:[{key:'title',original:'Raw title',locator:'source:title'},{key:'description',original:'Raw prose',locator:'source:description'}],images:[{id:'ai',origin:'generated_image'},{id:'raw-'+id,origin:'product_image',source_current:true}]});
+const isListingImage=value=>!!value&&typeof value==='object'&&(value.state==='loading'||value.state==='ready'||value.state==='failed');
 function harness(){
- const hooks=[],effects=[],requests=[],canonical=[];let cursor=0,tree;
+ const hooks=[],effects=[],requests=[],canonical=[];let cursor=0,tree,imageHook=-1,imageState;
  const props={catalog:catalog('case-A'),error:'',name:'Listing A',target,selected:target,sourceSha:'sha-case-A',base:fields,fields,overrides:{},revision:1,stale:false,dirty:false,active:true,busy:false,onProduct(){},onCanonical:t=>canonical.push(t),onReadSelected(){},onRestoreSelected(){}};
  const c={...helpers,module:{exports:{}},exports:{},React:{Fragment:'fragment'},Button:'button',Badge:'badge',window:{CommerceCatalogPresentation:{plain:v=>String(v).replace(/<[^>]*>/g,'')}},
   element:(type,props,...children)=>typeof type==='function'?type({...props,children}):({type,props:{...props,children}}),
-  useState:initial=>{const i=cursor++;if(!(i in hooks))hooks[i]=initial;return [hooks[i],value=>hooks[i]=typeof value==='function'?value(hooks[i]):value];},
+  useState:initial=>{const i=cursor++;if(!(i in hooks))hooks[i]=initial;if(isListingImage(hooks[i])){imageHook=i;imageState=hooks[i];}return [hooks[i],value=>{hooks[i]=typeof value==='function'?value(hooks[i]):value;if(i===imageHook)imageState=hooks[i];}];},
   useRef:initial=>{const i=cursor++;if(!(i in hooks))hooks[i]={current:initial};return hooks[i];},
   useEffect:(fn,deps)=>{const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();hooks[i]={deps};effects.push(()=>hooks[i].cleanup=fn());}},
   api:(name,args)=>new Promise((resolve,reject)=>requests.push({name,args,resolve,reject})),
  };c.exports=c.module.exports;vm.runInNewContext(compiled,c);
  const render=(next={},runEffects=true)=>{Object.assign(props,next);cursor=0;tree=c.module.exports.ListingContext(props);if(runEffects)while(effects.length)effects.shift()();return tree;};
- const settle=async()=>{for(let n=0;n<4;n++)await new Promise(setImmediate);render();};
+ // ready and failed are both finished image reads. failed stays visible for the failure assertions; only loading waits.
+ // The deadline bounds a stuck read. The wait itself ends on the real image state, not after a fixed number of turns.
+ const settle=async()=>{
+  const observed=()=>{
+   const state=imageState?.state;
+   if(state==='ready'||state==='failed')return state;
+   if(state!=='loading')throw new Error('listing image settle saw unexpected state '+state);
+   return '';
+  };
+  if(!observed())await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>{stop();reject(new Error('listing image settle timed out after 1000ms while state remained '+(imageState?.state??'missing')));},1000);
+   let pending;
+   const stop=()=>{clearTimeout(timer);if(pending!==undefined)clearImmediate(pending);};
+   const pump=()=>{
+    pending=undefined;
+    try{if(observed()){stop();resolve();return;}}catch(error){stop();reject(error);return;}
+    pending=setImmediate(pump);
+   };
+   pending=setImmediate(pump);
+  });
+  render();
+ };
  return {render,settle,requests,canonical,props,get tree(){return tree;}};
 }
 test('identity distinguishes raw title, product draft and store proposal without claiming verified facts',()=>{
