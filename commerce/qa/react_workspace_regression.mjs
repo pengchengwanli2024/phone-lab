@@ -64,10 +64,19 @@ const inventory = async () => ({
   surfaces: (await invoke('commerce_a2ui_list')).surfaces.length,
   threads: (await invoke('commerce_copilot_list')).threads.length,
 });
-async function find(label) {
+async function find(route) {
   await page.locator('.r-search').click();
-  const dialog = page.getByRole('dialog'); await dialog.getByRole('searchbox').fill(label);
-  await dialog.locator('.r-finder-list button').first().click();
+  const dialog = page.getByRole('dialog'); await dialog.getByRole('searchbox').fill(route);
+  await dialog.locator('[data-finder-route="'+route+'"]').click();
+  await dialog.waitFor({state:'hidden'});
+  await page.locator('.r-app[data-module="'+route+'"]').waitFor();
+}
+async function generalCost() {
+  await find('operations');
+  const general=page.getByRole('button',{name:'通用测算',exact:true});
+  if(await general.isVisible())await general.click();
+  await page.locator('.r-cost-page input[name="price"]').waitFor();
+  assert.match(await page.locator('.r-cost-page').innerText(),/未关联商品/);
 }
 try {
   let ready = false;
@@ -105,7 +114,16 @@ try {
   if (process.env.QA_INTEL_ONLY !== '1') {
   const product = page.frameLocator('iframe[title="完整商品内容编辑"]');
   await product.locator('#pw-main[aria-busy="false"]').waitFor();
+  assert.equal(await page.locator('#workspace-assistant-toggle').getAttribute('aria-expanded'),'false','Product work starts with a collapsed assistant');
+  const closedWidth=await page.locator('#main-workspace').evaluate(node=>node.getBoundingClientRect().width);
+  assert.ok(closedWidth>=await page.locator('.r-work-area').evaluate(node=>node.getBoundingClientRect().width)-2,'Business page uses the available work-area width while the assistant is closed');
+  await page.locator('#workspace-assistant-toggle').click();
   await page.locator('.r-shared-assistant[aria-busy="false"] #copilot-message').fill('synthetic-unsent-product-draft');
+  assert.ok((await page.locator('.r-shared-assistant .copilot-context-label').textContent()).includes(caseId),'The explicitly opened assistant stays bound to the original product');
+  const assistantBounds=await page.locator('.r-shared-assistant').boundingBox(),mainBounds=await page.locator('#main-workspace').boundingBox();
+  assert.ok(assistantBounds.x>=mainBounds.x+mainBounds.width-1,'Shared assistant opens to the right of the business page');
+  assert.ok(mainBounds.width<closedWidth,'The explicit assistant toggle allocates its own width');
+  checks.push('The assistant starts collapsed, preserves full business width and opens explicitly on the right');
   await product.locator('[data-pw-tab="cost"]').click();
   await product.getByRole('button',{name:'编辑成本',exact:true}).click();
   const boundPurchase=page.locator('.r-cost-page input[name="purchase_cost"]');
@@ -139,7 +157,7 @@ try {
 
   before=await inventory();
   assert.deepEqual(before,{...initialInventory,surfaces:initialInventory.surfaces+1},'Opening the canonical bound cost form initializes exactly one surface without tasks or conversations');
-  await find('operations');
+  await generalCost();
   const cost = page.locator('.r-cost-page');
   await cost.locator('input[name="price"]').fill('129');
   assert.match(await cost.innerText(), /未关联商品/);
@@ -219,13 +237,13 @@ try {
   await find('workspace');
   assert.equal(await page.locator('.r-shared-assistant[aria-busy="false"] #copilot-message').inputValue(), 'synthetic-unsent-product-draft');
   assert.equal(await page.locator('iframe[title="完整商品内容编辑"]').getAttribute('srcdoc'), originalFrame);
-  await find('operations'); assert.equal(await cost.locator('input[name="price"]').inputValue(), '129');
+  await generalCost(); assert.equal(await cost.locator('input[name="price"]').inputValue(), '129');
   assert.match(await cost.innerText(), /未关联商品/);
   await find('restock'); assert.equal(await legacy.locator('#analysis-available').inputValue(), '77');
   checks.push('Product frame and assistant draft, general-cost input and restock input survive module round trips');
 
   // Keyboard resizing exercises the actual root-to-product layout bridge.
-  await page.locator('.r-business-nav').getByRole('button', { name: '运营台', exact: true }).click();
+  await page.locator('.r-sidebar nav[aria-label="业务模块"]').getByRole('button', { name: '运营台', exact: true }).click();
   const separator = page.locator('.r-chat-splitter'); await separator.focus(); await page.keyboard.press('Home');
   const rootWidth = (await page.locator('.r-shared-assistant').boundingBox()).width;
   await find('workspace');
@@ -257,17 +275,20 @@ try {
   checks.push('Original product source, saved cost, tasks and conversation inventory remain unchanged');
   await page.screenshot({ path: path.join(output, 'isolated-workspace.png') });
 
-  await find('operations');
+  await generalCost();
   await page.reload(); await cost.locator('input[name="price"]').waitFor();
   await find('workspace');
-  await find('operations'); await cost.locator('input[name="price"]').waitFor();
+  await generalCost(); await cost.locator('input[name="price"]').waitFor();
   assert.deepEqual(await inventory(), before, 'General-cost refresh/reopen must stay read-only');
   checks.push('Refreshing and reopening general cost do not create tasks or surfaces');
 
   // The fixture patches only the model provider; the UI, HTTP, dialogue store
   // and bounded read executor are real. No real model or marketplace is called.
-  await page.locator('.r-business-nav').getByRole('button', { name: '运营台', exact: true }).click();
+  await page.locator('.r-sidebar nav[aria-label="业务模块"]').getByRole('button', { name: '运营台', exact: true }).click();
   const assistant = page.locator('.r-shared-assistant');
+  assert.equal(await page.locator('#workspace-assistant-toggle').getAttribute('aria-expanded'),'false','Reload restores a collapsed assistant');
+  await page.locator('#workspace-assistant-toggle').click();
+  await assistant.locator('#copilot-message').waitFor();
   await assistant.locator('#copilot-message').fill('synthetic-root-draft');
   await page.getByRole('button', {name:'切换智能助手',exact:true}).click();
   await page.getByRole('button', {name:'切换智能助手',exact:true}).click();

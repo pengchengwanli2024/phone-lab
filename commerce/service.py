@@ -9,6 +9,8 @@ import hashlib
 from commerce_core import Core, PLATFORMS
 from operations_analysis import unit_economics, restock_plan, input_schema, UNIT_FIELDS, STOCK_FIELDS
 from packing_estimate import estimate as packing_estimate, definitions as packing_definitions
+import decision_checks
+from listing_lineage import invoke as listing_lineage_invoke, definitions as listing_lineage_definitions
 from shipping_workbench import ShippingWorkbench, definitions as shipping_definitions
 from order_imports import OrderImports, definitions as order_import_definitions
 from workflow_plan import WorkflowPlans, definitions as workflow_plan_definitions
@@ -16,6 +18,11 @@ from operating_pipeline import OperatingPipeline, definitions as operating_pipel
 from operating_budget import OperatingBudget, definitions as operating_budget_definitions
 from mobile_control import MobileControl, definitions as mobile_control_definitions
 from operating_control import OperatingControl, definitions as operating_control_definitions
+from operating_loop import OperatingLoop, definitions as operating_loop_definitions
+from task_dispatch import TaskDispatch, definitions as task_dispatch_definitions
+from operating_health import OperatingHealth, definitions as operating_health_definitions
+from operating_loop_mobile import LoopMobileDecisions
+from operating_retrospect import OperatingRetrospect, definitions as operating_retrospect_definitions
 from media_library import MediaLibrary, definitions as media_library_definitions
 from intel_opportunities import IntelOpportunities, definitions as intel_opportunity_definitions
 from ozon_search_terms import OzonSearchTerms, definitions as ozon_search_terms_definitions
@@ -86,6 +93,7 @@ from assistant_speech import SpeechReader, definitions as assistant_speech_defin
 from tool_discovery import ToolDiscovery, definitions as tool_discovery_definitions
 from form_drafts import FormDrafts, definitions as form_draft_definitions
 from product_workspace import ProductWorkspace, definitions as workspace_definitions
+from workspace_research import WorkspaceResearch, definitions as workspace_research_definitions
 from a2ui.cost import CostSurfaces, definitions as a2ui_definitions, dispatch as a2ui_dispatch
 from market_research import MarketResearch, definitions as market_research_definitions
 from host_execution import HostExecution, definitions as host_execution_definitions
@@ -234,6 +242,7 @@ TOOLS.extend(assistant_speech_definitions(schema,S))
 TOOLS.extend(tool_discovery_definitions(schema,S))
 TOOLS.extend(form_draft_definitions(schema))
 TOOLS.extend(workspace_definitions(schema,S))
+TOOLS.extend(workspace_research_definitions(schema,S))
 TOOLS.extend(a2ui_definitions(schema))
 TOOLS.extend(channel_definitions(schema,S))
 TOOLS.extend(market_research_definitions(schema,S))
@@ -244,9 +253,11 @@ TOOLS.extend(chain_budget_definitions(schema,S))
 TOOLS.extend(timeline_definitions(schema,S))
 TOOLS.extend(media_library_definitions(schema,S))
 TOOLS.extend(intel_opportunity_definitions(schema,S))
+TOOLS.extend(listing_lineage_definitions(schema,S))
 TOOLS.extend(ozon_search_terms_definitions(schema,S))
 TOOLS.extend(model_definitions(schema,S))
 TOOLS.extend(packing_definitions(schema))
+TOOLS.extend(decision_checks.definitions(schema))
 TOOLS.extend(shipping_definitions(schema))
 TOOLS.extend(order_import_definitions(schema))
 TOOLS.extend(workflow_plan_definitions(schema))
@@ -254,6 +265,10 @@ TOOLS.extend(operating_pipeline_definitions(schema,S))
 TOOLS.extend(operating_budget_definitions(schema,S))
 TOOLS.extend(mobile_control_definitions(schema,S))
 TOOLS.extend(operating_control_definitions(schema,S))
+TOOLS.extend(operating_loop_definitions(schema,S))
+TOOLS.extend(task_dispatch_definitions(schema,S))
+TOOLS.extend(operating_health_definitions(schema,S))
+TOOLS.extend(operating_retrospect_definitions(schema,S))
 TOOLS.extend(memory_definitions(schema))
 TOOLS.extend(store_scope_definitions(schema,S))
 TOOLS.extend(execution_history_tools(schema))
@@ -307,6 +322,7 @@ class Commerce:
         self.task_timeline=TaskTimeline(self)
         self.form_drafts=FormDrafts(self.core)
         self.product_workspace=ProductWorkspace(self)
+        self.workspace_research=WorkspaceResearch(self.product_workspace)
         self.catalog=ProductCatalog(self)
         self.media_library=MediaLibrary(self)
         self.intel_opportunities=IntelOpportunities(self)
@@ -335,6 +351,13 @@ class Commerce:
         self.operating_budget=OperatingBudget(self.core)
         self.mobile_control=MobileControl(self, budget_reader=lambda:self.operating_control.mobile_budget())
         self.operating_control=OperatingControl(self)
+        self.operating_loop=OperatingLoop(self)
+        self.task_dispatch=TaskDispatch(self)
+        self.operating_health=OperatingHealth(self)
+        self.operating_retrospect=OperatingRetrospect(self)
+        # Internal only: reached through the authenticated SDK adapter, never as a tool.
+        self.operating_loop_mobile=LoopMobileDecisions(self)
+        self.mobile_control.deciders.append(self.operating_loop_mobile.decide)
         self.memory=LayeredMemory(self)
         self.store_scopes=StoreScopes(self)
         self.execution_history=ExecutionHistory(self)
@@ -396,12 +419,18 @@ class Commerce:
         if name=='commerce_ozon_account_status':return self.ozon_accounts.status(**args)
         if name in ('commerce_web_search','commerce_web_read'):return self.public_web.invoke(name,args)
         if name=='commerce_packing_estimate':return packing_estimate(args['input'])
+        if name in decision_checks.READ_ONLY:return decision_checks.invoke(name,args)
+        if name.startswith('commerce_listing_lineage_'):return listing_lineage_invoke(name,args,self)
         if name.startswith('commerce_shipping_'):return self.shipping.invoke(name,args)
         if name.startswith('commerce_order_import_'):return self.order_imports.invoke(name,args)
         if name.startswith('commerce_workflow_plan_'):return self.workflow_plans.invoke(name,args)
         if name.startswith('commerce_operating_pipeline_'):return self.operating_pipeline.invoke(name,args)
         if name.startswith('commerce_operating_budget_'):return self.operating_budget.invoke(name,args)
         if name.startswith('commerce_operating_control_'):return self.operating_control.invoke(name,args)
+        if name.startswith('commerce_operating_loop_'):return self.operating_loop.invoke(name,args)
+        if name=='commerce_task_dispatch_get':return self.task_dispatch.invoke(name,args)
+        if name.startswith('commerce_operating_health_'):return self.operating_health.invoke(name,args)
+        if name=='commerce_operating_retrospect_get':return self.operating_retrospect.invoke(name,args)
         if name=='commerce_media_library_list':return self.media_library.invoke(name,args)
         if name.startswith('commerce_intel_opportunity_'):return self.intel_opportunities.invoke(name,args)
         if name.startswith('commerce_ozon_search_terms_'):return self.ozon_search_terms.invoke(name,args)
@@ -425,6 +454,7 @@ class Commerce:
         if name.startswith('commerce_copilot_'):return self.copilot.invoke(name,args)
         if name.startswith('commerce_market_research_'):return self.market_research.invoke(name,args)
         if name.startswith('commerce_form_draft_'):return self.form_drafts.invoke(name,args)
+        if name.startswith('commerce_workspace_research_'):return self.workspace_research.invoke(name,args)
         if name.startswith('commerce_workspace_'):return self.product_workspace.invoke(name,args)
         if name.startswith('commerce_product_evidence_'):return self.product_evidence.invoke(name,args)
         if name.startswith('commerce_a2ui_'):return a2ui_dispatch(self.a2ui,name,args)

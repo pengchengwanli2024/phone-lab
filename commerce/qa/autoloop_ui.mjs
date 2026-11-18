@@ -43,7 +43,7 @@ try{
  assert.equal((await invoke('commerce_followup_list')).items.filter(value=>value.state==='acknowledged').length,3);
  checks.push('stale group acknowledgment cannot consume a new unseen receipt');
  checks.push('follow-up timeline reads the original durable receipt');
- await page.keyboard.press('Escape');await page.getByRole('button',{name:'任务',exact:true}).click();
+ await page.keyboard.press('Escape');await page.getByRole('button',{name:'智能体团队',exact:true}).click();
  const row=page.getByRole('row').filter({hasText:'合成时间线任务'});await row.getByRole('button',{name:'查看回执',exact:true}).click();
  const taskDialog=page.getByRole('dialog',{name:'任务与执行回执'});await taskDialog.locator('summary').filter({hasText:'任务时间线'}).click();
  await taskDialog.getByText('任务链额度',{exact:true}).waitFor();await taskDialog.getByText('本地执行结束回执',{exact:true}).waitFor();

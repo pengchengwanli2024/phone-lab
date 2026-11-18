@@ -12,7 +12,7 @@ PAGES = {
  'intelligence':('intelligence','全球情报'),'research':('research','研究资料'),'pilots':('pilots','商品候选'),'creative':('creative','创意工作室'),
  'agent':('agent','执行记录'),'tasks':('tasks','任务记录'),'organization':('organization','岗位交接'),'exposure':('exposure','经营关联'),
  'platforms':('platforms','平台数据'),'live':('live','Ozon 经营'),'alerts':('alerts','经营提醒'),'support':('support','客服'),
- 'insights':('insights','选品与评论'),'skills':('skills','技能'),'assistant-team':('connections','智能体团队'),'operating-control':('connections','自动经营'),'connections':('connections','接入与知识'),'phones':('intelligence','手机墙')}
+ 'insights':('insights','选品与评论'),'decisions':('insights','经营决策检查'),'skills':('skills','技能'),'assistant-team':('connections','智能体团队'),'operating-control':('connections','自动经营'),'connections':('connections','接入与知识'),'phones':('intelligence','手机墙')}
 SECTIONS={'evidence':'证据与选品','social':'社交观察','overview':'概览','research':'市场研究','media':'图片与视频','tasks':'任务记录','sales-trend':'销售趋势','inventory-statistics':'库存统计','order-status':'发货单状态','platform-sales':'平台销售构成',
  'order-detail':'订单详情','product-detail':'商品详情','cost':'成本测算','stock':'补货测算','plan':'工作计划','content':'商品内容',
  'creative':'图片与视频','review':'资料核对','sources':'资料来源','delivery':'交付核对','details':'详情','list':'列表','map':'地图'}

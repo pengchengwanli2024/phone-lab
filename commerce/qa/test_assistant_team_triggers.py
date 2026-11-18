@@ -47,14 +47,15 @@ class LocalTeams(AssistantTeams):
         return {'key': key, 'sha256': getattr(self, 'playbook_revision', 'fixture-v1'), 'preset_id': 'fixture'}
 
     def discussion_start(self, channel_id, expected_revision, question, idempotency_key,
-                         *, mode='all', max_rounds=1, playbook_key=None):
+                         *, mode='all', max_rounds=1, playbook_key=None, firing=None):
         with COPILOT_LOCK, self.core.atomic(reuse=True) as db:
             old = db.execute('SELECT id FROM assistant_team_discussions WHERE idem=?', (idempotency_key,)).fetchone()
             if old:
                 return self.discussion_get(old[0])
             ident = 'discussion_' + str(db.execute('SELECT count(*) FROM assistant_team_discussions').fetchone()[0] + 1)
             doc = {'id': ident, 'channel_id': channel_id, 'question': question, 'status': 'queued',
-                   'members': [], 'mode': mode, 'max_rounds': max_rounds, 'playbook_key': playbook_key}
+                   'members': [], 'mode': mode, 'max_rounds': max_rounds, 'playbook_key': playbook_key,
+                   **({'trigger_firing': firing} if firing else {})}
             db.execute('INSERT INTO assistant_team_discussions VALUES(?,?,?,?,?)',
                        (ident, idempotency_key, '{}', json.dumps(doc), BASE))
             if self.fail_dispatch:

@@ -9,11 +9,12 @@ class CapabilityLifecycle:
         self._extension_error=None;self._media_error=None;self._last_tick=None
         self._team_error=None
         self._engineering_error=None
+        self._loop_error=None
 
     def status(self):
         return {'stopped':self._closed,'media_io_running':bool(self._thread and self._thread.is_alive()),
                 'extension_error':self._extension_error,'media_error':self._media_error,'team_error':self._team_error,
-                'engineering_error':self._engineering_error,'last_tick':self._last_tick}
+                'engineering_error':self._engineering_error,'operating_loop_error':self._loop_error,'last_tick':self._last_tick}
 
     def _media_tick(self,at):
         try:
@@ -36,6 +37,16 @@ class CapabilityLifecycle:
         if engineering:
             try:engineering.tick(at=at);self._engineering_error=None
             except Exception:self._engineering_error='engineering_background_tick_failed'
+        loop=getattr(self.service,'operating_loop',None)
+        if loop:
+            # Only explicitly enabled grants dispatch; an idle loop makes no model call.
+            try:loop.tick(at=at);self._loop_error=None
+            except Exception:self._loop_error='operating_loop_background_tick_failed'
+        health=getattr(self.service,'operating_health',None)
+        if health:
+            # Off unless explicitly enabled; a failure is recorded in its own status.
+            try:health.tick(at=at)
+            except Exception:pass
         with self._lock:
             if self._closed or self._thread and self._thread.is_alive():return
             self._thread=threading.Thread(target=self._media_tick,args=(at,),name='commerce-media-io',daemon=True)

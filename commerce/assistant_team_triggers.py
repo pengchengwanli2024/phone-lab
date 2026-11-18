@@ -17,6 +17,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agent_runtime.policy import canonical
 from copilot import LOCK as COPILOT_LOCK
+from trigger_failure_spacing import decision as spacing_decision
+from trigger_firing import binding as firing_binding
 
 
 KINDS = ('manual', 'once', 'interval', 'weekly', 'webhook', 'after_discussion')
@@ -365,6 +367,29 @@ class TeamTriggers:
         return self._deliver(trigger_id, expected_revision, 'webhook:' + self._key(event_id),
                              'webhook', payload_sha256=_payload(payload), required_kind='webhook')
 
+    def _outcomes(self, db, ident):
+        """Recent events with the known result of the work they started, newest first.
+
+        A dispatched event only counts as a failure once its discussion has a known
+        'failed' result. Running, unknown, partial or interrupted work is reported as
+        such and stops the failure run, so ambiguity never produces a delay.
+        """
+        events = []
+        for row in db.execute('SELECT document FROM assistant_team_trigger_events WHERE trigger_id=? '
+                              'ORDER BY created DESC,rowid DESC LIMIT 20', (ident,)):
+            event = json.loads(row[0])
+            status = event.get('status')
+            if status == 'dispatched' and event.get('discussion_id'):
+                try:
+                    result = self.teams.discussion_get(event['discussion_id'])['status']
+                except ValueError:
+                    result = 'unknown'
+                status = 'failed' if result == 'failed' else 'dispatched' if result == 'completed' else 'not_settled'
+            events.append({'status': status, 'created': event.get('created')})
+            if status not in ('failed', 'skipped'):
+                break
+        return events
+
     def _busy(self, db, channel_id):
         from assistant_team import ACTIVE
         ids = [row[0] for row in db.execute(
@@ -413,17 +438,21 @@ class TeamTriggers:
                     raise ValueError('team_trigger_channel_busy')
             except ValueError as error:
                 code = str(error) if str(error).startswith('team_trigger_') else 'team_trigger_not_ready'
-                event.update(status='skipped' if code in ('team_trigger_channel_busy', 'team_trigger_slot_missed') else 'blocked', error=code)
+                event.update(status='skipped' if code in ('team_trigger_channel_busy', 'team_trigger_slot_missed',
+                                                          'team_trigger_failure_spacing') else 'blocked', error=code)
                 if code == 'team_trigger_source_changed':
                     doc.update(enabled=False, revision=doc['revision'] + 1)
             else:
                 # A rejected nested discussion must not commit partially queued runs.
                 db.execute('SAVEPOINT assistant_team_trigger_dispatch')
                 try:
+                    # Unattended kinds tell the model this turn is the scheduled work; manual runs are plain requests.
+                    firing = firing_binding(trigger_id, doc['kind'], key)
                     discussion = self.teams.discussion_start(
                         doc['channel_id'], doc['channel_revision'], doc['question'],
                         'team-trigger:' + digest({'trigger': trigger_id, 'event': key}),
-                        mode=doc['dispatch_mode'], max_rounds=doc['max_rounds'], playbook_key=doc['playbook_key'])
+                        mode=doc['dispatch_mode'], max_rounds=doc['max_rounds'], playbook_key=doc['playbook_key'],
+                        **({'firing': firing} if firing else {}))
                 except Exception as error:
                     db.execute('ROLLBACK TO assistant_team_trigger_dispatch')
                     event.update(status='failed' if isinstance(error, ValueError) else 'unknown',
@@ -520,6 +549,11 @@ class TeamTriggers:
                 key = 'schedule:' + slot
                 if db.execute('SELECT 1 FROM assistant_team_trigger_events WHERE trigger_id=? AND event_key=?', (ident, key)).fetchone():
                     continue
+                if forced_error is None:
+                    # Repeated real failures back off instead of retrying every slot.
+                    gate = spacing_decision(self._outcomes(db, ident), at, doc['activated_at'])
+                    if gate['delayed']:
+                        forced_error = gate['error']
                 event = self._deliver(ident, doc['revision'], key, kind, at=at, slot=slot, forced_error=forced_error)
                 events.append(event)
         return {'events': events}

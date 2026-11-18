@@ -71,6 +71,9 @@ if os.environ.get('COMMERCE_QA_LISTING_RELEASE')=='1':
     from fixture_listing_release import install as install_listing_release
     install_listing_release(app)
 marker.write_text(json.dumps({'case_id': case_id}))
+if os.environ.get('COMMERCE_QA_OPERATING_LOOP')=='1':
+    from fixture_operating_loop import install as install_operating_loop
+    install_operating_loop(app, case_id)
 if os.environ.get('COMMERCE_QA_PAGE_CONTEXT')=='1':
     from fixture_page_context import seed as seed_page_context
     seed_page_context(app)

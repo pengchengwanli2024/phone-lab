@@ -1,0 +1,24 @@
+.r-pipeline-board .r-page-heading p{margin:4px 0 0;font-size:13px;line-height:1.6;max-width:720px}
+.r-pipeline-toolbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--ui-space-3);margin:0 0 var(--ui-space-3)}
+.r-pipeline-toolbar .ui-field{display:grid;gap:6px;font-size:13px;min-width:0;flex:1 1 220px;max-width:360px}
+.r-pipeline-toolbar input{width:100%;min-width:0}
+.r-pipeline-summary{margin:0 0 var(--ui-space-3);font-size:13px;color:var(--ui-color-muted)}
+.r-pipeline-columns{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(260px,1fr);gap:var(--ui-space-3);overflow-x:auto;padding-bottom:var(--ui-space-2);align-items:start}
+.r-pipeline-column{background:var(--ui-color-surface-alt);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-card);padding:var(--ui-space-3);min-width:0}
+.r-pipeline-column>header{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.r-pipeline-column h2{font-size:14px;font-weight:600;margin:0}
+.r-pipeline-column>p{margin:4px 0 var(--ui-space-2);font-size:12px;line-height:1.5}
+.r-pipeline-column>ul{list-style:none;margin:0;padding:0;display:grid;gap:var(--ui-space-2)}
+.r-pipeline-card{background:var(--ui-color-surface);border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);padding:12px;min-width:0;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.r-pipeline-open{display:grid;gap:2px;width:100%;text-align:left;background:none;border:0;padding:0;color:var(--ui-color-text);cursor:pointer;font:inherit;min-height:44px}
+.r-pipeline-open strong{font-weight:600}.r-pipeline-open small{color:var(--ui-color-muted);font-size:12px}
+.r-pipeline-open:hover strong{color:var(--ui-color-brand)}
+.r-pipeline-open:focus-visible{outline:2px solid var(--ui-color-focus);outline-offset:2px;border-radius:4px}
+.r-pipeline-card p{margin:6px 0 0}
+.r-pipeline-blocker span{display:block;font-size:12px;color:var(--ui-color-muted)}
+.r-pipeline-note{font-size:12px;color:var(--ui-color-muted)}
+.r-pipeline-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--ui-color-muted)}
+.r-pipeline-meta details{flex:1 1 100%}.r-pipeline-meta summary{cursor:pointer;min-height:32px;display:flex;align-items:center}
+.r-pipeline-meta ul{list-style:none;margin:4px 0 0;padding:0}
+.r-pipeline-table td small{display:block;color:var(--ui-color-muted);font-size:12px}
+@media(max-width:767px){.r-pipeline-columns{grid-auto-flow:row;grid-auto-columns:auto;overflow-x:visible}}

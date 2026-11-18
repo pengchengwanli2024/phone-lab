@@ -1,7 +1,7 @@
 window.CommerceLive=({api,repaint,isActive,toast,onConnections,onOrder})=>{
   const ui=window.CommerceUI,esc=ui.escape;
   const clock=value=>{if(!value)return '时间未记录';const date=new Date(value);return Number.isNaN(date.getTime())?'时间未记录':date.toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})};
-  const syncLabels={success:'已同步',partial:'部分同步完成',failed:'同步失败',running:'正在同步',superseded:'范围已变化',interrupted:'同步已中断',unknown:'结果未知'};
+  const syncLabels={success:'已同步',partial:'部分同步完成',failed:'同步失败',running:'正在同步',superseded:'范围已变化',interrupted:'同步已中断',unknown:'结果未知',deferred:'限流退避中，稍后自动再读'};
   const basisLabels={unconfirmed:'待核对',present_minus_reserved:'在库数量减预留',present_is_available:'在库字段即为可售'};
   const state={value:null,alerts:null,error:'',busy:false,loaded:false};
   const plans=window.CommerceLivePlans({api,repaint,toast});

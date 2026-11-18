@@ -1,19 +1,121 @@
 {
-  "schema": 1,
-  "features": [
+ "schema": 1,
+ "features": [
+  {
+   "id": "engineering-cli",
+   "title": "工程工单 CLI：有界输入、命令与请求契约",
+   "files": [
+    "commerce/engineering_cli.py",
+    "commerce/runtime.py",
+    "commerce/qa/test_engineering_cli.py"
+   ],
+   "writable_paths": [
+    "commerce/engineering_cli.py"
+   ],
+   "checks": [
     {
-      "id": "engineering-cli",
-      "title": "工程工单 CLI：有界输入、命令与请求契约",
-      "files": ["commerce/engineering_cli.py", "commerce/runtime.py", "commerce/qa/test_engineering_cli.py"],
-      "writable_paths": ["commerce/engineering_cli.py"],
-      "checks": [{"kind": "python_unittest", "paths": ["commerce/qa/test_engineering_cli.py"]}]
-    },
-    {
-      "id": "shipping-packing",
-      "title": "离线装箱候选：几何约束、承重与输入边界",
-      "files": ["commerce/shipping_packing.py", "commerce/shipping_models.py", "commerce/qa/test_shipping_packing.py"],
-      "writable_paths": ["commerce/shipping_packing.py"],
-      "checks": [{"kind": "python_unittest", "paths": ["commerce/qa/test_shipping_packing.py"]}]
+     "kind": "python_unittest",
+     "paths": [
+      "commerce/qa/test_engineering_cli.py"
+     ]
     }
-  ]
+   ]
+  },
+  {
+   "id": "shipping-packing",
+   "title": "离线装箱候选：几何约束、承重与输入边界",
+   "files": [
+    "commerce/shipping_packing.py",
+    "commerce/shipping_models.py",
+    "commerce/qa/test_shipping_packing.py"
+   ],
+   "writable_paths": [
+    "commerce/shipping_packing.py"
+   ],
+   "checks": [
+    {
+     "kind": "python_unittest",
+     "paths": [
+      "commerce/qa/test_shipping_packing.py"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ozon-read-backoff",
+   "title": "Ozon 读取限流退避策略：连续限流加倍等待、封顶与重置",
+   "files": [
+    "commerce/ozon_read_backoff.py",
+    "commerce/qa/test_ozon_read_backoff.py"
+   ],
+   "writable_paths": [
+    "commerce/ozon_read_backoff.py"
+   ],
+   "checks": [
+    {
+     "kind": "python_unittest",
+     "paths": [
+      "commerce/qa/test_ozon_read_backoff.py"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "listing-lineage",
+   "title": "Listing 证据血缘：事实/关键词/声明/字段引用审核与影响定位",
+   "files": [
+    "commerce/listing_lineage.py",
+    "commerce/qa/test_listing_lineage.py"
+   ],
+   "writable_paths": [
+    "commerce/listing_lineage.py"
+   ],
+   "checks": [
+    {
+     "kind": "python_unittest",
+     "paths": [
+      "commerce/qa/test_listing_lineage.py"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "model-attempt-outcome",
+   "title": "模型尝试结果分类：哪些失败可能已有输出（结果未知、禁止重发）",
+   "files": [
+    "commerce/agent_runtime/attempt_outcome.py",
+    "commerce/qa/test_attempt_outcome.py"
+   ],
+   "writable_paths": [
+    "commerce/agent_runtime/attempt_outcome.py"
+   ],
+   "checks": [
+    {
+     "kind": "python_unittest",
+     "paths": [
+      "commerce/qa/test_attempt_outcome.py"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "extension-failure-classification",
+   "title": "扩展失败判定：结果未知与可重试的区分、原因码与不含内容的原因",
+   "files": [
+    "commerce/extension_runtime/failure.py",
+    "commerce/qa/test_extension_failure.py"
+   ],
+   "writable_paths": [
+    "commerce/extension_runtime/failure.py"
+   ],
+   "checks": [
+    {
+     "kind": "python_unittest",
+     "paths": [
+      "commerce/qa/test_extension_failure.py"
+     ]
+    }
+   ]
+  }
+ ]
 }

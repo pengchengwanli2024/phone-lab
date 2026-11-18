@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import time
 from .model_worker import STRUCTURED_SYSTEM
+from .attempt_outcome import MAX_LOG_BYTES,diagnostic,exit_error,valid
 
 KNOWN_BINARIES=(Path('/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'),
                 Path('/Applications/Codex.app/Contents/Resources/codex'))
@@ -21,33 +22,15 @@ class Cancelled(Exception):pass
 
 
 def attempt_diagnostic(path,started,reason,returncode):
-    stage='process_started';rank=0
-    stages={'thread.started':(1,'session_started'),'turn.started':(2,'model_started'),
-            'item.completed':(3,'message_received'),'turn.completed':(4,'turn_completed')}
-    with path.open('rb')as source:raw=source.read(1000000)
-    for line in raw.splitlines():
-        try:event=json.loads(line)
-        except (ValueError,UnicodeError):continue
-        if not isinstance(event,dict):continue
-        item=event.get('item')
-        if event.get('type')=='item.completed'and(not isinstance(item,dict)or item.get('type')!='agent_message'):continue
-        current=stages.get(event.get('type'))
-        if current and current[0]>rank:rank,stage=current
-    # No response text, stderr, prompts, paths, session IDs or credentials.
-    return {'provider':'codex_cli','stage':stage,'reason':reason,
-            'elapsed_seconds':round(time.monotonic()-started,3),
-            'returncode':returncode,'automatic_retry':False}
+    with path.open('rb')as source:raw=source.read(MAX_LOG_BYTES)
+    return diagnostic(raw,time.monotonic()-started,reason,returncode)
 
 
 def failure_diagnostic(error):
     seen=set()
     while error is not None and id(error)not in seen:
         seen.add(id(error));value=getattr(error,'provider_diagnostic',None)
-        if (isinstance(value,dict)and value.get('provider')=='codex_cli'and
-            value.get('stage')in('process_started','session_started','model_started','message_received','turn_completed')and
-            value.get('reason')in('invalid_response','cli_exit','deadline','cancelled')and
-            type(value.get('elapsed_seconds'))in(int,float)and math.isfinite(value['elapsed_seconds'])and value['elapsed_seconds']>=0 and
-            (value.get('returncode')is None or type(value['returncode'])is int)):
+        if valid(value):
             return {key:value.get(key)for key in('provider','stage','reason','elapsed_seconds','returncode')}|{'automatic_retry':False}
         error=error.__cause__ or error.__context__
     return None
@@ -214,7 +197,7 @@ def invoke_json(payload, cancelled, config, output_schema, instructions, *, inpu
                 if process.returncode:
                     reason='cli_exit'
                     diagnostic=attempt_diagnostic(work/'events.jsonl',started,reason,process.returncode)
-                    raise ValueError('agent_provider_outcome_unknown'if diagnostic['stage']in('model_started','message_received')else'agent_provider_failed_no_automatic_retry')
+                    raise ValueError(exit_error(diagnostic['stage']))
                 output.seek(0);events=output.read(1000001).decode('utf-8');check_events(events)
                 response=work/'answer.json'
                 if not response.is_file():raise ValueError('agent_model_invalid_response')

@@ -1,0 +1,72 @@
+/* Continuous workspace: business content first, assistant available on demand. */
+.r-app,.r-app.r-hosted{grid-template-columns:208px minmax(0,1fr);grid-template-rows:56px minmax(0,1fr);background:var(--ui-color-canvas)}
+.r-app>.r-sidebar,.r-app.r-hosted>.r-sidebar{display:flex;padding:18px 12px 12px;gap:14px;overflow:auto}
+.r-app .r-brand{justify-content:flex-start;padding:0 8px 14px!important;gap:10px}
+.r-app .r-brand>div,.r-app .r-nav-label{display:block}
+.r-brand small{font-size:12px}
+.r-app .r-sidebar .r-nav-link{justify-content:flex-start;min-height:40px!important;padding:8px 10px!important;font-size:14px!important;gap:12px}
+.r-sidebar>nav{flex:none;overflow:visible}
+.r-sidebar>.r-workspace-navigation{flex:1;min-height:0;overflow:auto;padding-top:12px;border-top:1px solid var(--ui-color-border)}
+.r-workspace-navigation details{margin:0 0 4px}
+.r-workspace-navigation summary{font-size:12px;padding:9px 10px;color:var(--ui-color-muted);font-weight:600}
+.r-workspace-navigation details>div{padding:0 0 6px 8px}
+.r-workspace-link{background:transparent;width:100%;border:0;border-radius:var(--ui-radius-control);padding:8px 10px;justify-content:flex-start;text-align:left;font-size:13px;min-height:36px;color:var(--ui-color-text)}
+.r-workspace-link[aria-current=page]{color:var(--ui-color-brand);background:var(--ui-color-brand-soft);font-weight:600}
+.r-app>.r-topbar,.r-app.r-hosted>.r-topbar{grid-column:2;gap:16px;padding:6px 22px;min-width:0}
+.r-topbar-location{display:flex;gap:10px;align-items:center;min-width:0;white-space:nowrap;font-size:14px}
+.r-topbar-location>span{color:var(--ui-color-muted)}
+.r-topbar-location>strong{overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.r-top-controls{min-width:0;gap:8px}
+.r-app .r-top-controls button.r-search{width:auto;min-width:0;max-width:none;flex:none;gap:10px;white-space:nowrap;font-size:12px!important;padding-inline:12px!important}
+.r-top-controls .r-search kbd{margin-left:12px}
+.r-data-scope{color:var(--ui-color-muted);font-size:12px!important;white-space:nowrap}
+.r-app .r-top-controls button.r-assistant-toggle{width:auto;min-width:0;gap:7px;white-space:nowrap;min-height:36px!important;padding-inline:12px!important}
+.r-app>.r-work-area,.r-app.r-hosted>.r-work-area{grid-column:2;grid-template-columns:minmax(0,1fr);padding:0;gap:0}
+.r-app .r-work-area.with-assistant{grid-template-columns:minmax(0,1fr) 10px var(--r-chat-width,360px);padding:0 10px 10px 0}
+.r-work-area>.r-main,.r-work-area.with-assistant>.r-main{grid-column:1;grid-row:1;border:0;border-radius:0;background:var(--ui-color-canvas)}
+.r-work-area>.r-shared-assistant{grid-column:3;grid-row:1;margin-top:10px;height:calc(100% - 10px)}
+.r-work-area>.r-chat-splitter{grid-column:2;grid-row:1}
+.r-business-nav,.r-hosted .r-business-nav{display:none}
+.r-bound-workbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 20px 0;font-size:12px;color:var(--ui-color-muted)}
+.r-bound-workbar button{min-height:32px;font-size:12px}
+.r-compact-page-navigation{display:none}
+.r-dialog:has(.r-command-search){width:min(640px,calc(100vw - 32px));height:min(600px,calc(100dvh - 48px));max-height:calc(100dvh - 48px);padding:20px;overflow:hidden}
+.r-dialog[open]:has(.r-command-search){display:flex;flex-direction:column}
+.r-command-search{display:flex;flex-direction:column;flex:1;min-height:0}
+.r-command-search>.ui-field{flex:none}
+.r-command-search input{font-size:16px;min-height:44px}
+.r-command-search>.r-footnote{margin:10px 0;flex:none}
+.r-command-search .r-finder-list{flex:1;min-height:0;max-height:none;overflow:auto;align-content:start;scrollbar-gutter:stable}
+.r-command-search .r-finder-list button{min-height:48px;flex:none;justify-content:space-between;gap:16px}
+@media(max-width:1023px){
+ .r-app,.r-app.r-hosted{grid-template-columns:minmax(0,1fr)}
+ .r-app>.r-sidebar,.r-app.r-hosted>.r-sidebar{display:none}
+ .r-app>.r-topbar,.r-app.r-hosted>.r-topbar,.r-app>.r-work-area,.r-app.r-hosted>.r-work-area{grid-column:1}
+ .r-app>.r-topbar,.r-app.r-hosted>.r-topbar{padding:6px 12px;gap:10px}
+ .r-topbar-location>span,.r-topbar-location>i{display:none}
+ .r-app .r-top-controls button.r-search{width:40px;min-width:40px;padding:6px!important}
+ .r-top-controls .r-search>span:not(.r-icon),.r-top-controls .r-search>kbd{display:none}
+ .r-app .r-work-area.is-compact,.r-app .r-work-area.is-compact.with-assistant{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);padding:0 0 var(--r-mobile-nav-space,64px)}
+ .r-work-area.is-compact>.r-main,.r-work-area.is-compact>.r-shared-assistant{grid-column:1;grid-row:1;margin:0;width:100%;height:100%;border-radius:0}
+ .r-work-area.is-compact>.r-chat-splitter{display:none}
+ .r-work-area.is-compact.with-assistant[data-mobile-view=chat]>.r-main{display:none}
+ .r-work-area.is-compact>.r-mode-switcher{display:none}
+ .r-app .r-business-nav,.r-app.r-hosted .r-business-nav{position:fixed;inset:auto 0 0;z-index:7;display:flex;flex-direction:row;height:var(--r-mobile-nav-space,64px);padding:4px 6px calc(4px + env(safe-area-inset-bottom,0px));gap:2px;border-top:1px solid var(--ui-color-border);background:var(--ui-color-surface);overflow-x:auto}
+ .r-business-nav button{flex:1;min-width:64px;min-height:52px!important;flex-direction:column;font-size:12px!important;padding:4px 8px!important;gap:3px}
+ .r-compact-page-navigation{display:flex;align-items:center;gap:12px;flex:none;padding:8px 14px;border-bottom:1px solid var(--ui-color-border);background:var(--ui-color-surface)}
+ .r-compact-page-navigation label{font-size:12px;color:var(--ui-color-muted);white-space:nowrap}
+ .r-compact-page-navigation select{flex:1;min-width:0;min-height:40px;font-size:14px}
+ .r-app[data-keyboard-open=true] .r-business-nav{display:none}
+}
+@media(max-width:600px){
+ .r-top-controls{gap:4px}
+ .r-app .r-top-controls button.r-assistant-toggle{width:40px;padding:6px!important;min-height:44px!important}
+ .r-assistant-toggle>.r-assistant-label,.r-data-scope,.r-phone-toggle{display:none!important}
+ .r-topbar-location{flex:1}
+ .r-topbar-location>strong{font-size:14px}
+ .r-top-controls .r-theme-control{max-width:82px}
+ .r-top-controls select{width:82px;max-width:82px}
+ .r-bound-workbar{padding:8px 14px 0}
+}
+@media(pointer:coarse){.r-workspace-link,.r-workspace-navigation summary{min-height:44px}}
+@media(prefers-reduced-motion:reduce){.r-command-search *{scroll-behavior:auto!important}}

@@ -1,9 +1,16 @@
-"""Read-only, version-bound projection of unresolved model and research work."""
+"""Version-bound projection of unresolved model and research work.
+
+Reads never change anything. The one write, close, records that the operator has
+checked a failed, unknown or interrupted outcome; it never resubmits, and the
+original request and its status stay exactly as they were.
+"""
 from datetime import datetime, timezone
 import hashlib
 import json
 import re
 import sqlite3
+
+import time
 
 from agent_runtime.policy import canonical
 
@@ -19,6 +26,8 @@ def definitions(schema, string):
                  'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100}, 'cursor': string, 'include_followups': {'type':'boolean'}})),
         ('commerce_attention_get', '重新核对一条事项的当前版本与原工作入口；不批准或恢复执行',
          schema({'item_id': string}, ['item_id'])),
+        ('commerce_attention_close', '核对后关闭一条失败、结果未知或中断的事项；绑定当前版本，不重发、不改变原请求',
+         schema({'item_id': string, 'note': {'type': 'string', 'maxLength': 500}}, ['item_id'])),
     ]
 
 
@@ -44,9 +53,13 @@ class Attention:
     def __init__(self, service):
         self.service = service
         self.core = service.core
+        with self.core.db() as db:
+            db.execute('CREATE TABLE IF NOT EXISTS attention_closed (item_id TEXT PRIMARY KEY, source TEXT NOT NULL, '
+                       'source_id TEXT NOT NULL, kind TEXT NOT NULL, note TEXT NOT NULL, closed REAL NOT NULL)')
 
     def invoke(self, name, args):
-        return {'commerce_attention_list': self.listing, 'commerce_attention_get': self.get}[name](**args)
+        return {'commerce_attention_list': self.listing, 'commerce_attention_get': self.get,
+                'commerce_attention_close': self.close}[name](**args)
 
     def _collect(self, demo=None, include_followups=False):
         result, errors = [], set()
@@ -119,7 +132,10 @@ class Attention:
             if include_followups:
                 try:result.extend(self.service.followups.attention_items(db, demo))
                 except (sqlite3.Error, ValueError, KeyError, TypeError):errors.add('followup')
-        return sorted(result, key=self._key), sorted(errors)
+        # An item id includes its version, so a closed item reappears if the outcome changes.
+        with self.core.db() as db:
+            closed = {row[0] for row in db.execute('SELECT item_id FROM attention_closed')}
+        return sorted((row for row in result if row['id'] not in closed), key=self._key), sorted(errors)
 
     @staticmethod
     def _key(value):
@@ -207,3 +223,26 @@ class Attention:
             raise ValueError('attention_source_unavailable' if errors else 'attention_item_changed')
         return {'schema': 'commerce-attention-item-v1', 'item': current,
                 'complete': not errors, 'source_errors': errors}
+
+    def close(self, item_id, note=''):
+        """Record that a failed/unknown/interrupted outcome was checked. Nothing is resubmitted."""
+        if not isinstance(item_id, str) or not ITEM_ID.fullmatch(item_id):
+            raise ValueError('invalid_attention_item')
+        if not isinstance(note, str) or len(note) > 500 or any(ord(c) < 32 and c not in '\n\t' for c in note):
+            raise ValueError('invalid_attention_note')
+        with self.core.db() as db:
+            prior = db.execute('SELECT source,source_id,kind,closed FROM attention_closed WHERE item_id=?', (item_id,)).fetchone()
+        if not prior:
+            rows, errors = self._collect(include_followups=True)
+            current = next((row for row in rows if row['id'] == item_id), None)
+            if current is None:
+                raise ValueError('attention_source_unavailable' if errors else 'attention_item_changed')
+            # Questions and proposals need an answer or a decision in their own flow, and a
+            # submission whose task already exists must be reconciled there.
+            if current['kind'] not in ('unknown', 'failed') or current.get('status') == 'submission_unknown' or current['source'] == 'followup':
+                raise ValueError('attention_not_closable')
+            prior = (current['source'], current['source_id'], current['kind'], time.time())
+            with self.core.db() as db:
+                db.execute('INSERT OR IGNORE INTO attention_closed VALUES (?,?,?,?,?,?)', (item_id, *prior[:3], note.strip(), prior[3]))
+        return {'schema': 'commerce-attention-close-v1', 'item_id': item_id, 'status': 'closed', 'source': prior[0],
+                'source_id': prior[1], 'kind': prior[2], 'resubmitted': False, 'original_changed': False}

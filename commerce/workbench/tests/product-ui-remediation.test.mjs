@@ -34,7 +34,7 @@ test('saved scenario parameters show percentage units without changing frozen in
 });
 function workflowFixture() {
   const s={dirty:new Set(),data:{stages:['S1','S2','S3','S4','S5'].map(id=>({id,status:'PASS'})),calculation:{status:'CALCULATED',stale:false},artifacts:{images:{intact:true}},content_drafts:[{preflight:{status:'current',ready_for_local_review:true}}],delivery_review:{status:'local_review_recorded'}}};
-  const context=vm.createContext({s});vm.runInContext(cut('  function workflow()','  function taskSummary()')+';this.workflow=workflow;',context);return {s,workflow:context.workflow};
+  const context=vm.createContext({s});vm.runInContext(cut('  function workflow()','  function taskSummary(')+';this.workflow=workflow;',context);return {s,workflow:context.workflow};
 }
 test('product progression stops at unsaved or stale content and never calls a local review published',()=>{
   const f=workflowFixture();assert.equal(f.workflow().find(row=>!row.complete).action,'listing');

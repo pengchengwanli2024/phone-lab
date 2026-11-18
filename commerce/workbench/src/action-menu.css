@@ -11,3 +11,8 @@
 .r-task-excerpt{margin:5px 0;font-size:12px;color:var(--ui-color-muted)}
 .r-table-wrap .r-table-actions{white-space:nowrap}
 @media(max-width:600px){.r-more-actions-trigger,.r-action-menu>.ui-button{min-height:44px}.r-task-title,.r-task-excerpt{max-width:240px}}
+
+.r-task-executor{margin:12px 0;padding:12px;border:1px solid var(--ui-color-border);border-radius:8px;font-size:14px}
+.r-task-executor dl{margin:0;display:grid;gap:8px}.r-task-executor dl>div{display:grid;grid-template-columns:5em minmax(0,1fr);gap:8px}
+.r-task-executor dt{color:var(--ui-color-muted);font-size:12px;line-height:20px}.r-task-executor dd{margin:0;overflow-wrap:anywhere}
+.r-task-executor ul{margin:8px 0 0;padding-left:18px;font-size:12px;color:var(--ui-color-muted)}.r-task-executor p{margin:8px 0 0;font-size:12px}

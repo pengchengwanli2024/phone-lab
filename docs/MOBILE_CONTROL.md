@@ -52,6 +52,14 @@
 
 在登记 dispatch 意图与原执行登记之间存在清楚保留的事务边界。崩溃或丢回执时，只核对已关联原后续任务的 `task_runs`；没有登记回执则返回 UNKNOWN，**不自动重发**。已存在登记时读同一个回执；source 变化、撤权、超时及 UNKNOWN 不获得新执行权限。源任务与原执行库只通过既有接口变更；数据库文件直接篡改不属于传输身份保证。
 
+## 经营回路建议的决策卡（2026-11-18）
+
+`commerce/operating_loop_mobile.py` 为回路中状态为“等你决定”的工单生成决策卡。卡片绑定工单、建议编号、准确结果哈希、负责人、私有身份策略版本和有效期（最长 900 秒）；两个按钮各带一个随机 nonce，数据库只存摘要。同一工单同一时刻只有一张有效卡。
+
+点击经 `FeishuSDKAdapter.handle_sdk_event` 进入 `MobileControl._decide`：原本地任务卡的 nonce 未命中时，依次询问已登记的 decider，仍未命中才报 `mobile_nonce_invalid`。回路 decider 先把卡片标为处理中，再调用 `OperatingLoop.decide`；后者沿原审阅路径重新校验证据并只登记一次原岗位交接任务。证据已变、桌面已决定、过期、撤权或他人点击都不会改变工单。处理中途崩溃后回执读为 `unknown`，不自动重试。
+
+它不是 MCP 工具；生成卡片不发送任何消息，`delivery_status` 恒为 `not_sent`。真实发送、手机实收和点击回传仍需按下文接入并实测。
+
 ## SDK 入口与主控接线
 
 普通 MCP 可接线的仅为 `definitions(schema,string)` 所列四项与 `MobileControl.invoke` 白名单：command、receipt_get、decision_get、project。没有 remote approve、SDK event、prepare_local 工具。不要把对象方法按名字通用导出。

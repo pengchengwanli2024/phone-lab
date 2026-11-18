@@ -6,6 +6,8 @@ SAFE_BUILTINS={
     'commerce_ozon_search_terms_refresh':None,'commerce_ozon_search_terms_status':None,'commerce_ozon_search_terms_search':None,
     'commerce_intel_opportunity_packet':None,'commerce_intel_opportunity_validate':None,
     'commerce_unit_economics':None,'commerce_restock_plan':None,'commerce_packing_estimate':None,
+    'commerce_listing_lineage_audit':None,'commerce_listing_lineage_impact':None,'commerce_listing_lineage_export':None,
+    'commerce_listing_lineage_facts_draft':'case_id',
     'commerce_organization_board':'case_id','commerce_organization_brief':'case_id',
     'commerce_media_overview':'project_id',
     'commerce_media_readiness':'project_id',

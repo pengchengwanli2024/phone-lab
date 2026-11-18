@@ -38,7 +38,7 @@ test('a document request waits for the parser to receive its trailing inline dat
 });
 test('a visible data element is not decoded until its streamed content is complete',async()=>{
  const original=globalThis.document,packed=packDocument('<p>完整文档</p>');let received=false,parsed;
- globalThis.document={readyState:'loading',getElementById:()=>({textContent:received?packed:packed.slice(0,10)}),addEventListener:(_event,callback)=>{parsed=callback;}};
+ globalThis.document={readyState:'loading',getElementById:id=>id==='commerce-embedded-partial-parser-test'?{textContent:received?packed:packed.slice(0,10)}:null,addEventListener:(_event,callback)=>{parsed=callback;}};
  try{
   const pending=embeddedDocument('inline:partial-parser-test');assert.equal(typeof parsed,'function');
   received=true;globalThis.document.readyState='interactive';parsed();assert.equal(await pending,'<p>完整文档</p>');

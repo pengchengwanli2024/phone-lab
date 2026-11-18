@@ -1103,6 +1103,39 @@ body{font-family:var(--ui-font-family);font-size:var(--ui-font-size-compact);lin
 .pw-goal-summary{display:flex;align-items:center;gap:var(--ui-space-3);padding-block:var(--ui-space-3);margin-bottom:var(--ui-space-4);border-bottom:1px solid var(--ui-color-border);font-size:var(--ui-font-size-compact)}
 .pw-goal-summary>strong{flex:none}.pw-goal-summary>p{flex:1;min-width:0;margin:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.pw-goal-summary>.ui-button{flex:none}
 
+/* Keep the object's evidence and its next steps together, independent of chat. */
+.pw-object-header{padding:18px 22px 14px;min-height:88px}
+.pw-object-header h1{font-size:22px;line-height:30px}
+.pw-object-meta{gap:6px 12px;margin-top:6px}
+.pw-tabs{gap:24px;padding-inline:22px}
+.pw-tabpanel{padding:20px 22px}
+.pw-object-work{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;align-items:start}
+.pw-object-evidence,.pw-progress-panel{min-width:0}
+.pw-object-work .pw-overview-grid{gap:16px}
+.pw-progress-panel .pw-task-summary{margin:0;background:var(--ui-color-canvas);border-radius:var(--ui-radius-card);padding:16px}
+.pw-page-progress .pw-task-goal{display:none}
+.pw-page-progress .pw-workflow>li{align-items:flex-start;padding-block:7px;gap:8px}
+.pw-page-progress .pw-workflow>li>div{padding-top:1px}
+.pw-page-progress .pw-workflow>li .ui-badge{white-space:normal;max-width:92px;text-align:center}
+.pw-page-progress .pw-workflow>li:not(:last-child):before{bottom:-10px}
+.pw-object-evidence>.pw-goal-summary{padding-top:0;align-items:flex-start}
+.pw-object-work .pw-section{padding:16px;margin-bottom:16px}
+@container product (max-width:1099px){
+ .pw-object-work{grid-template-columns:minmax(0,1fr)}
+ .pw-progress-panel .pw-workflow{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px}
+ .pw-progress-panel .pw-workflow>li:before{display:none}
+}
+@container product (max-width:699px){
+ .pw-object-header{padding:16px;gap:10px}
+ .pw-object-header h1{font-size:20px;line-height:28px}
+ .pw-tabpanel{padding:16px}
+ .pw-tabs{padding-inline:16px}
+ .pw-object-work .pw-overview-grid{grid-template-columns:minmax(0,1fr)}
+ .pw-object-work .pw-section{padding:14px}
+ .pw-progress-panel .pw-workflow{grid-template-columns:minmax(0,1fr)}
+ .pw-header-actions>.primary{font-size:var(--ui-font-size-compact);min-height:44px}
+}
+
 @media(max-width:767px){.pw-header-actions{flex-wrap:wrap;justify-content:flex-start}.pw-header-actions>.primary{order:-1;flex:1 1 200px;min-width:0;min-height:44px;white-space:normal}.pw-header-actions>[data-pw-action=more]{margin-inline-start:auto}}
 
 .pe-workbench{min-width:0}.pe-heading h2{margin:0 0 6px;font-size:var(--ui-font-size-title,22px)}.pe-heading p{margin:5px 0}

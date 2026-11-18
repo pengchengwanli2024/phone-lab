@@ -5,6 +5,7 @@ import time
 import uuid
 
 from agent_runtime.policy import canonical
+from agent_text_fence import fence_collaboration
 from copilot import LOCK
 from assistant_team_routing import choose_members, normalize_routing, collaboration_plan
 
@@ -112,20 +113,27 @@ class TeamDiscussions:
                 result = self._member(db, old)
                 if result['status'] == 'completed' and result.get('answer'):
                     latest[result['profile_id']] = {k: result[k] for k in ('profile_id', 'name', 'thread_id', 'run_id', 'answer_sha256')}
-                    latest[result['profile_id']]['answer'] = result['answer'][:2000]
+                    latest[result['profile_id']]['answer'] = result['answer']
                     latest[result['profile_id']]['truncated'] = len(result['answer']) > 2000
-            binding['collaboration'] = {'discussion_id': doc['id'], 'index': step['index'], 'round': step['round'],
-                'kind': step['kind'], 'prior_answers': list(latest.values()), 'max_member_requests': len(doc['plan'])}
+            # Prior answers are other agents' output: fence the prompt copy only.
+            binding['collaboration'] = fence_collaboration({'discussion_id': doc['id'], 'index': step['index'], 'round': step['round'],
+                'kind': step['kind'], 'prior_answers': list(latest.values()), 'max_member_requests': len(doc['plan'])})
+
         if doc.get('playbook_snapshot'):
             binding['playbook'] = doc['playbook_snapshot']
+        if doc.get('trigger_firing'):
+            binding['trigger_firing'] = doc['trigger_firing']
         db.execute('UPDATE assistant_team_threads SET document=? WHERE thread_id=?', (canonical(binding), thread['id']))
         sent = self.service.copilot.send(thread['id'], doc['question'], thread['context_sha256'], 'team-send:' + key)
         member = {'profile_id': profile['id'], 'name': profile['name'], 'thread_id': thread['id'],
                   'run_id': sent['latest_run']['id'], 'index': step['index'], 'kind': step['kind'], 'round': step['round']}
         doc['members'].append(member)
 
-    def start(self, channel_id, expected_revision, question, idempotency_key, mode=None, max_rounds=None, playbook_key=None):
+    def start(self, channel_id, expected_revision, question, idempotency_key, mode=None, max_rounds=None, playbook_key=None,
+              firing=None):
         self.service.copilot.key(idempotency_key)
+        if firing is not None and (not isinstance(firing, dict) or set(firing) != {'trigger_id', 'kind', 'event_id', 'instruction'}):
+            raise ValueError('team_invalid_firing')
         if not isinstance(question, str) or not question.strip() or len(question) > 2000:
             raise ValueError('team_invalid_text')
         question = question.strip()
@@ -167,6 +175,8 @@ class TeamDiscussions:
                 'collaboration_state': 'running' if mode == 'collaborate' else None,
                 'profile_snapshots': {p['id']: p for p in selected}, 'model_pins': pins,
                 'channel_snapshot': channel, 'playbook_snapshot': playbook}
+            if firing:
+                doc['trigger_firing'] = firing
             for step in plan[:1] if mode == 'collaborate' else plan:
                 self._enqueue(db, doc, step)
             db.execute('INSERT INTO assistant_team_discussions VALUES(?,?,?,?,?)', (doc['id'], idempotency_key, request, canonical(doc), at))

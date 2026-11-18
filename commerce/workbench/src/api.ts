@@ -31,6 +31,7 @@ const errors: Record<string, string> = {
   followup_state_conflict: '该计划已检查或已取消，请查看当前回执；需要时重新预约。',
   followup_queue_full: '当前待复查计划已达上限，请先处理或取消已有预约。',
   attention_item_changed: '事项已处理或依据已变化，请刷新后核对。',
+  attention_not_closable: '这类事项需要在原对话里回答或决定，不能在这里关闭。',
   attention_source_unavailable: '事项来源暂未完整读到，请刷新核对，不会自动重发执行。',
   host_plan_model_conflict: '原研究任务已固定执行模型。请沿用原模型；更换模型可新建会话。',
   host_unavailable_use_workbench: '执行端暂不可用，原记录和输入已保留。请稍后刷新或选择固定模型。',

@@ -5,6 +5,17 @@
 .adoption-form textarea { min-height: 100px; resize: vertical; }
 .adoption-form textarea[rows] { min-height: calc(var(--ui-control-height) * 1.5); }
 .adoption-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+.adoption-plan-editor{margin-bottom:12px}
+.adoption-plan-editor>summary{cursor:pointer;min-height:40px;align-content:center;font-size:var(--ui-font-size-compact);color:var(--ui-color-muted)}
+.adoption-plan-editor[open]>.ui-field{margin-block:12px}
+.adoption-view-toggle{display:flex;gap:6px;margin-top:16px}
+.adoption-view-toggle>[aria-pressed=true]{color:var(--ui-color-brand);background:var(--ui-color-brand-soft)}
+.adoption-step-list{list-style:none;padding:0;margin:12px 0;display:grid;gap:8px}
+.adoption-step-list>li>button{width:100%;display:flex;gap:12px;align-items:center;justify-content:flex-start;text-align:left;padding:12px;border:1px solid var(--ui-color-border);border-radius:var(--ui-radius-control);background:var(--ui-color-surface)}
+.adoption-step-list>li>button[aria-pressed=true]{border-color:var(--ui-color-brand);background:var(--ui-color-brand-soft)}
+.adoption-step-number{color:var(--ui-color-muted);font-variant-numeric:tabular-nums;flex:none}
+.adoption-step-list strong{display:block;font-size:var(--ui-font-size-compact);font-weight:600}
+.adoption-step-list small{display:block;font-size:var(--ui-font-size-meta);line-height:1.6;color:var(--ui-color-muted);margin-top:3px;overflow-wrap:anywhere}
 .adoption-notice { color: var(--ui-color-muted); line-height: 1.6; overflow-wrap: anywhere; }
 .adoption-list { display: grid; gap: 12px; padding: 0; list-style: none; }
 .adoption-item { border-bottom: 1px solid var(--ui-color-border); padding: 12px 0; min-width: 0; }

@@ -154,6 +154,38 @@ class Live(unittest.TestCase):
         self.assertEqual(result['id'],ident);self.assertEqual(result['status'],'failed')
         self.assertEqual(self.app.snapshot(self.app.config()['connection_id'],'orders')['sha256'],previous)
 
+    def _finish(self):
+        for _ in range(200):
+            result=self.app.status()['last_job']
+            if result['status']!='running':return result
+            time.sleep(.01)
+        self.fail('sync did not finish')
+
+    def _limited(self,seconds_ago,count=1):
+        with self.app.core.db() as db:
+            for index in range(count):
+                at=(datetime.now(timezone.utc)-timedelta(seconds=seconds_ago+index)).isoformat()
+                db.execute('INSERT INTO live_http(job,endpoint,request_sha,response_sha,error,at) VALUES (?,?,?,?,?,?)',('syn',ozon_reader.ENDPOINTS['sales'],'b'*64,None,'ozon_rate_limited',at))
+
+    def test_rate_limited_sales_backs_off_without_blocking_orders_and_stock(self):
+        self.configure();self._limited(30);kinds=[]
+        def fetch(config,kind,request=None):
+            kinds.append(kind);return batch(kind)
+        with patch('ozon_reader.fetch',side_effect=fetch):
+            self.app.start_sync();result=self._finish()
+        self.assertEqual(kinds,['orders','stock'])
+        sales=result['result']['sales']
+        self.assertEqual((sales['status'],sales['code']),('deferred','rate_limit_backoff'));self.assertGreater(sales['retry_after_seconds'],0)
+        self.assertEqual(result['status'],'partial');self.assertEqual(result['result']['orders']['status'],'success')
+
+    def test_sales_backoff_grows_expires_and_resets_after_a_successful_read(self):
+        self.configure();self._limited(601)
+        self.assertEqual(self.app.sales_backoff(),0)
+        self._limited(601,count=3);self.assertGreater(self.app.sales_backoff(),0)
+        with self.app.core.db() as db:
+            db.execute('INSERT INTO live_http(job,endpoint,request_sha,response_sha,error,at) VALUES (?,?,?,?,?,?)',('syn',ozon_reader.ENDPOINTS['sales'],'b'*64,'c'*64,None,now()))
+        self.assertEqual(self.app.sales_backoff(),0)
+
     def test_tickets_are_short_lived_and_single_use(self):
         ticket=self.app.new_setup_ticket();self.assertTrue(self.app.consume_ticket(ticket));self.assertFalse(self.app.consume_ticket(ticket))
         expired=self.app.new_setup_ticket();self.app.tickets[expired]=0;self.assertFalse(self.app.consume_ticket(expired))

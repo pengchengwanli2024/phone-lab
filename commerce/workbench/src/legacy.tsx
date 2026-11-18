@@ -5,8 +5,9 @@ import { api } from './api';
 import type { BusinessContext, PageContext, Theme } from './types';
 import { Button } from './ui';
 import { embeddedDocument } from './embedded-document';
+import { handleEmbeddedAsset } from './embedded-asset-bridge';
 declare const __PRODUCT_HTML__: string;
-export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, requestedTabEpoch=0,navigate, onCopilot, onPageContext,onEditState,onSelectedProduct,onCost,onCreative,onCreativeOpened,creativeIntent,chatWidth, onChatWidth, assistantToggle = 0, onAssistantState, onResearch, researchTaskId = '', onResearchContext,orderSupportRequest,onOrderSupport,onOrderSupportResult }: { orderSupportRequest?:OrderSupportRequest|null;onOrderSupport?:(prepared:PreparedOrderSupport)=>Promise<void>;onOrderSupportResult?:(id:string,error?:string)=>void; onCost?:(caseId:string,delivery?:boolean)=>void;creativeIntent?:CreativeIntent|null;onCreative?:(intent:Omit<CreativeIntent,'id'>)=>void;onCreativeOpened?:(id:string,projectId:string)=>void;tab: string; demo: boolean; theme: Theme; caseId: string; active?: boolean; requestedTab?: string;requestedTabEpoch?:number; navigate: (tab: string, caseId?: string, researchTaskId?: string) => void; researchTaskId?: string; onResearchContext?: (caseId: string, taskId: string) => void; onCopilot?: (context: BusinessContext) => void; onPageContext?: (page: PageContext, scope: BusinessContext) => void;onEditState?:(caseId:string,dirty:boolean,section:string)=>void;onSelectedProduct?:(caseId:string,taskId:string)=>void; chatWidth?: number; onChatWidth?: (width: number) => void; assistantToggle?: number; onAssistantState?: (visible: boolean) => void; onResearch?: (id: string) => void }) {
+export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, requestedTabEpoch=0,navigate, onCopilot, onPageContext,onEditState,onSelectedProduct,onCost,onCreative,onCreativeOpened,creativeIntent,chatWidth, onChatWidth, assistantToggle = 0, onAssistantState, onResearch, researchTaskId = '', onResearchContext,orderSupportRequest,onOrderSupport,onOrderSupportResult }: { orderSupportRequest?:OrderSupportRequest|null;onOrderSupport?:(prepared:PreparedOrderSupport)=>Promise<void>;onOrderSupportResult?:(id:string,error?:string)=>void; onCost?:(caseId:string,delivery?:boolean)=>void;creativeIntent?:CreativeIntent|null;onCreative?:(intent:Omit<CreativeIntent,'id'>)=>void;onCreativeOpened?:(id:string,projectId:string)=>void;tab: string; demo: boolean; theme: Theme; caseId: string; active?: boolean; requestedTab?: string;requestedTabEpoch?:number; navigate: (tab: string, caseId?: string, researchTaskId?: string) => void; researchTaskId?: string; onResearchContext?: (caseId: string, taskId: string) => void; onCopilot?: (context: BusinessContext) => void; onPageContext?: (page: PageContext, scope: BusinessContext) => void;onEditState?:(caseId:string,dirty:boolean,section:string,pending?:boolean)=>void;onSelectedProduct?:(caseId:string,taskId:string)=>void; chatWidth?: number; onChatWidth?: (width: number) => void; assistantToggle?: number; onAssistantState?: (visible: boolean) => void; onResearch?: (id: string) => void }) {
   const orderCallback=useRef(onOrderSupport),orderResult=useRef(onOrderSupportResult);orderCallback.current=onOrderSupport;orderResult.current=onOrderSupportResult;
   const researchRequest=useRef(researchTaskId),researchContextCallback=useRef(onResearchContext);researchRequest.current=researchTaskId;researchContextCallback.current=onResearchContext;
   const costCallback=useRef(onCost);costCallback.current=onCost;
@@ -61,6 +62,12 @@ export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, 
     const receive = async (event: MessageEvent) => {
       const m = event.data;
       if (event.source !== frame.current?.contentWindow || m?.nonce !== nonce.current) return;
+      if (m.type === 'commerce:embedded-asset') {
+        const target = frame.current?.contentWindow || null, requestNonce = nonce.current;
+        if (!product) await handleEmbeddedAsset(event, { source: target, nonce: requestNonce,
+          alive: () => active && nonce.current === requestNonce && target === frame.current?.contentWindow });
+        return;
+      }
       if(product&&activeView.current&&m.type==='commerce:workspace-catalog-creative-pending'&&typeof m.id==='string'&&/^[a-zA-Z0-9_-]{1,160}$/.test(m.id)){catalogCreativeRequest=m.id;return;}
       if(product&&activeView.current&&m.type==='commerce:workspace-catalog-creative'&&m.catalog_request_id===catalogCreativeRequest&&catalogCreativeRequest&&typeof m.case_id==='string'&&/^[a-zA-Z0-9_-]{1,160}$/.test(m.case_id)&&typeof m.project_id==='string'&&/^[a-zA-Z0-9_-]{1,160}$/.test(m.project_id)&&typeof m.source_sha256==='string'&&/^[a-f0-9]{64}$/.test(m.source_sha256)){
         const currentNonce=nonce.current,target=frame.current?.contentWindow;
@@ -69,7 +76,7 @@ export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, 
       }
       if(product&&activeView.current&&m.type==='commerce:workspace-creative'&&m.case_id===caseId&&typeof m.source_sha256==='string'&&/^[a-f0-9]{64}$/.test(m.source_sha256)&&(!m.project_id||typeof m.project_id==='string'&&/^[a-zA-Z0-9_-]{1,160}$/.test(m.project_id))){creativeCallback.current?.({case_id:m.case_id,source_sha256:m.source_sha256,...(m.project_id?{project_id:m.project_id}:{})});return;}
       if(!product&&activeView.current&&m.type==='commerce:creative-open-result'&&m.id===creativeRequest.current?.id&&m.case_id===creativeRequest.current?.case_id&&typeof m.project_id==='string'&&/^[a-zA-Z0-9_-]{1,160}$/.test(m.project_id)){creativeOpened.current?.(m.id,m.project_id);return;}
-      if(product&&m.type==='commerce:workspace-edit-state'&&m.case_id===caseId&&typeof m.dirty==='boolean'){const section=['overview','evidence','research','cost','media','content','plan','review'].includes(m.section)?m.section:'overview';editSection.current=section;editCallback.current?.(m.case_id,m.dirty,section);return;}
+      if(product&&m.type==='commerce:workspace-edit-state'&&m.case_id===caseId&&typeof m.dirty==='boolean'){const section=['overview','evidence','research','cost','media','content','plan','review'].includes(m.section)?m.section:'overview';editSection.current=section;editCallback.current?.(m.case_id,m.dirty,section,m.pending_mutation===true);return;}
       if(m.type==='commerce:order-support-result'&&typeof m.id==='string'&&['accepted','failed'].includes(m.status)){orderResult.current?.(m.id,m.status==='failed'?(typeof m.error==='string'?m.error:'order_support_context_failed'):undefined);return;}
       if(m.type==='commerce:workspace-order-support'&&activeView.current){try{await orderCallback.current?.(m.prepared);}catch{}return;}
       if(m.type==='commerce:shipping-file'){
@@ -114,6 +121,9 @@ export function Legacy({ tab, demo, theme, caseId, active = true, requestedTab, 
       if (m.type === 'commerce:workspace-dynamic-cost' && typeof m.case_id === 'string' && /^[a-zA-Z0-9_-]{1,160}$/.test(m.case_id) && (!product||m.case_id===caseId)) { if(costCallback.current)costCallback.current(m.case_id,m.return_delivery===true);else navigate('operations', m.case_id); return; }
       if (m.type !== 'commerce:call' || typeof m.id !== 'string' || typeof m.tool !== 'string' || !/^commerce_(?:[a-z_]+|a2ui_[a-z_]+)$/.test(m.tool)) return;
       const target = event.source as Window;
+      // Mark the parent before issuing the write, rather than relying on the
+      // asynchronous child edit-state message to win a navigation race.
+      if(product&&m.tool==='commerce_workspace_research_save'&&m.arguments?.case_id===caseId)editCallback.current?.(caseId,true,'research',true);
       try { const result = await api(m.tool, m.arguments || {}); if (active && target === frame.current?.contentWindow) target.postMessage({ type: 'commerce:result', nonce: nonce.current, id: m.id, result }, '*'); }
       catch (e) { if (active) target.postMessage({ type: 'commerce:result', nonce: nonce.current, id: m.id, error: e instanceof Error ? e.message : 'request_failed' }, '*'); }
     };

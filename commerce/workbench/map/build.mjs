@@ -4,9 +4,9 @@ import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
+import {stripJpegHeaderMetadata} from './jpeg-metadata.mjs';
 import {feature} from 'topojson-client';
 import {geoCentroid,geoArea} from 'd3-geo';
-import {stripJpegHeaderMetadata} from './jpeg-metadata.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url)),root=path.resolve(here,'../..'),require=createRequire(import.meta.url),check=process.argv.includes('--check');
 const atlas=JSON.parse(await readFile(require.resolve('world-atlas/countries-110m.json'),'utf8'));
 const names=JSON.parse(await readFile(path.join(root,'ui/intel-country-names.json'),'utf8')).countries;
@@ -14,7 +14,9 @@ const aliases=new Map(names.map(r=>[r.en,r.zh]));aliases.set('United States of A
 for(const [en,zh]of Object.entries({'W. Sahara':'西撒哈拉','Falkland Is.':'福克兰群岛','Fr. S. Antarctic Lands':'法属南部领地',"Côte d'Ivoire":'科特迪瓦','Eq. Guinea':'赤道几内亚','eSwatini':'斯威士兰','Palestine':'巴勒斯坦','Myanmar':'缅甸','Turkey':'土耳其','Solomon Is.':'所罗门群岛','N. Cyprus':'北塞浦路斯','Somaliland':'索马里兰','Macedonia':'北马其顿','Trinidad and Tobago':'特立尼达和多巴哥'}))aliases.set(en,zh);
 const countries=feature(atlas,atlas.objects.countries);
 for(const c of countries.features){const [lng,lat]=geoCentroid(c);c.properties={name:c.properties.name,zh:aliases.get(c.properties.name)||c.properties.name,lng,lat,area:geoArea(c)*100};}
-const generated=JSON.stringify(countries);
+// The source atlas is 1:110m; one unit of its own grid spans kilometres. Four decimals (~11 m)
+// keep every vertex visually identical while dropping ~220 KiB of meaningless digits.
+const generated=JSON.stringify(countries,(key,value)=>typeof value==='number'&&!Number.isInteger(value)?Math.round(value*1e4)/1e4:value);
 if(!check)await writeFile(path.join(here,'countries.generated.json'),generated+'\n');
 else if((await readFile(path.join(here,'countries.generated.json'),'utf8')).trim()!==generated)throw Error('Country render data is stale');
 const bundledInputs=new Set();
@@ -22,8 +24,8 @@ const result=await build({absWorkingDir:here,entryPoints:['index.js'],bundle:tru
   loader:{'.jpg':'dataurl','.png':'dataurl'},plugins:[{name:'inline-maplibre-worker',setup(builder){
     builder.onResolve({filter:/\?inline-worker$/},args=>({path:require.resolve(args.path.replace('?inline-worker','')),namespace:'inline-worker'}));
     builder.onLoad({filter:/.*/,namespace:'inline-worker'},async args=>{const worker=await build({entryPoints:[args.path],bundle:true,minify:true,format:'iife',write:false,target:['chrome120','safari17'],metafile:true});for(const name of Object.keys(worker.metafile.inputs))bundledInputs.add(path.resolve(here,name));return {contents:worker.outputFiles[0].text,loader:'text'}});
-    builder.onResolve({filter:/^three-globe\/example\/img\//},args=>({path:path.resolve(path.dirname(require.resolve('three-globe')),'..',args.path.replace('three-globe/',''))}));
     builder.onLoad({filter:/earth-day\.jpg$/},async args=>({contents:stripJpegHeaderMetadata(await readFile(args.path)),loader:'dataurl'}));
+    builder.onResolve({filter:/^three-globe\/example\/img\//},args=>({path:path.resolve(path.dirname(require.resolve('three-globe')),'..',args.path.replace('three-globe/',''))}));
   }}]});
 const files={};
 for(const output of result.outputFiles){const name=output.path.endsWith('.css')?'intel-map.bundle.css':'intel-map.bundle.js',text=output.text.replace(/<\/script/gi,'<\\/script');files[name]=text;

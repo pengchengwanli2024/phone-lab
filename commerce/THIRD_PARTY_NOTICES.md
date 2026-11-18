@@ -124,6 +124,25 @@ source-bound knowledge invalidation. Local implementations reuse phone-lab's
 existing task, draft and evidence stores. No upstream graph framework, account
 store, runtime database or bundled dependency was copied.
 
+The third capability batch (2026-11-18) references Personal Agent OS
+`commerce_selection.py`, `commerce_demand.py`, `commerce_competitors.py`,
+`commerce_fulfillment.py` and the experiment section of `commerce_actions.py`
+for the selection scorecard, demand-trend corroboration, snapshot comparison,
+shipment variance and single-variable experiment checks. `decision_checks.py`
+is an independent standard-library implementation; no upstream code, framework,
+runtime data or dependency was copied.
+
+The 2026-11-18 review of six external agent-platform and generative-UI repositories
+(OpenMausBot, suparagent, CopilotKit/openbot, nightly-labs/openbot, CopilotKit, A2UI)
+studied mechanisms only. Three behaviours were implemented independently in this project:
+`agent_text_fence.py` (untrusted agent text), `trigger_failure_spacing.py`
+(consecutive trigger failures) and `trigger_firing.py` (telling a scheduled turn
+it is the scheduled work, after CopilotKit/openbot `shared/routine-firing.ts`). No upstream source code, prompt text, data
+structure or asset was copied. nightly-labs/openbot is licensed
+PolyForm Noncommercial 1.0.0 and was used for ideas only; its code is not
+reproduced here. No upstream license or distribution right is asserted for the
+other projects, and CopilotKit Intelligence remains separately licensed.
+
 ## Optional scrcpy-server runtime
 
 The experimental low-latency phone preview can launch the unmodified

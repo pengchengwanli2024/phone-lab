@@ -58,6 +58,8 @@ def definitions(schema, string):
 class MobileControl:
     def __init__(self, service, *, budget_reader=None):
         self.service, self.core, self.budget_reader = service, service.core, budget_reader
+        # Other domains may own decision cards; each returns None for a nonce that is not theirs.
+        self.deciders = []
         with self.core.db() as db:
             db.execute('''CREATE TABLE IF NOT EXISTS mobile_inbox(
                 id TEXT PRIMARY KEY, idem TEXT UNIQUE NOT NULL, request TEXT NOT NULL,
@@ -190,7 +192,12 @@ class MobileControl:
         dispatch = None
         with self.core.atomic() as db:
             token = db.execute('SELECT decision_id,choice FROM mobile_nonces WHERE token_sha256=?', (sha(nonce),)).fetchone()
-            if not token: raise ValueError('mobile_nonce_invalid')
+        if not token:
+            for decider in self.deciders:
+                receipt = decider(nonce, owner, policy)
+                if receipt is not None: return receipt
+            raise ValueError('mobile_nonce_invalid')
+        with self.core.atomic() as db:
             ident, choice = token
             row = self._decision_row(db, ident)
             if row['owner_sha256'] != sha(owner): raise ValueError('mobile_owner_mismatch')

@@ -45,6 +45,49 @@ class Attention(unittest.TestCase):
     def listing(self, **args):
         return self.app.invoke('commerce_attention_list', args)
 
+    def close(self, item_id, note=''):
+        return self.app.invoke('commerce_attention_close', {'item_id': item_id, 'note': note})
+
+    def counts(self):
+        with self.app.core.db() as db:
+            return [db.execute('SELECT count(*) FROM ' + t).fetchone()[0] for t in ('agent_runs', 'tasks')]
+
+    def test_checked_outcome_can_be_closed_without_resubmitting_or_changing_the_run(self):
+        unknown = self.run_record(status='unknown');failed = self.run_record(status='failed')
+        items = {row['run_id']: row for row in self.listing()['items']}
+        before = self.counts();target = items[unknown['id']]
+        receipt = self.close(target['id'], '已核对原请求，未产生结果')
+        self.assertEqual((receipt['status'], receipt['resubmitted'], receipt['original_changed']), ('closed', False, False))
+        self.assertEqual({row['run_id'] for row in self.listing()['items']}, {failed['id']})
+        self.assertEqual(self.app.agent_runtime.get(unknown['id'])['status'], 'unknown')
+        self.assertEqual(self.counts(), before)
+        self.assertEqual(self.close(target['id'], '已核对原请求，未产生结果')['status'], 'closed')
+        with self.assertRaisesRegex(ValueError, 'attention_item_changed'):
+            self.app.invoke('commerce_attention_get', {'item_id': target['id']})
+
+    def test_only_checked_outcomes_can_be_closed_never_questions_or_proposals(self):
+        self.run_record(questions=['请补充目标市场']);self.run_record(proposals=[self.proposal()])
+        for row in self.listing()['items']:
+            with self.subTest(kind=row['kind']), self.assertRaisesRegex(ValueError, 'attention_not_closable'):
+                self.close(row['id'])
+        self.assertEqual(len(self.listing()['items']), 2)
+
+    def test_closing_is_bound_to_the_exact_version_and_unknown_ids_are_rejected(self):
+        run = self.run_record(status='failed');target = self.listing()['items'][0]
+        with self.assertRaisesRegex(ValueError, 'attention_item_changed'): self.close('attention_' + 'f' * 64)
+        with self.assertRaisesRegex(ValueError, 'invalid_attention_item'): self.close('not-an-id')
+        self.close(target['id'])
+        # The same run failing differently is a new item and is shown again.
+        with self.app.core.db() as db:
+            db.execute('UPDATE agent_runs SET result=? WHERE id=?', (json.dumps({'error': 'agent_provider_request_rejected'}), run['id']))
+        again = self.listing()['items']
+        self.assertEqual(len(again), 1);self.assertNotEqual(again[0]['id'], target['id'])
+
+    def test_close_is_a_write_and_not_marked_read_only(self):
+        import mcp_server, service
+        self.assertIn('commerce_attention_close', {n for n, _, _ in service.TOOLS})
+        self.assertNotIn('commerce_attention_close', mcp_server.CONTROL_READ_ONLY)
+
     def test_three_clients_share_unresolved_items_without_executing_or_creating_work(self):
         self.assertIn('commerce_attention_list', {name for name, _, _ in TOOLS})
         run = self.run_record(questions=['请补充预算'], proposals=[self.proposal()])

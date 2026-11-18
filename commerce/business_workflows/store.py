@@ -261,15 +261,25 @@ class BusinessWorkflows:
                 return receipt
             return self._once(db,idempotency_key,{'action':'review','draft_id':draft_id,'sha256':expected_sha256,'decision':decision,'confirmed':confirmed,'note':note},make)
 
-    def listing(self,synthetic):
+    def source_summaries(self,synthetic):
+        """Current head of the latest 500 sources in one read; same rows as source()."""
         if type(synthetic) is not bool:raise ValueError('business_invalid_mode')
         with self.core.db() as db:
-            ids=[r[0] for r in db.execute('SELECT id FROM business_source_heads ORDER BY rowid DESC LIMIT 500')]
+            rows=db.execute('SELECT h.id,v.version,v.sha256,v.document FROM business_source_heads h LEFT JOIN business_source_versions v ON v.id=h.id AND v.version=h.version ORDER BY h.rowid DESC LIMIT 500').fetchall()
+        at=time.time();sources=[]
+        for ident,version,sha,raw in rows:
+            if raw is None:raise ValueError('business_source_not_found')
+            d=json.loads(raw)
+            if d['synthetic']==synthetic:
+                sources.append({'id':ident,'version':version,'sha256':sha,'fresh':stamp(d['valid_until'])>at,'provenance':'operator_import_unverified',
+                                **{k:d[k] for k in ('kind','scope','label','origin_ref','observed_at','valid_until','synthetic')},'record_count':len(d['records'])})
+        return sources
+
+    def listing(self,synthetic):
+        sources=self.source_summaries(synthetic)
+        with self.core.db() as db:
             drafts=[r[0] for r in db.execute('SELECT id FROM business_drafts ORDER BY created DESC LIMIT 500')]
-        sources=[];items=[]
-        for ident in ids:
-            s=self.source(ident);d=s['document']
-            if d['synthetic']==synthetic:sources.append({**{k:s[k] for k in ('id','version','sha256','fresh','provenance')},**{k:d[k] for k in ('kind','scope','label','origin_ref','observed_at','valid_until','synthetic')},'record_count':len(d['records'])})
+        items=[]
         for ident in drafts:
             d=self.get(ident);env=d['draft']
             if env['synthetic']==synthetic:items.append({'id':ident,'kind':env['kind'],'scope':env['scope'],'status':d['status'],'created_at':d['created_at'],'draft_sha256':env['draft_sha256']})

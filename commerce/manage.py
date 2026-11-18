@@ -57,7 +57,7 @@ def doctor():
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command',choices=['start','serve','open','doctor','backup'])
+    parser.add_argument('command',choices=['start','serve','open','doctor','backup','restore-drill'])
     args=parser.parse_args()
     if args.command=='serve':
         os.execv(sys.executable,[sys.executable,str(ROOT/'server.py')])
@@ -65,13 +65,17 @@ def main():
     if args.command=='start':result={'status':'ready','origin':f'http://127.0.0.1:{PORT}'}
     elif args.command=='doctor':result=doctor()
     elif args.command=='backup':result=backup()
+    elif args.command=='restore-drill':
+        # Offline proof that the newest automatic backup restores and can be read.
+        import backup_restore
+        result=backup_restore.drill(STATE)
     else:
         req=urllib.request.Request(f'http://127.0.0.1:{PORT}/v1/connections/ticket',data=b'{}',headers={'Content-Type':'application/json','Authorization':'Bearer '+token()})
         with urllib.request.urlopen(req,timeout=5)as response:ticket=json.load(response)['ticket']
         if not webbrowser.open(f'http://127.0.0.1:{PORT}/open?ticket='+ticket):raise ValueError('browser_open_failed')
         result={'status':'opened','authentication':'single_use_local_ticket'}
     print(json.dumps(result,ensure_ascii=False))
-    return 1 if result['status'] in ('unavailable','degraded') else 0
+    return 1 if result['status'] in ('unavailable','degraded','failed') else 0
 
 
 if __name__=='__main__':

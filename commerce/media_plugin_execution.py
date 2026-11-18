@@ -344,7 +344,14 @@ class MediaPluginExecution:
                             fresh=self._load(d['id'])
                             if fresh.get('download_owner')==owner:
                                 fresh.update(status='download_failed',error_code=self._error(error),download_owner=None,download_until=0);self._save(fresh)
-            return [self.get(d['id']) for d in rows]
+            # Maintenance above is scope independent. A record whose project is no
+            # longer readable (e.g. its case belongs to a previous store connection)
+            # is omitted from this view; explicit get() still rejects it.
+            views=[]
+            for d in rows:
+                try:views.append(self.get(d['id']))
+                except ValueError:continue
+            return views
 
     def recover(self):
         with self._lock,self.core.atomic() as db:

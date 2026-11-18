@@ -12,12 +12,13 @@ export function ThemeControl({ id, theme, busy, change }: { id: string; theme: T
   return <span className="r-theme-control"><label className="sr-only" htmlFor={id}>界面主题</label><select id={id} value={theme} disabled={busy} onChange={event => change(event.target.value as Theme)}><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select><Icon name="chevronDown" /></span>;
 }
 
-export function WorkspaceSettings({ theme, themeBusy, changeTheme, demo, changeDemo, close, error, connections }: { connections?: () => void; theme: Theme; themeBusy: boolean; changeTheme: (theme: Theme) => void; demo: boolean; changeDemo: (demo: boolean) => void; close: () => void; error: string }) {
+export function WorkspaceSettings({ theme, themeBusy, changeTheme, demo, changeDemo, close, error, connections, pinned = false, changePinned }: { pinned?: boolean; changePinned?: (value: boolean) => void; connections?: () => void; theme: Theme; themeBusy: boolean; changeTheme: (theme: Theme) => void; demo: boolean; changeDemo: (demo: boolean) => void; close: () => void; error: string }) {
   const [nextDemo, setNextDemo] = useState(demo);
   return <Dialog title="设置" close={close}>
     <ErrorNotice>{error}</ErrorNotice>
     <div className="r-setting-row"><label htmlFor="settings-theme">外观</label><ThemeControl id="settings-theme" theme={theme} busy={themeBusy} change={changeTheme} /></div>
     <div className="r-setting-row"><div><label htmlFor="settings-examples">示例数据</label><small>仅改变资料范围，不修改店铺授权。</small></div><input id="settings-examples" type="checkbox" role="switch" checked={nextDemo} onChange={event => setNextDemo(event.target.checked)} /></div>
+    {changePinned && <div className="r-setting-row"><div><label htmlFor="settings-assistant-pinned">助手固定在侧边</label><small>业务页默认展开智能助手并保留当前宽度；情报地图与手机窄屏仍按需打开。</small></div><input id="settings-assistant-pinned" type="checkbox" role="switch" checked={pinned} onChange={event => changePinned(event.target.checked)} /></div>}
     <details><summary>本机访问与授权状态</summary><AccessDetails connections={connections}/></details>
     {nextDemo !== demo && <div className="r-mode-confirm"><p role="status">切换会重新载入专业页，未保存编辑将被清除。</p><div className="r-actions"><Button onClick={() => setNextDemo(demo)}>取消切换</Button><Button primary onClick={() => { changeDemo(nextDemo); close(); }}>切换数据范围</Button></div></div>}
   </Dialog>;

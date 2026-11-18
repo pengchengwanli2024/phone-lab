@@ -26,6 +26,30 @@ class Workflows(unittest.TestCase):
         d=self.call('draft',kind='price',source_ids=[source['source_id']],content=content,idempotency_key=key)
         return d,source,doc,content
 
+    def test_source_summaries_match_single_reads_with_one_database_round_trip(self):
+        first,_=self.source(key='one');self.source(kind='facts',key='two');self.source(key='three',synthetic=False,origin_ref='private-export:synthetic.csv')
+        doc=self.w.template('reviews')['document'];doc['label']='Synthetic revised'
+        self.call('import',document=doc,idempotency_key='one-v2',source_id=first['source_id'],expected_version=1)
+        def expected(mode):
+            with self.app.core.db() as db:ids=[r[0] for r in db.execute('SELECT id FROM business_source_heads ORDER BY rowid DESC')]
+            rows=[]
+            for ident in ids:
+                s=self.w.source(ident);d=s['document']
+                if d['synthetic']==mode:rows.append({**{k:s[k] for k in ('id','version','sha256','fresh','provenance')},**{k:d[k] for k in ('kind','scope','label','origin_ref','observed_at','valid_until','synthetic')},'record_count':len(d['records'])})
+            return rows
+        for mode in (True,False):
+            wanted=expected(mode);opened=[];original=self.app.core.db
+            def counting():
+                opened.append(1);return original()
+            self.app.core.db=counting
+            try:got=self.w.source_summaries(mode)
+            finally:self.app.core.db=original
+            self.assertEqual(got,wanted);self.assertEqual(len(opened),1)
+            self.assertEqual(self.w.listing(mode)['sources'],wanted)
+        self.assertEqual(next(s for s in self.w.source_summaries(True) if s['id']==first['source_id'])['version'],2)
+        with self.app.core.db() as db:db.execute('DELETE FROM business_source_versions WHERE id=?',(first['source_id'],))
+        with self.assertRaisesRegex(ValueError,'business_source_not_found'):self.w.source_summaries(True)
+
     def test_real_intake_is_not_seeded_and_modes_never_mix(self):
         self.assertEqual(self.call('list',synthetic=False)['sources'],[])
         s,d=self.source();self.assertEqual(len(self.call('list',synthetic=True)['sources']),1)

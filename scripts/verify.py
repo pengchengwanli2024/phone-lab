@@ -24,8 +24,14 @@ FAST_MODULES = ['test_a2ui_cost', 'test_product_workspace', 'test_listing_worksp
 FULL_MODULES = FAST_MODULES + ['test_product_evidence', 'test_sourcing_channels', 'test_sourcing_integrity',
                                'test_ui_workflow_acceptance', 'test_service', 'test_copilot_transport',
                                'test_operating_pipeline', 'test_operating_video_policy', 'test_operating_budget',
-                               'test_mobile_control', 'test_mobile_control_integration', 'test_operating_control', 'test_ozon_accounts', 'test_live_connections',
-                               'test_catalog_store_identity','test_media_library','test_intel_opportunities','test_local_model_supervisor','test_catalog_media_integration','test_ozon_search_terms','test_workspace_content_citations','test_market_research_contract','test_catalog_evidence_media']
+                               'test_mobile_control', 'test_mobile_control_integration', 'test_operating_control', 'test_operating_loop', 'test_task_dispatch', 'test_operating_health', 'test_operating_loop_mobile', 'test_operating_retrospect', 'test_backup_restore', 'test_agent_text_fence', 'test_trigger_failure_spacing', 'test_trigger_failure_spacing_seam', 'test_trigger_firing', 'test_team_prompt_safety_integration', 'test_decision_checks', 'test_decision_checks_mcp', 'test_ozon_read_backoff', 'test_attempt_outcome', 'test_ozon_accounts', 'test_live_connections',
+                               'test_catalog_store_identity','test_media_library','test_intel_opportunities','test_local_model_supervisor','test_catalog_media_integration','test_ozon_search_terms','test_workspace_content_citations','test_market_research_contract','test_catalog_evidence_media',
+                               'test_workspace_research', 'test_workspace_research_stdio', 'test_listing_lineage',
+                               # The extension runtime executes scheduled read-only work; its failure path is
+                               # shared by every schedule, so its suites are part of the full profile.
+                               'test_extension_failure', 'test_extension_runtime', 'test_extension_runtime_agents', 'test_extension_runtime_cancellation',
+                               'test_extension_runtime_deadlines', 'test_extension_runtime_media', 'test_extension_runtime_network',
+                               'test_extension_runtime_output_contract', 'test_extension_runtime_schedules']
 GATES = ['python-dependencies', 'node-dependencies', 'browser-dependencies', 'verifier-tests',
          'static', 'generated-sync', 'types', 'frontend-unit', 'python-unit', 'browser-interaction']
 NOT_COVERED = ['Native Harness/Codex/Hermes desktop interaction and host versions',
@@ -37,7 +43,7 @@ NOT_COVERED = ['Native Harness/Codex/Hermes desktop interaction and host version
 def required_gate_ids(profile):
     if profile not in ('fast', 'full'):
         raise ValueError('unknown verification profile')
-    return list(GATES) + (['operating-control-browser', 'catalog-library-browser'] if profile == 'full' else [])
+    return list(GATES) + (['operating-control-browser', 'operating-loop-browser', 'catalog-library-browser', 'product-research-browser'] if profile == 'full' else [])
 
 
 def source_paths(root):
@@ -61,6 +67,10 @@ def source_paths(root):
                 # These are generated host connections, not portable source.
                 # Keep any actual integration code visible to verification.
                 if rel.as_posix() in {'commerce/integrations/mcp.json', 'commerce/integrations/hermes.json', 'commerce/integrations/codex.toml'}:
+                    continue
+                # The multi-session coordination log is appended to while checks run and is
+                # read by no code or test; counting it voided otherwise clean receipts.
+                if rel.as_posix() == 'commerce/WORK_COORDINATION.md':
                     continue
                 # QA JSON/PNG/logs are previous run evidence, never inputs.
                 if 'qa' in rel.parts and p.suffix not in {'.py', '.mjs', '.js', '.cjs'}:
@@ -128,6 +138,20 @@ def validate_control_report(report, expected):
         raise ValueError('incomplete or wrong-candidate operating control browser receipt')
 
 
+def validate_loop_report(report, expected):
+    required = {'saved_grant_is_disabled_and_idle', 'stage_owner_proposal_waits_for_decision',
+                'approval_resumes_original_handoff_once', 'unchanged_evidence_stays_idle', 'disable_keeps_history',
+                'viewport_1440_light', 'viewport_390_dark', 'synthetic_does_not_leak_into_live',
+                'run_health_reads_real_checks_and_backup_setting_persists'}
+    checks = report.get('checks', [])
+    if (report.get('completed') is not True or report.get('sourceStable') is not True
+            or report.get('errors') != [] or report.get('external') != [] or report.get('fatal')
+            or report.get('sourceSha256') != expected or not isinstance(checks, list)
+            or any(not isinstance(row, dict) or row.get('passed') is not True for row in checks)
+            or not required.issubset({row.get('name') for row in checks})):
+        raise ValueError('incomplete or wrong-candidate operating loop browser receipt')
+
+
 def validate_catalog_report(report, expected_sources):
     keys = ('commerce/web/workbench.bundle.js', 'commerce/web/product-workspace.bundle.js',
             'commerce/web/catalog-ui.js', 'commerce/web/catalog-presentation.js',
@@ -141,6 +165,33 @@ def validate_catalog_report(report, expected_sources):
             or set(report.get('startHashes', {})) != set(keys)
             or any(report['startHashes'][key] != expected_sources.get(key) for key in keys)):
         raise ValueError('incomplete or wrong-candidate catalog/library browser receipt')
+
+
+def validate_research_report(report, expected_sources):
+    keys = {'commerce/web/workbench.sources.json', 'commerce/web/workbench.bundle.js',
+            'commerce/web/workbench.html', 'commerce/web/product-workspace.bundle.js',
+            'commerce/web/product-research-editor.js'}
+    required = {'same_page_edit_save_readback', 'refresh_preserves_saved_revision',
+                'changed_source_head_rejects_and_preserves_input', 'sparse_hold_record_opens',
+                'issue_link_focus_visible', 'inflight_mode_switch_keeps_original_editor',
+                'unknown_mode_switch_and_same_request_recovery', 'ordinary_dirty_can_be_discarded'}
+    if not isinstance(report, dict):
+        raise ValueError('invalid research form browser receipt')
+    checks, start, end = report.get('checks'), report.get('startHashes'), report.get('endHashes')
+    good = (report.get('schema') == 'product-research-browser-v1' and report.get('status') == 'passed'
+            and report.get('completed') is True and report.get('syntheticFixture') is True
+            and report.get('sourceStable') is True and not report.get('fatal')
+            and report.get('errors') == [] and report.get('external') == []
+            and isinstance(checks, list) and bool(checks)
+            and all(isinstance(row, dict) and isinstance(row.get('name'), str)
+                    and bool(row['name']) and row.get('passed') is True for row in checks)
+            and required.issubset({row['name'] for row in checks})
+            and isinstance(start, dict) and isinstance(end, dict)
+            and set(start) == keys and set(end) == keys and start == end
+            and all(isinstance(start[key], str) and re.fullmatch(r'[a-f0-9]{64}', start[key])
+                    and start[key] == expected_sources.get(key) for key in keys))
+    if not good:
+        raise ValueError('incomplete, failed or wrong-candidate research form browser receipt')
 
 
 def stop_group(process):
@@ -201,7 +252,9 @@ def playwright_path(explicit):
         return p.absolute().as_uri() if p.exists() else explicit
     candidates = [ROOT / 'commerce/workbench/node_modules/playwright/index.mjs']
     candidates += sorted((Path.home() / '.npm/_npx').glob('*/node_modules/playwright/index.mjs'))
-    return next((p.as_uri() for p in candidates if p.is_file()), '')
+    # An interrupted npx download can leave playwright without its core package.
+    return next((p.as_uri() for p in candidates
+                 if p.is_file() and (p.parent.parent / 'playwright-core' / 'package.json').is_file()), '')
 
 
 def chrome_path(explicit):
@@ -343,7 +396,11 @@ def main(argv=None):
         if args.profile == 'full':
             commands.append(('operating-control-browser', [node, 'commerce/qa/operating_control_ui.mjs'], '.', 180,
                              ['python-dependencies', 'node-dependencies', 'browser-dependencies']))
+            commands.append(('operating-loop-browser', [node, 'commerce/qa/operating_loop_ui.mjs'], '.', 180,
+                             ['python-dependencies', 'node-dependencies', 'browser-dependencies']))
             commands.append(('catalog-library-browser', [node, 'commerce/qa/catalog_library_ui.mjs'], '.', 180,
+                             ['python-dependencies', 'node-dependencies', 'browser-dependencies']))
+            commands.append(('product-research-browser', [node, 'commerce/qa/product_research_ui.mjs'], '.', 240,
                              ['python-dependencies', 'node-dependencies', 'browser-dependencies']))
         results = {}
         for name, command, cwd, timeout, prerequisites in commands:
@@ -375,6 +432,13 @@ def main(argv=None):
                         receipt['operating_control_checks'] = control_report['checks']
                     except (OSError, KeyError, ValueError):
                         result.update(status='failed', reason='Missing or invalid operating control interaction receipt')
+                if name == 'operating-loop-browser' and result['status'] == 'passed':
+                    try:
+                        loop_report = json.loads((evidence / 'operating-loop-browser.json').read_text())
+                        validate_loop_report(loop_report, receipt['source_hashes']['commerce/web/workbench.sources.json'])
+                        receipt['operating_loop_checks'] = loop_report['checks']
+                    except (OSError, KeyError, ValueError):
+                        result.update(status='failed', reason='Missing or invalid operating loop interaction receipt')
                 if name == 'catalog-library-browser' and result['status'] == 'passed':
                     try:
                         catalog_report = json.loads((evidence / 'verification.json').read_text())
@@ -382,6 +446,13 @@ def main(argv=None):
                         receipt['catalog_library_checks'] = catalog_report['checks']
                     except (OSError, KeyError, ValueError):
                         result.update(status='failed', reason='Missing or invalid catalog/library interaction receipt')
+                if name == 'product-research-browser' and result['status'] == 'passed':
+                    try:
+                        research_report = json.loads((evidence / 'product-research-browser.json').read_text())
+                        validate_research_report(research_report, receipt['source_hashes'])
+                        receipt['research_browser_checks'] = research_report['checks']
+                    except (OSError, KeyError, ValueError):
+                        result.update(status='failed', reason='Missing or invalid research form interaction receipt')
             results[name] = result
             receipt['commands'].append(result)
             print(name + ': ' + result['status'] + ' (exit ' + str(result['exit_code']) + ', ' + str(result['duration_seconds']) + 's)', flush=True)

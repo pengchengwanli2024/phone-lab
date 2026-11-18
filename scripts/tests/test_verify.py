@@ -89,6 +89,24 @@ class VerifierTests(unittest.TestCase):
             self.assertEqual(set(manifest), {'commerce/integrations/adapter.py', 'commerce/integrations/provider/mcp.json'})
             self.assertNotIn('PRIVATE_CONNECTION_SENTINEL', ''.join(p.read_text() for p in dest.rglob('*') if p.is_file()))
 
+    def test_coordination_log_is_not_a_verified_source_but_other_documents_are(self):
+        v = verifier()
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / 'project'; (root / 'commerce/sub').mkdir(parents=True)
+            (root / 'commerce/WORK_COORDINATION.md').write_text('session notes')
+            (root / 'commerce/README.md').write_text('readme')
+            (root / 'commerce/sub/WORK_COORDINATION.md').write_text('a different file with the same name')
+            (root / 'commerce/service.py').write_text('VALUE = 1')
+            before = v.source_hashes(root)
+            self.assertEqual(set(before), {'commerce/README.md', 'commerce/service.py', 'commerce/sub/WORK_COORDINATION.md'})
+            # Appending a session note must not void a receipt; changing code or a real document must.
+            (root / 'commerce/WORK_COORDINATION.md').write_text('session notes\nanother session wrote here')
+            self.assertEqual(v.source_hashes(root), before)
+            (root / 'commerce/README.md').write_text('changed')
+            self.assertNotEqual(v.source_hashes(root), before)
+            dest = Path(folder) / 'snapshot';v.copy_sources(root, dest)
+            self.assertFalse((dest / 'commerce/WORK_COORDINATION.md').exists())
+
     def test_snapshot_includes_service_public_source_registry(self):
         v = verifier()
         with tempfile.TemporaryDirectory() as folder:
@@ -114,6 +132,52 @@ class VerifierTests(unittest.TestCase):
         for profile in ('fast', 'full'):
             with self.subTest(profile=profile):
                 self.assertIn('browser-interaction', v.required_gate_ids(profile))
+
+    def test_full_profile_requires_atomic_research_and_actual_stdio_contracts(self):
+        v = verifier()
+        for name in ('test_workspace_research', 'test_workspace_research_stdio'):
+            with self.subTest(module=name):
+                self.assertEqual(v.FULL_MODULES.count(name), 1)
+                self.assertNotIn(name, v.FAST_MODULES)
+
+    def test_full_profile_requires_decision_checks_and_their_stdio_contract(self):
+        v = verifier()
+        for name in ('test_decision_checks', 'test_decision_checks_mcp'):
+            with self.subTest(module=name):
+                self.assertEqual(v.FULL_MODULES.count(name), 1)
+                self.assertNotIn(name, v.FAST_MODULES)
+
+    def test_full_profile_covers_the_shared_extension_runtime(self):
+        v = verifier()
+        suites = ['test_extension_runtime', 'test_extension_runtime_agents', 'test_extension_runtime_cancellation',
+                  'test_extension_runtime_deadlines', 'test_extension_runtime_media', 'test_extension_runtime_network',
+                  'test_extension_runtime_output_contract', 'test_extension_runtime_schedules']
+        for name in suites:
+            with self.subTest(module=name):
+                self.assertEqual(v.FULL_MODULES.count(name), 1, name + ' must run in the full profile exactly once')
+                self.assertNotIn(name, v.FAST_MODULES)
+        # Every listed module must exist and be discoverable, or python-unit fails on an import error.
+        from pathlib import Path
+        qa = Path(v.__file__).resolve().parents[1] / 'commerce/qa'
+        for name in v.FULL_MODULES:
+            with self.subTest(listed=name): self.assertTrue((qa / (name + '.py')).is_file(), name + ' is listed but missing')
+
+    def test_full_profile_requires_real_operating_loop_interaction(self):
+        v = verifier()
+        self.assertIn('operating-loop-browser', v.required_gate_ids('full'))
+        self.assertNotIn('operating-loop-browser', v.required_gate_ids('fast'))
+        self.assertEqual(v.FULL_MODULES.count('test_operating_loop'), 1)
+        names = ['saved_grant_is_disabled_and_idle', 'stage_owner_proposal_waits_for_decision',
+                 'approval_resumes_original_handoff_once', 'unchanged_evidence_stays_idle', 'disable_keeps_history',
+                 'viewport_1440_light', 'viewport_390_dark', 'synthetic_does_not_leak_into_live',
+                 'run_health_reads_real_checks_and_backup_setting_persists']
+        valid = {'completed': True, 'sourceStable': True, 'errors': [], 'external': [],
+                 'sourceSha256': 'expected', 'checks': [{'name': name, 'passed': True} for name in names]}
+        v.validate_loop_report(valid, 'expected')
+        for changes in ({'checks': valid['checks'][1:]}, {'completed': False}, {'sourceSha256': 'other'},
+                        {'external': ['https://example.com']}, {'fatal': 'x'}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                v.validate_loop_report({**valid, **changes}, 'expected')
 
     def test_full_profile_requires_real_operating_control_interaction(self):
         v = verifier()
@@ -146,6 +210,33 @@ class VerifierTests(unittest.TestCase):
                 v.validate_catalog_report({**report, **changes}, expected)
         with self.assertRaises(ValueError):
             v.validate_catalog_report(report, {**expected, 'commerce/web/catalog-ui.js': 'changed'})
+
+    def test_full_profile_requires_completed_candidate_bound_research_form_interactions(self):
+        v = verifier()
+        self.assertIn('product-research-browser', v.required_gate_ids('full'))
+        self.assertNotIn('product-research-browser', v.required_gate_ids('fast'))
+        expected = {name: 'a' * 64 for name in ('commerce/web/workbench.sources.json',
+            'commerce/web/workbench.bundle.js', 'commerce/web/workbench.html',
+            'commerce/web/product-workspace.bundle.js', 'commerce/web/product-research-editor.js')}
+        names = ['same_page_edit_save_readback', 'refresh_preserves_saved_revision',
+                 'changed_source_head_rejects_and_preserves_input', 'sparse_hold_record_opens',
+                 'issue_link_focus_visible', 'inflight_mode_switch_keeps_original_editor',
+                 'unknown_mode_switch_and_same_request_recovery', 'ordinary_dirty_can_be_discarded']
+        report = dict(schema='product-research-browser-v1', status='passed', completed=True,
+                      syntheticFixture=True, sourceStable=True, errors=[], external=[],
+                      checks=[{'name': name, 'passed': True} for name in names],
+                      startHashes=expected, endHashes=expected)
+        v.validate_research_report(report, expected)
+        for changes in ({'completed': False}, {'sourceStable': False}, {'syntheticFixture': False},
+                        {'checks': []}, {'checks': report['checks'][:-1]},
+                        {'checks': [{'name': name, 'passed': False} for name in names]},
+                        {'checks': ['saved']}, {'errors': ['render error']}, {'external': ['unexpected']},
+                        {'fatal': 'save failed'}, {'endHashes': {}}, {'startHashes': {}},
+                        {'schema': 'preparation-only'}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                v.validate_research_report({**report, **changes}, expected)
+        with self.assertRaises(ValueError):
+            v.validate_research_report(report, {**expected, 'commerce/web/product-research-editor.js': 'b' * 64})
 
     def test_python3_on_child_path_preserves_selected_venv(self):
         v = verifier()

@@ -15,6 +15,28 @@ export async function fullUiChecks({page,origin,caseId,output,checks}) {
   await settingsButton.click();await page.keyboard.press('Escape');await settings.waitFor({state:'hidden'});
   checks.push('Shared dialogs retain inner-padding clicks; backdrop/Escape close and return keyboard focus');
 
+  // The sidebar owns desktop sections; narrow pages use the current-page select.
+  await page.locator('.r-sidebar nav[aria-label="业务模块"]').getByRole('button',{name:'商品管线',exact:true}).click();
+  const workspaceNavigation=page.locator('.r-sidebar .r-workspace-navigation');
+  if(await workspaceNavigation.locator('details[open] summary').filter({hasText:'商品与成本'}).count()===0)await workspaceNavigation.locator('summary').filter({hasText:'商品与成本'}).click();
+  await workspaceNavigation.getByRole('button',{name:'商品工作区',exact:true}).click();
+  await page.locator('.r-app[data-module="workspace"]').waitFor();
+  // Orders belong to store operations; the narrow page select lists the current surface only.
+  await page.locator('.r-sidebar nav[aria-label="业务模块"]').getByRole('button',{name:'店铺运营',exact:true}).click();
+  await page.locator('.r-app[data-module="store-ops"]').waitFor();
+  await page.setViewportSize({width:390,height:960});
+  await page.locator('#workspace-page').selectOption('orders');
+  await page.frameLocator('iframe[title="专业业务模块"]').locator('.app[data-workspace-tab="orders"][data-view-ready="true"]').waitFor();
+  assert.equal(await page.locator('#workspace-page').inputValue(),'orders');
+  assert.equal(await page.locator('.r-mode-switcher').count(),0);
+  await page.locator('#workspace-assistant-toggle').click();
+  await page.locator('.r-shared-assistant[aria-busy="false"] #copilot-message').waitFor();
+  assert.equal(await page.locator('#main-workspace').isVisible(),false);
+  await page.locator('#workspace-assistant-toggle').click();
+  await page.locator('#main-workspace').waitFor();
+  await page.waitForFunction(()=>document.activeElement?.id==='workspace-assistant-toggle');
+  checks.push('Desktop sidebar sections and the narrow current-page selector reach original routes; the header AI toggle returns to business with focus');
+
   await page.route('**/phone/fleet/status',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'synthetic_network_failure'})}));
   await page.goto(origin+'/workspace?host=harness&tab=phones');
   await page.getByText('设备状态暂不可用',{exact:true}).waitFor();
@@ -31,6 +53,10 @@ export async function fullUiChecks({page,origin,caseId,output,checks}) {
     await page.goto(origin+`/workspace?host=harness&tab=${route}&case_id=${['operations','agent'].includes(route)?'':caseId}`);
     await page.locator('#react-theme').selectOption(width===1440?'light':'dark');
     await page.waitForFunction(()=>!document.querySelector('#react-theme')?.disabled);
+    assert.equal(await page.locator('#workspace-assistant-toggle').getAttribute('aria-expanded'),'false',route+' starts with its assistant collapsed');
+    assert.equal(await page.locator('.r-shared-assistant:visible').count(),0);
+    const businessWidth=await page.locator('#main-workspace').evaluate(node=>node.getBoundingClientRect().width),availableWidth=await page.locator('.r-work-area').evaluate(node=>node.getBoundingClientRect().width);
+    assert.ok(businessWidth>=availableWidth-2,route+' uses the complete business width at '+width);
     const frame=page.locator('iframe[title="专业业务模块"]');
     if(await frame.count())await page.frameLocator('iframe[title="专业业务模块"]').locator('.app[data-view-ready="true"]').waitFor();
     if(route==='workspace')await page.frameLocator('iframe[title="完整商品内容编辑"]').locator('#pw-main[aria-busy="false"]').waitFor();
@@ -56,7 +82,7 @@ export async function fullUiChecks({page,origin,caseId,output,checks}) {
     }
     const file=`${route}-${width}.png`;
     await page.screenshot({path:path.join(output,'coverage',file),animations:'disabled'});
-    coverage.push({route,width,theme:width===1440?'light':'dark',documents,screenshot:file});
+    coverage.push({route,width,theme:width===1440?'light':'dark',assistant_default_collapsed:true,business_width:businessWidth,available_width:availableWidth,documents,screenshot:file});
   }
   // Wide result tables remain reachable without a pointer on a compact page.
   await page.goto(origin+'/workspace?host=harness&tab=orders');

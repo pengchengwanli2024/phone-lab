@@ -186,6 +186,13 @@ class PluginExecutionTests(unittest.TestCase):
         root=self.app.state/'plugin-results';root.mkdir(mode=0o700);outside=self.app.state/'synthetic-outside';outside.mkdir();(root/c['id']).symlink_to(outside,target_is_directory=True)
         with patch('media_outputs.request',return_value=self.png()):self.execution.tick()
         self.assertEqual(self.execution.get(c['id'])['status'],'download_failed');self.assertEqual(list(outside.iterdir()),[])
+    def test_background_tick_survives_execution_whose_project_scope_is_unreadable(self):
+        # A case owned by a previous store connection must not fail every background tick.
+        c=self.claim()
+        with patch.object(self.app.media,'project',side_effect=ValueError('organization_case_not_found')):
+            self.assertEqual(self.execution.tick(at=time.time()+1000),[])
+            with self.assertRaisesRegex(ValueError,'organization_case_not_found'):self.execution.get(c['id'])
+        self.assertEqual(self.execution.get(c['id'])['status'],'awaiting_host')
     def test_terminal_completed_replay_preserves_attached_review_and_never_redownloads(self):
         c,_=self.begun();self.complete(c)
         with patch('media_outputs.request',return_value=self.png()):self.execution.tick()

@@ -174,11 +174,25 @@ class LiveConnections:
             raise
         return {'id':ident,'status':'running'}
 
+    def sales_backoff(self):
+        """Seconds to wait before the next analytics read after consecutive 429s.
+
+        Orders and stock use other endpoints and are never delayed. The previous
+        sales snapshot stays visible with its own stale flag.
+        """
+        with self.core.db() as db:
+            rows=db.execute('SELECT error,at FROM live_http WHERE endpoint=? ORDER BY rowid DESC LIMIT 8',(ozon_reader.ENDPOINTS['sales'],)).fetchall()
+        from ozon_read_backoff import wait_seconds
+        return wait_seconds(rows,datetime.now(timezone.utc))
+
     def _sync(self, ident, config):
         results={};connection=config['connection_id']
         try:
             for kind in ('orders','stock','sales'):
                 try:
+                    wait=self.sales_backoff() if kind=='sales' else 0
+                    if wait:
+                        results[kind]={'status':'deferred','code':'rate_limit_backoff','retry_after_seconds':wait};continue
                     batch=ozon_reader.fetch(config,kind,request=lambda *args:self._request(ident,*args))
                     current=self.config()
                     if current.get('connection_id')!=connection or(kind in ('orders','sales') and current['lookback_days']!=config['lookback_days']):

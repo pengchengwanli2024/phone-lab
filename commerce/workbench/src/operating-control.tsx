@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorText, newKey } from './api';
 import { Badge, Button, Empty, ErrorNotice, Panel } from './ui';
+import { OperatingLoopPanel } from './operating-loop';
+import { OperatingHealthPanel } from './operating-health';
+import { OutcomeReviewPanel } from './outcome-review';
 import './operating-control.css';
 
 export interface OperatingControlSnapshot {
@@ -129,6 +132,16 @@ export function OperatingControl({ synthetic, active = true, onNavigate }: { syn
     <ErrorNotice>{readError?.scope === scope ? readError.message : ''}</ErrorNotice>
     {!data ? <Empty>{loading === scope ? '正在读取经营配置与原任务…' : '当前范围尚未读到经营配置，请刷新状态。'}</Empty> : <>
       <div className="r-oc-scope" aria-label="当前经营范围"><strong>{data.scope.platform === 'ozon' ? 'Ozon' : data.scope.platform} · {data.scope.market || '市场待确认'} · {fulfillmentLabel(data.scope.fulfillment)}</strong><span>{inventoryLabel(data.scope.inventory_location)}</span><Badge>{scopeLabel(data.scope.sku_status, 'sku')}</Badge><Badge>{scopeLabel(data.scope.logistics_status, 'logistics')}</Badge></div>
+      <div className="r-oc-runtime"><Panel title="自动运行与待接条件" action={<Badge tone={data.autonomy.external_business_enabled ? 'blue' : 'warning'}>{data.autonomy.external_business_enabled ? '按已授权范围执行' : '外部经营执行尚未启用'}</Badge>}>
+        {data.autonomy.blockers.length ? <>
+          <ul className="r-oc-checks r-oc-key-blockers">{data.autonomy.blockers.slice(0, 2).map((item, index) => <li key={index}>{item}</li>)}</ul>
+          {data.autonomy.blockers.length > 2 ? <details className="r-oc-more-blockers"><summary>其余待接条件（{data.autonomy.blockers.length - 2}项）</summary><ul className="r-oc-checks">{data.autonomy.blockers.slice(2).map((item, index) => <li key={index}>{item}</li>)}</ul></details> : null}
+        </> : <p className="r-footnote">当前返回范围未列出阻塞；实际执行仍受权限、预算与来源版本校验。</p>}
+        <p className="r-footnote">默认先完成商品图文和试销，取得可信的同商品销量后再评估视频制作。</p>
+      </Panel></div>
+      <OperatingLoopPanel synthetic={synthetic} active={active} onNavigate={onNavigate} />
+      <OperatingHealthPanel active={active} navigate={onNavigate as ((tab: string) => void) | undefined} />
+      <OutcomeReviewPanel synthetic={synthetic} active={active} />
       {data.store ? <Panel title="当前 Ozon 店铺" action={<Badge tone={data.store.configured ? 'blue' : 'warning'}>{data.store.configured ? '已保存私有连接' : '待接入'}</Badge>}>
         <p><strong>{data.store.label}</strong></p>
         <dl className="r-oc-state">{([['订单', data.store.orders], ['商品库存', data.store.stock], ['日销售统计', data.store.sales]] as const).map(([title, snapshot]) => <div key={title}><dt>{title}</dt><dd>{snapshot.available ? `${snapshot.count ?? '待核对'} 条 · ${snapshot.fresh ? '快照有效' : '快照已过期，需刷新'}` : '尚未取得完整快照'}</dd></div>)}</dl>
@@ -139,10 +152,6 @@ export function OperatingControl({ synthetic, active = true, onNavigate }: { syn
         <p className="r-footnote">人民币累计额度由各任务共享，不按角色重复分配，也不自动每日重置。仅统计已登记任务，不代表店铺余额或尚未同步的支出。</p>
         <div className="r-oc-boundary"><span>{data.budget.enforcement === 'ledger_only' ? '当前已提供预算台账与占用校验，外部执行接入范围仍待逐项核对。' : '预算约束的实际执行范围须与对应业务回执一并核对。'}</span><Button disabled title="预算调整须由已绑定的负责人在受信设置中确认">调整预算</Button></div>
         <p className="r-footnote">预算调整需由负责人确认；本页暂未开放修改，不会因填写金额而授权付款或投放。</p>
-      </Panel>
-      <Panel title="自动运行与待接条件" action={<Badge tone={data.autonomy.external_business_enabled ? 'blue' : 'warning'}>{data.autonomy.external_business_enabled ? '按已授权范围执行' : '外部经营执行尚未启用'}</Badge>}>
-        {data.autonomy.blockers.length ? <ul className="r-oc-checks">{data.autonomy.blockers.map((item, index) => <li key={index}>{item}</li>)}</ul> : <p className="r-footnote">当前返回范围未列出阻塞；实际执行仍受权限、预算与来源版本校验。</p>}
-        <p className="r-footnote">默认先完成商品图文和试销，取得可信的同商品销量后再评估视频制作。</p>
       </Panel>
       <div className="r-oc-columns">
         <Panel title="登记新任务">

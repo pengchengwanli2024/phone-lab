@@ -22,5 +22,6 @@ for (const folder of [web,path.resolve(root,'../ui')]) {
 }
 sources.push(path.resolve(root,'../creative_ui.js'));
 sources.push(path.join(root,'source-inputs.mjs'));
+sources.push(path.join(root,'embedded-map-proxy.js'));
 export const sourceFiles=[...new Set(sources)].sort();
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) console.log(JSON.stringify(sourceFiles.map(file=>path.relative(path.resolve(root,'..'),file))));

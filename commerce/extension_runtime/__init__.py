@@ -12,6 +12,7 @@ import re
 import threading
 import time
 import uuid
+from . import failure
 from .contracts import definitions,KINDS,SAFE_BUILTINS,PROTECTED_BUILTINS,DEFAULT_LIMITS,HARD_LIMITS,templates
 from .validation import (encoded,sha,object_keys,text,no_secrets,redact,validate,limits,
                          scope_check,definition,mapping,condition,condition_check)
@@ -336,15 +337,12 @@ class ExtensionRuntime:
 
     @staticmethod
     def _budget_expired(run):
-        flight=run.get('inflight',{})
-        elapsed=max(0,time.time()-flight.get('accounted_at',flight.get('started_at',time.time()))) if flight else 0
-        return run['usage']['seconds']+elapsed>=run['budget']['max_seconds']
+        return failure.budget_expired(run['usage']['seconds'],run['budget']['max_seconds'],run.get('inflight',{}),time.time())
 
     @staticmethod
     def _charge_inflight(run):
-        flight=run.get('inflight',{})
-        if flight:
-            at=time.time();run['usage']['seconds']+=max(0,at-flight.get('accounted_at',flight['started_at']));flight['accounted_at']=at
+        spent=failure.charge_inflight(run.get('inflight',{}),time.time())
+        if spent:run['usage']['seconds']+=spent
 
     def _complete(self,run,path,output,source):
         output=redact(output,self._secrets_for_run(run))
@@ -555,11 +553,11 @@ class ExtensionRuntime:
         except Exception as error:
             # Provider/transport diagnostics are never returned or persisted.
             expired=self._budget_expired(run);self._charge_inflight(run)
-            unknown=isinstance(error,transport.OutcomeUnknown) or str(error)=='agent_provider_outcome_unknown' or run.get('inflight',{}).get('effect')=='external_write' or expired and run.get('inflight',{}).get('kind')=='model'
-            code=str(error) if isinstance(error,ValueError) and re.fullmatch(r'(extension|agent)_[a-z0-9_]+',str(error)) else 'extension_execution_failed'
-            if expired:code='extension_budget_exhausted'
-            run.update(status='unknown' if unknown else 'failed',error=code,finished_at=time.time())
-            if not unknown:run['inflight']={}
+            status,code,cause=failure.classify(error_code=str(error),error_type=type(error).__name__,
+                flight=run.get('inflight',{}),expired=expired,outcome_unknown=isinstance(error,transport.OutcomeUnknown))
+            run.update(status=status,error=code,finished_at=time.time())
+            if cause is not None:run['error_cause']=cause
+            if status!='unknown':run['inflight']={}
             try:self._persist(run)
             except Revoked:pass
         finally:self._drain_owned_cancels()

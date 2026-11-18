@@ -49,7 +49,7 @@ export async function listingActionsChecks({page,origin,output,invoke,checks}){
   view=await invoke('commerce_listing_action_get',{case_id:id});const recoveryId=view.items[0].id;
   for(let i=0;i<11;i++)await invoke('commerce_listing_action_prepare',{case_id:id,expected_source_sha256:view.source_sha256,expected_gallery_sha256:view.gallery.sha256,image_urls:['https://example.com/history-only-'+i+'.jpg'],idempotency_key:'synthetic-recovery-history-'+i});
   assert.equal((await invoke('commerce_listing_action_get',{case_id:id})).items.some(a=>a.id===recoveryId),false);
-  await page.getByRole('button',{name:'店铺管理',exact:true}).first().click();
+  await page.getByRole('button',{name:'店铺运营',exact:true}).first().click();
   await page.getByRole('button',{name:'日常运营',exact:true}).click();
   await page.getByRole('heading',{name:'图片动作',exact:true}).waitFor();
   const directoryRegion=page.getByRole('region',{name:'图片动作恢复',exact:true});

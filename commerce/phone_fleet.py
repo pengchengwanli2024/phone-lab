@@ -49,6 +49,15 @@ def _fresh_frame(cached, seconds):
     return bool(cached and 0 <= time.time() - cached[0] < seconds)
 
 
+def _usb_serials():
+    """Serial numbers of devices physically attached over USB (no identifiers leave)."""
+    try:
+        done = subprocess.run(['/usr/sbin/ioreg', '-p', 'IOUSB', '-l', '-w', '0'], capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return set(re.findall(r'"USB Serial Number" = "([A-Za-z0-9-]{8,64})"', done.stdout.decode('utf-8', 'replace')))
+
+
 def _primary_serial():
     try:
         value = json.loads(CONFIG.read_text())
@@ -183,6 +192,7 @@ class PhoneFleet:
             rows = value['result']['devices']
         except (ValueError, KeyError, TypeError):
             return None
+        usb = _usb_serials()
         found = []
         for row in rows:
             if not isinstance(row, dict):
@@ -193,11 +203,12 @@ class PhoneFleet:
                 continue
             if connection.get('pairingState') != 'paired':
                 continue
-            # CoreDevice retains paired phones after unplugging. Pairing alone
-            # is not a live developer transport for screenshots or WDA.
-            if connection.get('tunnelState') != 'connected':
-                continue
             udid = str(props.get('udid') or '')
+            # CoreDevice retains paired phones after unplugging. Pairing alone
+            # is not a live transport; accept an open tunnel or a phone that is
+            # physically present on USB (the tunnel idles to disconnected).
+            if connection.get('tunnelState') != 'connected' and udid.replace('-', '') not in usb:
+                continue
             if not re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', udid):
                 continue
             found.append((udid, _clean(props.get('marketingName'), 60) or 'iPhone', str(row.get('identifier') or udid)))

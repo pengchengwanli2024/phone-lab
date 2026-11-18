@@ -12,7 +12,7 @@ import { Candidates } from './candidates';
 import { Models } from './models';
 import { Assistant } from './assistant';
 import { useAssistantPage } from './assistant-page';
-import { useModuleAssistant } from './module-assistant';
+import { readAssistantPinned, useModuleAssistant, writeAssistantPinned } from './module-assistant';
 import { Legacy } from './legacy';
 import { PhoneFleetPage, PhoneFleetPanel } from './phone-fleet';
 import { OrderImports } from './order-imports';
@@ -22,18 +22,20 @@ import { LayeredMemory } from './layered-memory';
 import { AssistantToolDiscovery } from './assistant-tool-discovery';
 import { AssistantTeam } from './assistant-team';
 import { OperatingControl } from './operating-control';
+import { PipelineBoard } from './pipeline-board';
+import { DecisionChecks } from './decision-checks';
 import { SurfaceProvider } from './surface-provider';
 import { Button, Dialog, Empty, ErrorNotice, Icon } from './ui';
 import type { BusinessContext, PageContext, Theme, Thread } from './types';
 import { navigation, labels, destinationFor, businessModule, initialDestination, conversationDestination } from './navigation';
-import {StoreNavigation} from './store-navigation';
-import {ModuleNavigation} from './module-navigation';
+import {WorkspaceNavigation,CompactPageNavigation} from './workspace-navigation';
 import { initialDataMode, ThemeControl, WorkspaceSettings } from './workspace-controls';
 import '../../web/research-context.js';
 import './style.css';
 import '../../ui/workspace.css';
+import './workspace-shell.css';
 
-const migrated = ['listing','store-ops','overview', 'workspace', 'operations', 'tasks', 'pilots', 'models', 'order-imports', 'workflow', 'memory', 'phones', 'assistant-team','operating-control','tools'];
+const migrated = ['pipeline','decisions','listing','store-ops','overview', 'workspace', 'operations', 'tasks', 'pilots', 'models', 'order-imports', 'workflow', 'memory', 'phones', 'assistant-team','operating-control','tools'];
 const params = new URL(location.href).searchParams;
 const initial = initialDestination(params, location.hash);
 function readListingTarget(p:URLSearchParams):ListingTarget|null {return p.get('tab')==='listing'&&p.get('case_id')&&p.has('listing_platform')?{case_id:p.get('case_id')!,platform:p.get('listing_platform')!,store_ref:p.get('listing_store')||'',market:p.get('listing_market')||''}:null;}
@@ -59,12 +61,13 @@ function Workspace() {
   const [orderRequest,setOrderRequest]=useState<OrderSupportRequest|null>(null);
   const pendingOrder=useRef<{id:string;resolve:()=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}|null>(null);
   const [listingTarget,setListingTarget]=useState<ListingTarget|null>(()=>readListingTarget(params));
+  const listingTargets=useRef(new Map<string,ListingTarget>(listingTarget?[[listingTarget.case_id,listingTarget]]:[]));
   const [listingAction,setListingAction]=useState(()=>readListingAction(params));
   const [listingCaseId,setListingCaseId] = useState(initial === 'listing' ? params.get('case_id') || '' : '');
   const [productCaseId,setProductCaseId] = useState(params.get('case_id') || '');
   const [productResearchTask, setProductResearchTask] = useState(initial === 'workspace' ? params.get('research_task_id') || '' : '');
-  const productEdits=useRef<{caseId:string;dirty:boolean;section:string}|null>(null);
-  const [pendingProductTransition,setPendingProductTransition]=useState<{run:()=>void;section:string;editor?:'product'|'cost'}|null>(null);
+  const productEdits=useRef<{caseId:string;dirty:boolean;section:string;pending?:boolean}|null>(null);
+  const [pendingProductTransition,setPendingProductTransition]=useState<{run:()=>void;section:string;editor?:'product'|'cost';blocked?:boolean}|null>(null);
   const [creativeIntent,setCreativeIntent]=useState<CreativeIntent|null>(()=>initial==='creative'?readCreativeIntent(params):null);
   const creativeSelection=useRef(creativeIntent);creativeSelection.current=creativeIntent;
   useLayoutEffect(()=>{if(window.parent===window&&tab==='creative'&&creativeIntent){const url=new URL(location.href);writeCreativeIntent(url,creativeIntent);history.replaceState({},'',url);acceptedURL.current=location.href;}},[tab,creativeIntent?.id]);
@@ -76,7 +79,9 @@ function Workspace() {
   const [settings, setSettings] = useState(false);
   const [researchTaskId, setResearchTaskId] = useState(params.get('research_task_id') || ''), [requestedThreadId, setRequestedThreadId] = useState('');
   const threadRequest = useRef(0);
-  const [assistant, setAssistant] = useModuleAssistant(tab.replace('old:', ''));
+  const [pinned, setPinned] = useState(() => readAssistantPinned());
+  const [assistant, setAssistant, setOrdinaryAssistant] = useModuleAssistant(tab.replace('old:', ''), pinned);
+  function changePinned(value: boolean) { writeAssistantPinned(value); setPinned(value); setOrdinaryAssistant(value); }
   const [finder, setFinder] = useState(false), [query, setQuery] = useState('');
   const [workflowCase, setWorkflowCase] = useState(params.get('case_id') || '');
   const [legacyTab, setLegacyTab] = useState(!migrated.includes(tab) ? tab.replace('old:', '') : 'platforms');
@@ -85,7 +90,20 @@ function Workspace() {
   const activeTab = tab.replace('old:', ''), legacy = !migrated.includes(tab);
   useEffect(()=>{document.title=`${labels[activeTab]||'工作台'} · Phone-Lab`;},[activeTab]);
   const currentRoute=useRef({tab,caseId,demo});currentRoute.current={tab,caseId,demo};
-  function holdProductTransition(nextCase:string,run:()=>void,modeChange=false){const edits=productEdits.current;if(edits?.dirty&&edits.caseId===productSelection.current&&(modeChange||nextCase!==productSelection.current)){setPendingProductTransition({run,section:edits.section});return false;}return true;}
+  function holdProductTransition(nextCase:string,run:()=>void,modeChange=false){const edits=productEdits.current;if(edits?.dirty&&edits.caseId===productSelection.current&&(modeChange||nextCase!==productSelection.current)){setPendingProductTransition({run,section:edits.section,blocked:edits.pending===true});return false;}return true;}
+  function receiveProductEditState(id:string,dirty:boolean,section:string,pending=false){
+    if(id!==productSelection.current)return;
+    productEdits.current={caseId:id,dirty,section,pending};
+    if(pending)setPendingProductTransition(current=>current&&current.editor!=='cost'?{...current,blocked:true}:current);
+  }
+  function discardProductTransition(){
+    const transition=pendingProductTransition;if(!transition)return;
+    // The dialog may have opened during validation, before the write began.
+    if(transition.editor!=='cost'&&productEdits.current?.pending){setPendingProductTransition({...transition,blocked:true});return;}
+    setPendingProductTransition(null);
+    if(transition.editor==='cost')costEdits.current=null;else productEdits.current=null;
+    transition.run();
+  }
   function holdCostTransition(next:string,id:string|undefined,run:()=>void){const edits=costEdits.current;if(next==='operations'&&edits?.dirty&&edits.caseId!==(id||'')){setPendingProductTransition({run,section:'cost',editor:'cost'});return false;}return true;}
   function openProduct(id:string|undefined,section?:string,taskId?:string){const selected=id===undefined?productSelection.current:id;if(!holdProductTransition(selected,()=>openProduct(id,section,taskId)))return;if(activeTab!=='workspace'||selected!==productSelection.current||taskId!==undefined&&taskId!==productResearchTask)navigate('workspace',selected,taskId);if(section)requestProductTab(section);setMobileView('page');}
   function openProductCost(id:string,delivery=false){if(!holdCostTransition('operations',id,()=>openProductCost(id,delivery)))return;navigate('operations',id);costReturn.current={caseId:id,delivery};if(window.parent===window){const url=new URL(location.href);if(delivery)url.searchParams.set('cost_return','delivery');else url.searchParams.delete('cost_return');history.replaceState({},'',url);acceptedURL.current=location.href;}}
@@ -121,7 +139,7 @@ function Workspace() {
     return new Promise((resolve,reject)=>{const timer=setTimeout(()=>finishOrderSupport(id,'order_support_context_timeout'),20000);pendingOrder.current={id,resolve,reject,timer};setOrderRequest({id,prepared});});
   }
   function finishOrderSupport(id:string,code?:string){const pending=pendingOrder.current;if(!pending||pending.id!==id)return;pendingOrder.current=null;clearTimeout(pending.timer);setOrderRequest(null);if(code){const reason=['order_support_editor_open','order_support_context_timeout','order_support_scope_mismatch'].includes(code)?code:'order_support_context_failed';if(tab!=='order-imports')setError(errorText(Error(reason)));pending.reject(Error(reason));return;}setError('');navigate('support');pending.resolve();}
-  function rememberListingRoute(target:ListingTarget,actionId?:string){if(window.parent===window){const url=new URL(location.href);if(url.searchParams.get('tab')!=='listing')return;const previous=readListingTarget(url.searchParams);if(actionId!==undefined){if(actionId)url.searchParams.set('image_action_id',actionId);else url.searchParams.delete('image_action_id');}else if(!previous||Object.keys(target).some(key=>target[key as keyof ListingTarget]!==previous[key as keyof ListingTarget]))url.searchParams.delete('image_action_id');url.searchParams.set('case_id',target.case_id);url.searchParams.set('listing_platform',target.platform);url.searchParams.set('listing_store',target.store_ref);url.searchParams.set('listing_market',target.market);history.replaceState({},'',url);acceptedURL.current=location.href;}}
+  function rememberListingRoute(target:ListingTarget,actionId?:string){listingTargets.current.set(target.case_id,target);if(window.parent===window){const url=new URL(location.href);if(url.searchParams.get('tab')!=='listing')return;const previous=readListingTarget(url.searchParams);if(actionId!==undefined){if(actionId)url.searchParams.set('image_action_id',actionId);else url.searchParams.delete('image_action_id');}else if(!previous||Object.keys(target).some(key=>target[key as keyof ListingTarget]!==previous[key as keyof ListingTarget]))url.searchParams.delete('image_action_id');url.searchParams.set('case_id',target.case_id);url.searchParams.set('listing_platform',target.platform);url.searchParams.set('listing_store',target.store_ref);url.searchParams.set('listing_market',target.market);history.replaceState({},'',url);acceptedURL.current=location.href;}}
   function selectListingAction(target:ListingTarget,id:string){setListingAction({target,id});rememberListingRoute(target,id);}
   function openListing(target:ListingTarget,actionId=''){navigate('listing',target.case_id);setListingTarget(target);setListingAction(actionId?{target,id:actionId}:null);rememberListingRoute(target,actionId);}
   function openResearch(id: string) {
@@ -198,30 +216,43 @@ function Workspace() {
   function openBusinessCopilot(next:BusinessContext){if(next.module!==businessModule(activeTab)||!!next.demo!==!!currentPage.demo||((legacy||activeTab==='workspace')&&framePage?.page!==activeTab))return;setAssistantContext(null);setFrameScope(next);setAssistant(true);setMobileView('chat');}
   const destination=destinationFor(activeTab) || navigation[0];
   const navLink = (id: string,label: string,icon: string) => <button key={id} aria-label={label} className={`r-nav-link ${destination.id===id?'selected':''}`} aria-current={destination.id===id?'page':undefined} onClick={()=>navigate(id)}><Icon name={icon}/><span className="r-nav-label">{label}</span></button>;
-  function toggleAssistant(){if(compact){setAssistant(true);setMobileView(value=>value==='chat'?'page':'chat');}else setAssistant(value=>!value);}
+  function closeAssistant(){setAssistant(false);setMobileView('page');requestAnimationFrame(()=>document.getElementById('workspace-assistant-toggle')?.focus({preventScroll:true}));}
+  function toggleAssistant(){if(compact){if(assistant&&mobileView==='chat')closeAssistant();else{setAssistant(true);setMobileView('chat');}}else setAssistant(value=>!value);}
+  function selectWorkPage(next:string){
+    // Returning through navigation resumes an unsaved calculator. An explicit
+    // product action can still request another binding through the dirty guard.
+    if(next==='operations'&&costEdits.current?.dirty){navigate(next,costEdits.current.caseId);return;}
+    const selected=activeTab==='workspace'?productCaseId:activeTab==='operations'?costCaseId:activeTab==='listing'?listingCaseId:activeTab==='workflow'?workflowCase:'';
+    if(next==='operations'&&selected){openProductCost(selected);return;}
+    if(next==='workspace'&&selected){openProduct(selected,undefined,selected===productCaseId?productResearchTask:'');return;}
+    if(next==='listing'&&selected){const target=listingTargets.current.get(selected);if(target)openListing(target);else navigate(next,selected);return;}
+    if(next==='workflow'&&selected){navigate(next,selected);return;}
+    navigate(next,next==='operations'?'':undefined);
+  }
   const found = Object.entries(labels).filter(([id, label]) => (id + label).toLowerCase().includes(query.trim().toLowerCase()));
   return <div className={`app r-app ${hosted?'r-hosted':''}`} data-module={activeTab} data-keyboard-open={keyboardOpen}>
     <a href={compact&&mobileView==='chat'?'#copilot-log':'#main-workspace'} className="r-skip">跳至工作区</a>
-    <aside className="r-sidebar" aria-label="平台导航"><button className="r-brand" title="返回运营台" onClick={()=>navigate('overview')}><span><Icon name="store"/></span><div><strong>Phone-Lab</strong><small>AI 跨境运营平台</small></div></button><nav aria-label="业务模块">{navigation.map(item=>navLink(item.id,item.label,item.icon))}</nav></aside>
+    <aside className="r-sidebar" aria-label="平台导航"><button className="r-brand" title="返回运营台" onClick={()=>navigate('overview')}><span><Icon name="store"/></span><div><strong>Phone-Lab</strong><small>AI 跨境运营平台</small></div></button><nav aria-label="业务模块">{navigation.map(item=>navLink(item.id,item.label,item.icon))}</nav><WorkspaceNavigation route={activeTab} select={selectWorkPage}/></aside>
     <header className="r-topbar">
-      <Button className="r-assistant-toggle" icon={compact?'chat':'panelLeft'} aria-label="切换智能助手" title={compact?'切换 AI 对话与当前业务':'展开或收起智能助手'} aria-pressed={compact?mobileView==='chat':assistant} onClick={toggleAssistant}/>
+      <div className="r-topbar-location" aria-label="当前位置">{destination.label!==labels[activeTab]&&<><span>{destination.label}</span><i aria-hidden="true">/</i></>}<strong>{labels[activeTab]}</strong></div>
       <nav ref={navRef} className="r-business-nav" aria-label="工作台业务导航" onKeyDown={event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;const buttons=[...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')],index=buttons.indexOf(event.target as HTMLButtonElement);if(index<0)return;event.preventDefault();buttons[event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length]?.focus();}}>{navigation.map(item=><button key={item.id} aria-label={item.label} title={item.label} aria-current={destination.id===item.id?'page':undefined} onClick={()=>navigate(item.id)}><Icon name={item.icon}/><span>{item.label}</span></button>)}</nav>
-      <div className="r-top-controls"><Button className="r-search" icon="search" aria-label="查找工作与模块" title="查找工作与模块（⌘ K）" onClick={()=>{setQuery('');setFinder(true);}}/><Button className="r-top-icon r-phone-toggle" icon="phone" aria-label="多手机画面与控制" title="多手机画面与控制" aria-pressed={activeTab==='phones'} onClick={()=>navigate('phones')}/><ThemeControl id="react-theme" theme={theme} busy={themeBusy} change={value=>void changeTheme(value)}/><Button className="r-top-icon" icon="gear" aria-label="设置" title="设置" onClick={()=>setSettings(true)}/></div>
+      <div className="r-top-controls"><Button className="r-search" icon="search" aria-label={compact?'查找模块':undefined} aria-keyshortcuts="Meta+K Control+K" title="查找工作与模块（⌘ K）" onClick={()=>{setQuery('');setFinder(true);}}><span>查找模块</span><kbd aria-hidden="true">⌘ K</kbd></Button><Button className="r-data-scope" onClick={()=>setSettings(true)}>{demo?'示例数据':'当前资料'}</Button><Button className="r-top-icon r-phone-toggle" icon="phone" aria-label="多手机画面与控制" title="多手机画面与控制" aria-pressed={activeTab==='phones'} onClick={()=>navigate('phones')}/><ThemeControl id="react-theme" theme={theme} busy={themeBusy} change={value=>void changeTheme(value)}/><Button className="r-top-icon" icon="gear" aria-label="设置" title="设置" onClick={()=>setSettings(true)}/><Button id="workspace-assistant-toggle" className="r-assistant-toggle" icon="chat" aria-label="切换智能助手" title="展开或收起智能助手" aria-controls="commerce-copilot" aria-expanded={assistant&&(!compact||mobileView==='chat')} aria-pressed={assistant&&(!compact||mobileView==='chat')} onClick={toggleAssistant}><span className="r-assistant-label">智能助手</span></Button></div>
     </header>
     <div ref={workArea} className={`r-work-area ${assistant?'with-assistant':''} ${compact?'is-compact':''}`} data-mobile-view={mobileView} style={{'--r-chat-width':`${chatWidth}px`} as CSSProperties}>
-      {compact&&<div className="r-mode-switcher" role="group" aria-label="工作视图"><Button aria-pressed={mobileView==='chat'} onClick={()=>{setAssistant(true);setMobileView('chat');}}>AI 对话</Button><Button aria-pressed={mobileView==='page'} onClick={()=>setMobileView('page')}>{destination.label}</Button></div>}
-      <Assistant pageReady={(legacy||activeTab==='workspace')?framePage?.page===activeTab:activeTab==='store-ops'&&storeScope!=='all'?currentPage.filters?.scope===storeScope&&!!currentPage.source_refs?.store_scope:true} context={context} pageContext={currentPage} visible={assistant&&(!compact||mobileView==='chat')} close={()=>{setAssistant(false);setMobileView('page');}} onWorkspace={()=>openProduct(productCaseId||undefined,activeTab==='workspace'?'cost':undefined)} requestedThreadId={requestedThreadId} onResearch={openResearch} onModels={()=>navigate('models')} onOpenCandidate={(id,taskId)=>navigate('workspace',id,taskId)}/>
-      {assistant&&<div className="r-chat-splitter" role="separator" tabIndex={compact?-1:0} aria-label="调整对话区宽度" aria-orientation="vertical" aria-valuemin={320} aria-valuemax={chatMax} aria-valuenow={chatWidth} aria-controls="commerce-copilot main-workspace" onPointerDown={event=>{if(event.button!==0)return;event.preventDefault();drag.current={x:event.clientX,width:chatWidth};event.currentTarget.setPointerCapture(event.pointerId);}} onPointerMove={event=>{if(event.currentTarget.hasPointerCapture(event.pointerId))resizeChat(drag.current.width+event.clientX-drag.current.x);}} onPointerUp={event=>{if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}} onKeyDown={event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();resizeChat(event.key==='Home'?320:event.key==='End'?chatMax:chatWidth+(event.key==='ArrowRight'?16:-16));}}/>}
+      <Assistant pageReady={(legacy||activeTab==='workspace')?framePage?.page===activeTab:activeTab==='store-ops'&&storeScope!=='all'?currentPage.filters?.scope===storeScope&&!!currentPage.source_refs?.store_scope:true} context={context} pageContext={currentPage} visible={assistant&&(!compact||mobileView==='chat')} close={closeAssistant} onWorkspace={()=>openProduct(productCaseId||undefined,activeTab==='workspace'?'cost':undefined)} requestedThreadId={requestedThreadId} onResearch={openResearch} onModels={()=>navigate('models')} onOpenCandidate={(id,taskId)=>navigate('workspace',id,taskId)}/>
+      {assistant&&<div className="r-chat-splitter" role="separator" tabIndex={compact?-1:0} aria-label="调整对话区宽度" aria-orientation="vertical" aria-valuemin={320} aria-valuemax={chatMax} aria-valuenow={chatWidth} aria-controls="commerce-copilot main-workspace" onPointerDown={event=>{if(event.button!==0)return;event.preventDefault();drag.current={x:event.clientX,width:chatWidth};event.currentTarget.setPointerCapture(event.pointerId);}} onPointerMove={event=>{if(event.currentTarget.hasPointerCapture(event.pointerId))resizeChat(drag.current.width+drag.current.x-event.clientX);}} onPointerUp={event=>{if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);}} onKeyDown={event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();resizeChat(event.key==='Home'?320:event.key==='End'?chatMax:chatWidth+(event.key==='ArrowLeft'?16:-16));}}/>}
       <main className="r-main" id="main-workspace" tabIndex={-1} ref={headingRef}>
-        {destination.id==='store-ops'?<StoreNavigation route={activeTab} navigate={next=>next==='workspace'?navigate(next,productCaseId||undefined,productResearchTask):navigate(next,next==='operations'?'':undefined)}/>:destination.items.length>1&&activeTab!=='workspace'&&<ModuleNavigation active={activeTab} label={`${destination.label}页面`} items={destination.items.filter(id=>destination.id!=='tasks'||id!=='agent'||activeTab==='agent').map(id=>({id,label:labels[id]||id}))} navigate={id=>navigate(id,id==='operations'?'':undefined)}/>}
+        <CompactPageNavigation route={activeTab} select={selectWorkPage}/>
         <ErrorNotice>{error}</ErrorNotice>
-        <div hidden={tab!=='overview'}><Overview demo={demo} active={tab==='overview'} navigate={navigate} onThread={id=>void openResearchThread(id)} onResearch={openResearch}/></div>
-        {visited.has('operations')&&<div hidden={tab!=='operations'}><CostPage onEditState={(id,dirty)=>{costEdits.current={caseId:id,dirty};}} key={costCaseId||'general'} caseId={costCaseId} requestedSurface={costCaseId?'':costSurfaceId} onReturn={()=>openProduct(costCaseId||undefined,costReturn.current?.caseId===costCaseId&&costReturn.current.delivery?'delivery':'cost')}/>{!costCaseId&&<div className="r-page r-secondary-entry"><Button onClick={()=>navigate('restock')}>补货计划</Button></div>}</div>}
-        <div hidden={tab!=='workspace'} className="r-approved-product">{visited.has('workspace')&&<Legacy tab="workspace" onCost={openProductCost} onCreative={openCreative} onSelectedProduct={(id,task)=>{productEdits.current=null;setPendingProductTransition(null);navigate('workspace',id,task);}} onEditState={(id,dirty,section)=>{if(id===productSelection.current)productEdits.current={caseId:id,dirty,section};}} onPageContext={receiveFrameContext} onCopilot={openBusinessCopilot} onResearch={openResearch} requestedTab={productTab?.tab} requestedTabEpoch={productTab?.epoch||0} active={tab==='workspace'} demo={demo} theme={theme} caseId={productCaseId} researchTaskId={productResearchTask} onResearchContext={(id,taskId)=>{if(id!==productSelection.current)return;setProductResearchTask(taskId);if(window.parent===window&&activeTab==='workspace'){const url=new URL(location.href);if(taskId)url.searchParams.set('research_task_id',taskId);else url.searchParams.delete('research_task_id');history.replaceState({},'',url);acceptedURL.current=location.href;}}} navigate={navigate}/>}</div>
+        <div hidden={tab!=='overview'}><Overview demo={demo} active={tab==='overview'} navigate={navigate} onThread={id=>void openResearchThread(id)} onResearch={openResearch} onListing={target=>openListing(target)} onProduct={(id,section)=>openProduct(id,section)}/></div>
+        {visited.has('operations')&&<div hidden={tab!=='operations'}>{costCaseId&&<div className="r-bound-workbar"><span>当前商品 · 成本与定价</span><Button onClick={()=>navigate('operations','')}>通用测算</Button></div>}<CostPage onEditState={(id,dirty)=>{costEdits.current={caseId:id,dirty};}} key={costCaseId||'general'} caseId={costCaseId} requestedSurface={costCaseId?'':costSurfaceId} onReturn={()=>openProduct(costCaseId||undefined,costReturn.current?.caseId===costCaseId&&costReturn.current.delivery?'delivery':'cost')}/>{!costCaseId&&<div className="r-page r-secondary-entry"><Button onClick={()=>navigate('restock')}>补货计划</Button></div>}</div>}
+        <div hidden={tab!=='workspace'} className="r-approved-product">{visited.has('workspace')&&<Legacy tab="workspace" onCost={openProductCost} onCreative={openCreative} onSelectedProduct={(id,task)=>{productEdits.current=null;setPendingProductTransition(null);navigate('workspace',id,task);}} onEditState={receiveProductEditState} onPageContext={receiveFrameContext} onCopilot={openBusinessCopilot} onResearch={openResearch} requestedTab={productTab?.tab} requestedTabEpoch={productTab?.epoch||0} active={tab==='workspace'} demo={demo} theme={theme} caseId={productCaseId} researchTaskId={productResearchTask} onResearchContext={(id,taskId)=>{if(id!==productSelection.current)return;setProductResearchTask(taskId);if(window.parent===window&&activeTab==='workspace'){const url=new URL(location.href);if(taskId)url.searchParams.set('research_task_id',taskId);else url.searchParams.delete('research_task_id');history.replaceState({},'',url);acceptedURL.current=location.href;}}} navigate={navigate}/>}</div>
         {visited.has('listing')&&<div hidden={tab!=='listing'}><ListingPage demo={demo} active={tab==='listing'} caseId={listingCaseId} onCase={setListingCaseId} onTargetLoaded={rememberListingRoute} requestedTarget={listingTarget} requestedAction={listingAction} onSelectAction={selectListingAction} onPlatform={()=>navigate('platforms')} onProduct={(id,tab)=>openProduct(id,tab)}/></div>}
         {visited.has('store-ops')&&<div hidden={tab!=='store-ops'}><StoreWorkbench key={String(demo)} storeScope={storeScope} onStoreScope={chooseStoreScope} demo={demo} active={tab==='store-ops'} navigate={navigate} onListing={openListing} onThread={id=>void openResearchThread(id)} onResearch={openResearch}/></div>}
         {visited.has('tools')&&<div hidden={tab!=='tools'} className="r-page"><div className="r-page-heading"><h1>插件与工具发现</h1><Button onClick={()=>navigate('skills')}>自建插件与能力</Button></div><AssistantToolDiscovery active={tab==='tools'}/></div>}
-        <div hidden={tab!=='tasks'}><Tasks active={tab==='tasks'} navigate={navigate} onResearch={openResearch} onCost={openCostSurface} onConversation={id=>void openResearchThread(id,true)}/></div>
+        <div hidden={tab!=='tasks'}><Tasks active={tab==='tasks'} requestedTask={activeTab==='tasks'?caseId:''} navigate={navigate} onResearch={openResearch} onCost={openCostSurface} onConversation={id=>void openResearchThread(id,true)}/></div>
+        {visited.has('pipeline')&&<div hidden={tab!=='pipeline'}><PipelineBoard demo={demo} active={tab==='pipeline'} navigate={navigate} onProduct={(id,section)=>openProduct(id,section)} onListing={target=>openListing(target)}/></div>}
+        {visited.has('decisions')&&<div hidden={tab!=='decisions'}><DecisionChecks/></div>}
         {visited.has('pilots')&&<div hidden={tab!=='pilots'}><Candidates active={tab==='pilots'} requestedTask={researchTaskId} closeTask={closeResearch} openTask={openResearch} openThread={id=>void openResearchThread(id)} navigate={navigate}/></div>}
         {visited.has('models')&&<div hidden={tab!=='models'}><Models active={tab==='models'}/></div>}
         {visited.has('order-imports')&&<div hidden={tab!=='order-imports'}><OrderImports demo={demo} navigate={navigate} onSupport={openOrderSupport}/></div>}
@@ -233,9 +264,9 @@ function Workspace() {
         {legacyStarted&&<div hidden={!legacy} className="r-legacy-container"><Legacy creativeIntent={creativeIntent} onCreativeOpened={creativeOpened} tab={legacyTab} active={legacy} orderSupportRequest={orderRequest} onOrderSupport={openOrderSupport} onOrderSupportResult={finishOrderSupport} onPageContext={receiveFrameContext} onCopilot={openBusinessCopilot} demo={demo} theme={theme} caseId={caseId} navigate={navigate}/></div>}
       </main>
     </div>
-    {settings && <WorkspaceSettings theme={theme} themeBusy={themeBusy} changeTheme={value=>void changeTheme(value)} demo={demo} changeDemo={changeMode} close={()=>setSettings(false)} error={error} connections={()=>{setSettings(false);navigate('connections');}}/>}
-    {pendingProductTransition&&<Dialog title={pendingProductTransition.editor==='cost'?'保留成本工作台的未保存输入':'保留当前商品的未保存输入'} close={()=>setPendingProductTransition(null)}><p>{pendingProductTransition.editor==='cost'?'成本工作台还有未保存的编辑。先返回保存，或明确放弃后切换。':'当前商品还有未保存的编辑。先返回保存，或明确放弃这些修改后继续。'}</p><div className="r-actions"><Button onClick={()=>{const {section,editor}=pendingProductTransition;setPendingProductTransition(null);setSettings(false);if(editor==='cost')navigate('operations',costEdits.current?.caseId??costCaseId);else openProduct(productSelection.current,section);}}>返回当前编辑</Button><Button onClick={()=>{const {run,editor}=pendingProductTransition;setPendingProductTransition(null);if(editor==='cost')costEdits.current=null;else productEdits.current=null;run();}}>放弃修改并继续</Button></div></Dialog>}
-    {finder && <Dialog title="查找模块" close={() => setFinder(false)}><label className="ui-field">模块名称或关键词<input type="search" autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="例如：商品、成本、库存、任务" /></label><p className="r-footnote" role="status">{found.length} 个匹配入口</p><div className="r-finder-list">{found.length ? found.map(([id, label]) => <Button key={id} onClick={() => { setFinder(false); navigate(id); }}>{label}<span>{navigation.find(item=>item.items.includes(id))?.label||'业务页面'}</span></Button>) : <Empty>没有匹配模块。</Empty>}</div></Dialog>}</div>;
+    {settings && <WorkspaceSettings pinned={pinned} changePinned={changePinned} theme={theme} themeBusy={themeBusy} changeTheme={value=>void changeTheme(value)} demo={demo} changeDemo={changeMode} close={()=>setSettings(false)} error={error} connections={()=>{setSettings(false);navigate('connections');}}/>}
+    {pendingProductTransition&&<Dialog title={pendingProductTransition.blocked?'研究保存尚未确认':pendingProductTransition.editor==='cost'?'保留成本工作台的未保存输入':'保留当前商品的未保存输入'} close={()=>setPendingProductTransition(null)}><p>{pendingProductTransition.blocked?'原研究保存仍在处理或结果尚未确认。请返回原编辑器，核对同一请求后再切换。':pendingProductTransition.editor==='cost'?'成本工作台还有未保存的编辑。先返回保存，或明确放弃后切换。':'当前商品还有未保存的编辑。先返回保存，或明确放弃这些修改后继续。'}</p><div className="r-actions"><Button onClick={()=>{const {section,editor}=pendingProductTransition;setPendingProductTransition(null);setSettings(false);if(editor==='cost')navigate('operations',costEdits.current?.caseId??costCaseId);else openProduct(productSelection.current,section);}}>返回当前编辑</Button>{!pendingProductTransition.blocked&&<Button onClick={discardProductTransition}>放弃修改并继续</Button>}</div></Dialog>}
+    {finder && <Dialog title="查找模块" close={() => setFinder(false)}><div className="r-command-search"><div role="search" onKeyDown={event=>{if(event.key!=='Enter')return;event.stopPropagation();if(event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;if(found.length===1){event.preventDefault();setFinder(false);selectWorkPage(found[0][0]);}}}><label className="ui-field">模块名称或关键词<input type="search" autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="例如：商品、成本、库存、任务" /></label></div><p className="r-footnote" role="status">{found.length} 个匹配入口</p><div className="r-finder-list">{found.length ? found.map(([id, label]) => <Button key={id} data-finder-route={id} onClick={() => { setFinder(false); selectWorkPage(id); }}><span>{label}</span><span>{navigation.find(item=>item.items.includes(id))?.label||'业务页面'}</span></Button>) : <Empty>没有匹配模块。</Empty>}</div></div></Dialog>}</div>;
 }
 function Root() {
   if (window.location.pathname.replace(/\/+$/, '') === '/phones') return <PhoneFleetPage />;

@@ -30,7 +30,7 @@ function fixture({unknown=false,readFailure=false}={}){
   const window={addEventListener:(name,fn)=>{if(name==='message')listener=fn;},CommerceUI:{escape:String}};
   const context=vm.createContext({window,document:{getElementById:()=>({textContent:''}),querySelectorAll:()=>[]},s,parent,api,crypto:{randomUUID},URL,Blob,Uint8Array,atob,btoa,setTimeout,clearTimeout,
     nonce:'nonce',bridged:true,reactHost:true,embedded:true,hostRefreshDeferred:false,lastEditState:'',
-    studio:{hasUnsavedChanges:()=>false},modalEdited:false,render(){},announce:text=>announcements.push(text),modelContext:()=>({}),
+    studio:{hasUnsavedChanges:()=>false},researchEditor:{hasActiveMutation:()=>false},modalEdited:false,render(){},announce:text=>announcements.push(text),modelContext:()=>({}),
     quoteDialog(){},selectTab(){},dialog(){},esc:String,btn:()=>'',
     reportResearchSelection(){},enrichIdentity(){},message:error=>error.message,
     tabs:{evidence:'证据与选品'},researchContext:{task:()=>'',artifact(){}},catalog:{},

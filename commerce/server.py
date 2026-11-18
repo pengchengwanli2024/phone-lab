@@ -4,6 +4,7 @@ import threading
 from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import urlparse,parse_qs
+import gzip
 import hashlib
 import hmac
 import json
@@ -20,7 +21,7 @@ from phone_scrcpy import ScrcpyBridge
 from protocols.a2a import agent_card, dispatch as a2a_dispatch
 from platform_connections.setup import page as platform_setup_page
 from workspace_page import page as product_workspace_page
-from react_page import page as react_workspace_page
+from react_page import page as react_workspace_page, payloads as workspace_payloads
 from model_providers.setup import page as model_setup_page
 from capability_setup import page as capability_setup_page
 
@@ -81,9 +82,22 @@ class Handler(BaseHTTPRequestHandler):
             if not hmac.compare_digest(value,self.secret):return self.answer(401,{'error':'authentication_required'})
             return self.answer(303,'',headers={'Location':'/','Set-Cookie':'commerce_session='+self.secret+'; HttpOnly; SameSite=Strict; Path=/'})
         if not self.authenticated():return self.answer(401,{'error':'authentication_required'})
+        if parsed.path.startswith('/workspace/document/'):
+            # Fetched on demand by the browser page; the Harness iframe has no origin and keeps them inline.
+            identifier=parsed.path[len('/workspace/document/'):]
+            try:payload=workspace_payloads()[identifier].encode()
+            except KeyError:return self.answer(404,{'error':'embedded_document_unknown'})
+            except RuntimeError:return self.answer(503,{'error':'embedded_documents_unavailable'})
+            # The payload is base64 of one gzip stream, so re-compressing it gives about 25% back.
+            headers={}
+            if 'gzip' in self.headers.get('Accept-Encoding',''):
+                payload=gzip.compress(payload,9);headers['Content-Encoding']='gzip'
+            self.send_response(200)
+            for key,value in {'Content-Type':'text/plain; charset=utf-8','Content-Length':str(len(payload)),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Vary':'Accept-Encoding',**headers,**({'Connection':'close'}if self.close_connection else{})}.items():self.send_header(key,value)
+            self.end_headers();self.wfile.write(payload);return
         if parsed.path=='/.well-known/agent-card.json':return self.answer(200,agent_card(f'http://127.0.0.1:{PORT}'))
         if parsed.path=='/v1/health':return self.answer(200,{'service':'commerce-backend','version':'0.1.0','status':'ready'})
-        if parsed.path in ('/','/workspace','/phones'):return self.answer(200,react_workspace_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src data: blob:; worker-src blob:; connect-src 'self'; frame-src 'self' about:; frame-ancestors 'self'"})
+        if parsed.path in ('/','/workspace','/phones'):return self.answer(200,react_workspace_page(documents=False),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src data: blob:; worker-src blob:; connect-src 'self'; frame-src 'self' about:; frame-ancestors 'self'"})
         if parsed.path=='/legacy':return self.answer(200,page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src data: blob:; worker-src blob:; connect-src 'self'; frame-ancestors 'self'"})
         if parsed.path=='/product-workspace':return self.answer(200,product_workspace_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; media-src data: blob:; connect-src 'self'; frame-ancestors 'self'"})
         if parsed.path=='/setup':return self.answer(200,setup_page(),'text/html; charset=utf-8',{'Content-Security-Policy':"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"})

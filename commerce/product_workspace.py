@@ -73,7 +73,8 @@ class ProductWorkspace:
         # An explicit subject identity is required. Similar titles and SKU strings
         # never join imported facts from another object or connection.
         mode = case['scope'].get('synthetic') is True
-        sources=self.service.business.listing(mode)['sources'] if _sources is None else _sources
+        # Only source heads are needed here; listing() would also read every draft.
+        sources=self.service.business.source_summaries(mode) if _sources is None else _sources
         return [s for s in sources
                 if s['kind'] == 'facts' and s['scope']['subject_ref'] == case['id']
                 and s['scope']['platform'] == case['scope'].get('platform')]

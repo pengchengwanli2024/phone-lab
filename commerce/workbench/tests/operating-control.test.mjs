@@ -47,6 +47,32 @@ test('initial screen waits for the backend and invents no amount or execution re
   const view = mount(); assert.match(textOf(view.tree), /正在读取/); assert.doesNotMatch(textOf(view.tree), /10,000|已执行|已连接/); view.unmount();
 });
 
+test('runtime state and the first returned conditions precede store and budget without dropping other conditions', async () => {
+  const value=snapshot();value.autonomy.blockers=['SKU映射待核对','仓配尚未接入','手机身份待验收','外部执行器待授权'];
+  value.store={label:'合成店铺',configured:true,orders:{available:false},stock:{available:false},sales:{available:false},automatic_read_enabled:false};
+  invoke=()=>value;const view=mount();await settle();view.render();
+  const all=nodes(view.tree),runtime=all.find(x=>x.props?.title==='自动运行与待接条件'),budget=all.find(x=>x.props?.title==='共享经营预算'),store=all.find(x=>x.props?.title==='当前 Ozon 店铺');
+  assert.ok(runtime&&budget&&store);
+  assert.ok(all.indexOf(runtime)<all.indexOf(budget),'Execution state is presented before budget amounts');
+  assert.ok(all.indexOf(runtime)<all.indexOf(store),'A store snapshot does not push execution state below configuration');
+  assert.equal(textOf(runtime.props.action),'外部经营执行尚未启用');
+  const primary=nodes(runtime).find(x=>x.props?.className?.includes('r-oc-key-blockers'));
+  assert.ok(primary,'The first returned conditions remain immediately visible');
+  assert.deepEqual(nodes(primary).filter(x=>x.type==='li').map(textOf),value.autonomy.blockers.slice(0,2));
+  const remaining=nodes(runtime).find(x=>x.type==='details');assert.ok(remaining);
+  assert.deepEqual(nodes(remaining).filter(x=>x.type==='li').map(textOf),value.autonomy.blockers.slice(2));
+  assert.deepEqual(nodes(runtime).filter(x=>x.type==='li').map(textOf),value.autonomy.blockers,'Every original condition appears once in its original order');
+  view.unmount();
+});
+
+test('runtime status keeps the backend execution flag and the caveat when no blocker is returned', async () => {
+  const value=snapshot();value.autonomy.external_business_enabled=true;value.autonomy.blockers=[];invoke=()=>value;
+  const view=mount();await settle();view.render();const runtime=find(view,x=>x.props?.title==='自动运行与待接条件');
+  assert.equal(textOf(runtime.props.action),'按已授权范围执行');
+  assert.match(textOf(runtime),/未列出阻塞；实际执行仍受权限、预算与来源版本校验/);
+  assert.equal(nodes(runtime).some(x=>x.type==='details'),false);view.unmount();
+});
+
 test('a late real-mode read never replaces a newer synthetic-mode snapshot', async () => {
   const live = deferred(); invoke = (_tool, args) => args.synthetic ? snapshot('合成任务', '70') : live.promise;
   const view = mount(); view.render({ synthetic: true }); await settle(); view.render();

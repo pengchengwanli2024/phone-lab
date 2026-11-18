@@ -51,6 +51,28 @@ class Runtime(RuntimeCase):
         self.assertEqual(observed,['passed'])
         self.assertTrue(self.call('enable',extension_id=ext['id'],expected_version=ext['version'],enabled=True)['enabled'])
 
+    def test_an_unexpected_failure_keeps_a_content_free_cause_and_still_hides_the_message(self):
+        ext=self.ready();secret='SECRET_SENTINEL /Users/someone/private token=abc'
+        failures=[KeyError(secret),TypeError(secret),OSError(secret),ValueError(secret)]
+        for index,error in enumerate(failures):
+            with self.subTest(error=type(error).__name__):
+                original=self.service.invoke
+                def broken(name,args,client='local',_e=error):
+                    if name=='commerce_runtime_status':raise _e
+                    return original(name,args,client)
+                with patch.object(self.service,'invoke',side_effect=broken):
+                    result=self.drain(self.call('run',extension_id=ext['id'],idempotency_key='cause-'+str(index)))
+                self.assertEqual((result['status'],result['error']),('failed','extension_execution_failed'))
+                self.assertEqual(result['error_cause'],{'type':type(error).__name__,'step':'root.read'})
+                with self.service.core.db() as db:stored=db.execute('SELECT document FROM extension_runs WHERE id=?',(result['id'],)).fetchone()[0]
+                self.assertNotIn('SECRET_SENTINEL',stored+json.dumps(result));self.assertNotIn('/Users/',stored)
+
+    def test_a_coded_failure_carries_no_extra_cause(self):
+        ext=self.ready()
+        with patch.object(self.service,'invoke',side_effect=ValueError('extension_scope_mismatch')):
+            result=self.drain(self.call('run',extension_id=ext['id'],idempotency_key='coded'))
+        self.assertEqual(result['error'],'extension_scope_mismatch');self.assertNotIn('error_cause',result)
+
     def test_versioned_test_enable_run_and_core_task_identity(self):
         ext=self.ready();run=self.call('run',extension_id=ext['id'],idempotency_key='one');self.assertEqual(run['status'],'queued')
         result=self.drain(run);self.assertEqual(result['status'],'succeeded');self.assertEqual(result['output']['mode'],'unconfigured')

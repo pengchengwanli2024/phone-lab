@@ -29,3 +29,18 @@
 4. Amazon阶段再做有边界的供应商响应适配；Maps等实际渠道发现任务出现再验。均不从试运行预算自动购买订阅，也不用于绕过已受限站点。
 
 Sealeap、Nexscope和Maps根许可原件为MIT；Oxylabs当前许可缺失。以上仅记录本轮可观察事实。详细提交、文件清单、哈希与算术对照保留在本机私有 `.local/agent-team/control/repo-audit/`，不将其静态观察宣传为运行或经营成功。
+
+## 外部 agent 平台与生成式 UI 仓库（2026-11-18 复核）
+
+本轮按用户要求把六个仓库浅克隆到私有目录 `.local/reference-repos-20261118/` 逐份读源码，未安装、未运行、未连接任何账号或外部服务；逐仓库报告在 `reports/` 下。许可证只按仓库内原件记录，不推断商业授权。
+
+| 项目 | 固定提交 | 许可证 | 值得消化 | 接入判断 |
+| --- | --- | --- | --- | --- |
+| [OpenMausBot](https://github.com/milind-soni/OpenMausBot) | `c175749a` | Apache-2.0；`enterprise/` 为 source-available | 例程连续失败后拉开调度间隔；手机读屏/按文字点/有界批量步骤；人接管时的“未执行”语义；无人值守用量上限 | 失败间隔已采纳（`trigger_failure_spacing.py`）。手机相关项需先确认与 `monitor/control.py` 生命周期共用一个控制者槽，尚未实施 |
+| [suparagent](https://github.com/Anil-matcha/suparagent) | `f2ae9d0f` | Apache-2.0，但 `NOTICES.md` 称部分改编自 MIT 项目且为 Open Duet 改名再发布，派生范围未澄清 | 不可信 agent 文本围栏；按引擎能力裁剪审批模式；不阻塞委派 | 只借鉴机制、代码自写；围栏已采纳（`agent_text_fence.py`）。其余未实施 |
+| [CopilotKit/openbot](https://github.com/CopilotKit/openbot) | `dfbfc79e` | MIT；Intelligence 服务另行授权 | 动作前策略评估与审计的顺序；“未执行”结果文案；审批答复枚举 | 仅调研。其“本会话/永远允许”与本项目“绑定一次参数”的审批要求冲突，未采纳 |
+| [nightly-labs/openbot](https://github.com/nightly-labs/openbot) | `f50eb06e` | **PolyForm Noncommercial 1.0.0（禁商业使用）** | 无更新时不打扰用户；命令行退出码区分完成/失败未知/等人处理 | 只记录思路，不复制任何代码、文案或数据结构；其全权限+永不询问的权限模型与本项目相反 |
+| [CopilotKit](https://github.com/CopilotKit/CopilotKit) | `ff6f3b03` | MIT | AG-UI interrupt→审批→resume 闭环；Governed Action 审批信封 | 本项目已依赖 `@copilotkit/react-core` 1.87.0，该版本已含 interrupt/HITL，升级不是前提；不引入 `@copilotkit/runtime`（会形成第二个 agent 运行器） |
+| [A2UI](https://github.com/a2ui-project/a2ui) | `0d3ebdcd` | Apache-2.0 | 能力协商声明；官方 feature ID 精确声明支持范围 | 本项目固定的 v1.0 四份 schema 与上游当前 `specification/v1_0/json` 逐字节一致，无协议漂移；不回退 v0.9/0.8，不采用 Draft 状态的 proposals 与 `renderer_data_model` 双向同步 |
+
+两个已落地实现的细节、与来源的差异以及明确未采纳项见 [SOURCE-INTEGRATION.md](../commerce/SOURCE-INTEGRATION.md) 的第三批与“外部 agent 平台”两节。

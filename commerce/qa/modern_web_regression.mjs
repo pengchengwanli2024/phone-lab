@@ -75,7 +75,7 @@ try{
   assert.equal(await earlyPage.evaluate(()=>document.readyState),'loading');
   releaseTail();await earlyPage.waitForLoadState('domcontentloaded');
   await earlyPage.locator('.r-search').click();await earlyPage.getByRole('dialog').getByRole('searchbox').fill('connections');
-  await earlyPage.getByRole('dialog').locator('.r-finder-list button').first().click();
+  await earlyPage.getByRole('dialog').locator('[data-finder-route="connections"]').click();
   await earlyPage.frameLocator('iframe[title="专业业务模块"]').locator('.connections-root').waitFor();
   result.checks.push({kind:'progressiveInline',paintBeforeData:true,legacyDecodedAfterData:true});
  }finally{releaseTail?.();await earlyContext.close();gate.closeAllConnections();await new Promise(resolve=>gate.close(resolve));}
@@ -108,13 +108,27 @@ try{
  for(const width of [1440,768,390,320]){
   await page.setViewportSize({width,height:960});
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-  result.checks.push({kind:'viewport',width,...await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,innerWidth,mainWidth:document.querySelector('main').getBoundingClientRect().width,unnamedInputs:[...document.querySelectorAll('input,textarea,select')].filter(e=>e.getClientRects().length&&!e.closest('[hidden]')&&!e.labels?.length&&!e.getAttribute('aria-label')&&!e.getAttribute('aria-labelledby')).map(e=>({tag:e.tagName,id:e.id,placeholder:e.getAttribute('placeholder')}))}))});
+  const metrics=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,innerWidth,mainWidth:document.querySelector('#main-workspace').getBoundingClientRect().width,workWidth:document.querySelector('.r-work-area').getBoundingClientRect().width,assistantExpanded:document.querySelector('#workspace-assistant-toggle').getAttribute('aria-expanded'),unnamedInputs:[...document.querySelectorAll('input,textarea,select')].filter(e=>e.getClientRects().length&&!e.closest('[hidden]')&&!e.labels?.length&&!e.getAttribute('aria-label')&&!e.getAttribute('aria-labelledby')).map(e=>({tag:e.tagName,id:e.id,placeholder:e.getAttribute('placeholder')}))}));
+  assert.equal(metrics.assistantExpanded,'false','The assistant starts collapsed');
+  assert.equal(await page.locator('.r-shared-assistant:visible').count(),0);
+  assert.ok(metrics.mainWidth>=metrics.workWidth-2,'Collapsed assistant leaves the complete work-area width available at '+width);
+  result.checks.push({kind:'viewport',width,...metrics});
+  if(width===390){
+   await page.locator('#workspace-assistant-toggle').click();await page.locator('.r-shared-assistant[aria-busy="false"] #copilot-message').waitFor();
+   assert.equal(await page.locator('.r-work-area').getAttribute('data-mobile-view'),'chat');
+   assert.equal(await page.locator('#main-workspace').isVisible(),false);
+   await page.locator('#workspace-assistant-toggle').click();await page.locator('#main-workspace').waitFor();
+   await page.waitForFunction(()=>document.activeElement?.id==='workspace-assistant-toggle');
+   assert.equal(await page.locator('#workspace-assistant-toggle').getAttribute('aria-expanded'),'false');
+   assert.equal(await page.locator('.r-mode-switcher').count(),0);
+   result.checks.push({kind:'mobileAssistant',opensExplicitly:true,returnsToPage:true,returnsFocus:true});
+  }
  }
  await page.setViewportSize({width:390,height:844});
  await page.emulateMedia({colorScheme:'dark',reducedMotion:'reduce'});
  await page.screenshot({path:path.join(out,'overview-390-dark.png'),fullPage:false});
  await page.setViewportSize({width:1440,height:960});
- const find=async query=>{await page.locator('.r-search').click();await page.getByRole('dialog').getByRole('searchbox').fill(query);await page.getByRole('dialog').locator('.r-finder-list button').first().click();};
+ const find=async route=>{await page.locator('.r-search').click();const dialog=page.getByRole('dialog');const before=await dialog.boundingBox();await dialog.getByRole('searchbox').fill(route);const target=dialog.locator('[data-finder-route="'+route+'"]');await target.waitFor();const after=await dialog.boundingBox();for(const key of ['x','y','width','height'])assert.ok(Math.abs(before[key]-after[key])<=1,'Finder geometry stays fixed while filtering: '+key);await target.click();await dialog.waitFor({state:'hidden'});await page.locator('.r-app[data-module="'+route+'"]').waitFor();};
  await find('operations');
  await page.locator('.r-cost-page input[name="price"]').waitFor();
  result.checks.push({kind:'routeTitle',overview:result.load.title,cost:await page.title(),visibleHeadings:await page.locator('.r-cost-page h1').allTextContents()});
@@ -208,7 +222,13 @@ try{
  const {case_id:caseId}=JSON.parse(await readFile(path.join(work,'fixture.json'),'utf8'));
  await page.goto(origin+'/workspace?tab=workspace&case_id='+caseId+'&demo=true');
  const product=page.frameLocator('iframe[title="完整商品内容编辑"]');await product.locator('#pw-main[aria-busy="false"]').waitFor();
+ assert.equal(await page.locator('#workspace-assistant-toggle').getAttribute('aria-expanded'),'false');
+ await page.locator('#workspace-assistant-toggle').click();
  await page.locator('.r-shared-assistant[aria-busy="false"] #copilot-message').fill('synthetic-unsent-draft');
+ assert.ok((await page.locator('.r-shared-assistant .copilot-context-label').textContent()).includes(caseId),'An explicitly opened assistant keeps the original product identity');
+ const assistantBox=await page.locator('.r-shared-assistant').boundingBox(),businessBox=await page.locator('#main-workspace').boundingBox();
+ assert.ok(assistantBox.x>=businessBox.x+businessBox.width-1,'An explicitly opened desktop assistant occupies the right side');
+ result.checks.push({kind:'assistantPlacement',defaultCollapsed:true,rightSide:true});
  await product.locator('[data-pw-tab="cost"]').click();
  const originalFrame=await page.locator('iframe[title="完整商品内容编辑"]').getAttribute('srcdoc');
  await product.getByRole('button',{name:'编辑成本',exact:true}).click();
@@ -220,6 +240,8 @@ try{
  await product.locator('[data-pw-tab="cost"]').click();await product.getByRole('button',{name:'编辑成本',exact:true}).click();
  assert.equal(await purchase.inputValue(),'34','The original bound cost form keeps unsaved input');
  result.checks.push({kind:'compressedProductDraft',preserved});
+ await page.locator('#workspace-assistant-toggle').click();
+ assert.equal(await page.locator('.r-shared-assistant:visible').count(),0);
  for(const width of [1440,390]){
   await page.setViewportSize({width,height:900});
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
@@ -237,7 +259,7 @@ finally{
  result.endHashes=await fingerprint();result.sourceStable=JSON.stringify(result.startHashes)===JSON.stringify(result.endHashes);
  await writeFile(path.join(out,'browser-results.json'),JSON.stringify(result,null,2)+'\n');
  const get=kind=>result.checks.find(check=>check.kind===kind);
- const requirements=[['Additional memory/task shortcuts preserve IME confirmation',get('layeredMemoryIME')?.ordinaryEnter===1&&get('legacyTaskIME')?.ordinaryEnter===1],['Application paints before unused inline documents',get('progressiveInline')?.paintBeforeData===true&&get('progressiveInline')?.legacyDecodedAfterData===true],['Related order rejects a changed source and recovers',get('alertOrderContext')?.changedSourceRejected===true&&get('alertOrderContext')?.recovered===true],['IME composition does not save',get('imeRestock')?.saveCalls===0],['Folded details keep Tab inside iframe',get('opaqueIframeDialogFocus')?.forward.hostActive.tag==='IFRAME'],['Dragging from dialog does not close',get('dialogDragOut')?.openAfterInsidePressOutsideRelease===1],['Connection instructions remain accessible',get('connectionHelp')?.secondInstructionVisible===true],['Initial document below 5 MB',result.load?.navigation?.[0]?.encodedBodySize<5000000],['Route title follows current module',get('routeTitle')?.cost==='成本与定价 · Phone-Lab'],['Knowledge search ignores IME but submits ordinary Enter',get('knowledgeIME')?.whileComposing===0&&get('knowledgeIME')?.ordinaryEnter===1&&get('knowledgeIME')?.typed==='synthetic'],['Visibility fallback keeps iframe focus',get('visibilityFallback')?.inside===true],['Artifact stays stable during regression',result.sourceStable]];
+ const requirements=[['Collapsed assistants leave the complete business width',result.checks.filter(c=>c.kind==='viewport').length===4&&result.checks.filter(c=>c.kind==='viewport').every(c=>c.assistantExpanded==='false'&&c.mainWidth>=c.workWidth-2)],['Explicit desktop assistant opens on the right',get('assistantPlacement')?.defaultCollapsed===true&&get('assistantPlacement')?.rightSide===true],['Mobile AI toggle returns to the business page and trigger',get('mobileAssistant')?.returnsToPage===true&&get('mobileAssistant')?.returnsFocus===true],['Additional memory/task shortcuts preserve IME confirmation',get('layeredMemoryIME')?.ordinaryEnter===1&&get('legacyTaskIME')?.ordinaryEnter===1],['Application paints before unused inline documents',get('progressiveInline')?.paintBeforeData===true&&get('progressiveInline')?.legacyDecodedAfterData===true],['Related order rejects a changed source and recovers',get('alertOrderContext')?.changedSourceRejected===true&&get('alertOrderContext')?.recovered===true],['IME composition does not save',get('imeRestock')?.saveCalls===0],['Folded details keep Tab inside iframe',get('opaqueIframeDialogFocus')?.forward.hostActive.tag==='IFRAME'],['Dragging from dialog does not close',get('dialogDragOut')?.openAfterInsidePressOutsideRelease===1],['Connection instructions remain accessible',get('connectionHelp')?.secondInstructionVisible===true],['Initial document below 5 MB',result.load?.navigation?.[0]?.encodedBodySize<5000000],['Route title follows current module',get('routeTitle')?.cost==='成本与定价 · Phone-Lab'],['Knowledge search ignores IME but submits ordinary Enter',get('knowledgeIME')?.whileComposing===0&&get('knowledgeIME')?.ordinaryEnter===1&&get('knowledgeIME')?.typed==='synthetic'],['Visibility fallback keeps iframe focus',get('visibilityFallback')?.inside===true],['Artifact stays stable during regression',result.sourceStable]];
  result.requirements=requirements.map(([name,passed])=>({name,passed}));
  await writeFile(path.join(out,'browser-results.json'),JSON.stringify(result,null,2)+'\n');
  if(requirements.some(([,passed])=>!passed)){process.exitCode=1;console.error('Regression failures: '+requirements.filter(([,passed])=>!passed).map(([name])=>name).join('; '));}
