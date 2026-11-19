@@ -23,7 +23,7 @@ EXTENSIONS = {'.py', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.css', '.html', '.js
 FAST_MODULES = ['test_a2ui_cost', 'test_product_workspace', 'test_listing_workspace', 'test_full_flow']
 FULL_MODULES = FAST_MODULES + ['test_product_evidence', 'test_sourcing_channels', 'test_sourcing_integrity',
                                'test_ui_workflow_acceptance', 'test_service', 'test_copilot_transport',
-                               'test_operating_pipeline', 'test_operating_video_policy', 'test_operating_budget',
+                               'test_operating_pipeline', 'test_operating_video_policy', 'test_operating_budget', 'test_order_fulfillment',
                                'test_mobile_control', 'test_mobile_control_integration', 'test_operating_control', 'test_operating_loop', 'test_task_dispatch', 'test_operating_health', 'test_operating_loop_mobile', 'test_operating_retrospect', 'test_backup_restore', 'test_agent_text_fence', 'test_trigger_failure_spacing', 'test_trigger_failure_spacing_seam', 'test_trigger_firing', 'test_team_prompt_safety_integration', 'test_decision_checks', 'test_decision_checks_mcp', 'test_ozon_read_backoff', 'test_attempt_outcome', 'test_ozon_accounts', 'test_live_connections',
                                'test_catalog_store_identity','test_media_library','test_intel_opportunities','test_local_model_supervisor','test_catalog_media_integration','test_ozon_search_terms','test_workspace_content_citations','test_market_research_contract','test_catalog_evidence_media',
                                'test_workspace_research', 'test_workspace_research_stdio', 'test_listing_lineage',

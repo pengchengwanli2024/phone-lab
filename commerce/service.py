@@ -13,6 +13,7 @@ import decision_checks
 from listing_lineage import invoke as listing_lineage_invoke, definitions as listing_lineage_definitions
 from shipping_workbench import ShippingWorkbench, definitions as shipping_definitions
 from order_imports import OrderImports, definitions as order_import_definitions
+from order_fulfillment import OrderFulfillment, definitions as order_fulfillment_definitions
 from workflow_plan import WorkflowPlans, definitions as workflow_plan_definitions
 from operating_pipeline import OperatingPipeline, definitions as operating_pipeline_definitions
 from operating_budget import OperatingBudget, definitions as operating_budget_definitions
@@ -260,6 +261,7 @@ TOOLS.extend(packing_definitions(schema))
 TOOLS.extend(decision_checks.definitions(schema))
 TOOLS.extend(shipping_definitions(schema))
 TOOLS.extend(order_import_definitions(schema))
+TOOLS.extend(order_fulfillment_definitions(schema))
 TOOLS.extend(workflow_plan_definitions(schema))
 TOOLS.extend(operating_pipeline_definitions(schema,S))
 TOOLS.extend(operating_budget_definitions(schema,S))
@@ -346,6 +348,7 @@ class Commerce:
         self.owner_reviews=OwnerReviews(self)
         self.listing_submissions=ListingSubmissions(self)
         self.order_imports=OrderImports(self)
+        self.order_fulfillment=OrderFulfillment(self)
         self.workflow_plans=WorkflowPlans(self)
         self.operating_pipeline=OperatingPipeline(self)
         self.operating_budget=OperatingBudget(self.core)
@@ -423,6 +426,7 @@ class Commerce:
         if name.startswith('commerce_listing_lineage_'):return listing_lineage_invoke(name,args,self)
         if name.startswith('commerce_shipping_'):return self.shipping.invoke(name,args)
         if name.startswith('commerce_order_import_'):return self.order_imports.invoke(name,args)
+        if name.startswith('commerce_order_fulfillment_'):return self.order_fulfillment.invoke(name,args)
         if name.startswith('commerce_workflow_plan_'):return self.workflow_plans.invoke(name,args)
         if name.startswith('commerce_operating_pipeline_'):return self.operating_pipeline.invoke(name,args)
         if name.startswith('commerce_operating_budget_'):return self.operating_budget.invoke(name,args)
